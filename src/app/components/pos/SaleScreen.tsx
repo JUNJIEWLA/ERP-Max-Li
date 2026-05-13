@@ -207,40 +207,42 @@ export default function SaleScreen() {
         onChangeTipoDocumento={handleChangeTipoNCF}
       />
 
-      <div className="p-6 border-b border-border">
-        <div className="flex items-center gap-4">
+      <div className="px-4 py-2 border-b border-border">
+        <div className="flex items-center gap-2">
           <div className="flex-1">
             <SearchBar onProductSelect={handleProductSelect} />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <input
               type="number"
               min="1"
               value={qtyToAdd}
               onChange={(e) => setQtyToAdd(parseInt(e.target.value) || 1)}
-              className="w-20 text-center px-3 py-3 border border-border rounded-lg"
+              className="w-14 text-center px-1.5 py-1.5 border border-border rounded text-sm"
             />
-            <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2">
+            <button className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:opacity-90 transition-opacity">
               Agregar
             </button>
-            <button className="px-6 py-3 bg-secondary text-secondary-foreground rounded-lg hover:opacity-90 transition-opacity">
+            <button className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded text-sm hover:opacity-90 transition-opacity">
               Pesar
             </button>
-            <button className="px-4 py-3 bg-secondary text-secondary-foreground rounded-lg hover:opacity-90 transition-opacity">
+            <button className="px-2.5 py-1.5 bg-secondary text-secondary-foreground rounded text-sm hover:opacity-90 transition-opacity">
               F8
             </button>
           </div>
         </div>
       </div>
 
-      <CartTable
-        items={cart}
-        selectedRowIndex={selectedRowIndex}
-        onSelectRow={setSelectedRowIndex}
-        onUpdateQty={handleUpdateQty}
-        onUpdateDiscount={handleUpdateDiscount}
-        onRemoveItem={handleRemoveItem}
-      />
+      <div className="flex-1 overflow-hidden">
+        <CartTable
+          items={cart}
+          selectedRowIndex={selectedRowIndex}
+          onSelectRow={setSelectedRowIndex}
+          onUpdateQty={handleUpdateQty}
+          onUpdateDiscount={handleUpdateDiscount}
+          onRemoveItem={handleRemoveItem}
+        />
+      </div>
 
       <SaleFooter
         totalItems={getTotalItems()}

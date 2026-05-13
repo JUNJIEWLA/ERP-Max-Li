@@ -83,7 +83,7 @@ export default function SearchBar({ onProductSelect }: SearchBarProps) {
   return (
     <div className="relative">
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
         <input
           ref={inputRef}
           type="text"
@@ -91,7 +91,7 @@ export default function SearchBar({ onProductSelect }: SearchBarProps) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Cód. de barras o nombre..."
-          className="w-full pl-12 pr-4 py-3 border border-border rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full pl-10 pr-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           autoFocus
         />
       </div>

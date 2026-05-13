@@ -38,37 +38,37 @@ export default function CartRow({ item, isSelected, onSelect, onUpdateQty, onUpd
       }`}
       onClick={onSelect}
     >
-      <td className="py-3 px-4">
+      <td className="py-2 px-3">
         <div>
-          <p>{item.descripcion}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{item.codigo}</p>
+          <p className="text-sm">{item.descripcion}</p>
+          <p className="text-xs text-muted-foreground">{item.codigo}</p>
         </div>
       </td>
-      <td className="py-3 px-4 text-right">RD${item.precioUnitario.toFixed(2)}</td>
-      <td className="py-3 px-4">
-        <div className="flex items-center justify-center gap-2">
+      <td className="py-2 px-3 text-right text-sm">RD${item.precioUnitario.toFixed(2)}</td>
+      <td className="py-2 px-3">
+        <div className="flex items-center justify-center gap-1.5">
           <button
             onClick={(e) => {
               e.stopPropagation();
               handleDecrement();
             }}
-            className="w-7 h-7 flex items-center justify-center rounded border border-border hover:bg-accent transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded border border-border hover:bg-accent transition-colors"
           >
-            <Minus size={14} />
+            <Minus size={12} />
           </button>
-          <span className="w-12 text-center">{item.cantidad}</span>
+          <span className="w-10 text-center text-sm">{item.cantidad}</span>
           <button
             onClick={(e) => {
               e.stopPropagation();
               handleIncrement();
             }}
-            className="w-7 h-7 flex items-center justify-center rounded border border-border hover:bg-accent transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded border border-border hover:bg-accent transition-colors"
           >
-            <Plus size={14} />
+            <Plus size={12} />
           </button>
         </div>
       </td>
-      <td className="py-3 px-4 text-center">
+      <td className="py-2 px-3 text-center">
         <input
           type="number"
           min="0"
@@ -79,12 +79,12 @@ export default function CartRow({ item, isSelected, onSelect, onUpdateQty, onUpd
             e.stopPropagation();
             onUpdateDiscount(parseFloat(e.target.value) || 0);
           }}
-          className="w-20 text-center px-2 py-1 border border-border rounded"
+          className="w-16 text-center px-1.5 py-1 border border-border rounded text-sm"
           onClick={(e) => e.stopPropagation()}
         />
       </td>
-      <td className="py-3 px-4 text-right">RD${item.importe.toFixed(2)}</td>
-      <td className="py-3 px-4 text-center">
+      <td className="py-2 px-3 text-right text-sm">RD${item.importe.toFixed(2)}</td>
+      <td className="py-2 px-3 text-center">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -93,7 +93,7 @@ export default function CartRow({ item, isSelected, onSelect, onUpdateQty, onUpd
           className="p-1 hover:bg-red-100 rounded transition-colors"
           title="Eliminar"
         >
-          <Trash2 size={18} className="text-red-600" />
+          <Trash2 size={16} className="text-red-600" />
         </button>
       </td>
     </tr>

@@ -14,14 +14,14 @@ export default function CartTable({ items, selectedRowIndex, onSelectRow, onUpda
   return (
     <div className="flex-1 overflow-auto">
       <table className="w-full">
-        <thead className="sticky top-0 bg-background border-b-2 border-border">
+        <thead className="sticky top-0 bg-background border-b border-border">
           <tr>
-            <th className="text-left py-3 px-4 text-muted-foreground">Descripción</th>
-            <th className="text-right py-3 px-4 text-muted-foreground">Precio unit.</th>
-            <th className="text-center py-3 px-4 text-muted-foreground">Cant.</th>
-            <th className="text-center py-3 px-4 text-muted-foreground">Desc./línea</th>
-            <th className="text-right py-3 px-4 text-muted-foreground">Importe</th>
-            <th className="text-center py-3 px-4 text-muted-foreground"></th>
+            <th className="text-left py-2 px-3 text-muted-foreground text-sm">Descripción</th>
+            <th className="text-right py-2 px-3 text-muted-foreground text-sm">Precio unit.</th>
+            <th className="text-center py-2 px-3 text-muted-foreground text-sm">Cant.</th>
+            <th className="text-center py-2 px-3 text-muted-foreground text-sm">Desc./línea</th>
+            <th className="text-right py-2 px-3 text-muted-foreground text-sm">Importe</th>
+            <th className="text-center py-2 px-3 text-muted-foreground text-sm"></th>
           </tr>
         </thead>
         <tbody>

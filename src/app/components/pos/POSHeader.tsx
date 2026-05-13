@@ -37,19 +37,19 @@ export default function POSHeader({ ncf, tipoDocumento, cajero, caja, turno, onC
   };
 
   return (
-    <div className="px-6 py-3 border-b border-border bg-background">
-      <div className="flex items-center gap-4 mb-2">
-        <h3>Punto de venta</h3>
-        <span className="text-blue-600 font-mono">{ncf}</span>
+    <div className="px-4 py-2 border-b border-border bg-background">
+      <div className="flex items-center gap-3 mb-1">
+        <h3 className="text-base">Punto de venta</h3>
+        <span className="text-blue-600 font-mono text-sm">{ncf}</span>
         <button
           onClick={onChangeTipoDocumento}
-          className="px-3 py-1 bg-orange-100 text-orange-700 rounded text-sm hover:bg-orange-200 transition-colors"
+          className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs hover:bg-orange-200 transition-colors"
           title="Presione F7 para cambiar"
         >
           {tipoDocumento}
         </button>
       </div>
-      <div className="text-sm text-muted-foreground flex items-center gap-6">
+      <div className="text-xs text-muted-foreground flex items-center gap-4">
         <span>{formatDate(currentTime)}</span>
         <span>{formatTime(currentTime)}</span>
         <span>Caja: {caja}</span>
