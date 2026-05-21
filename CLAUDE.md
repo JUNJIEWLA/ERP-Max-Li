@@ -131,9 +131,24 @@ Si el repo todavía está vacío, **partir de aquí**. Crear los dos proyectos (
 
 ---
 
+## Roadmap (Scrum, sprints de 2 sem comenzando 12may, a deadline 1-ago-2026)
+ 
+Orden: **V1 sólido → V2 (requerido por DGII) → V3 si da tiempo.** No abrir épica nueva sin happy path + reglas críticas en verde de la anterior.
+ 
+| Versión | Foco | Ventana |
+|---|---|---|
+| **V1 MVP** | Usuarios+roles, caja/turnos, productos+inventario, POS | hasta 23 jun |
+| **V2** | Compras (3 vías) + NCF | 24 jun – 7 jul |
+| **V3** | Ofertas + devoluciones/notas crédito | 8 jul – 21 jul |
+| Buffer | Bugs + demo | 22 jul – 1 ago |
+ 
+**Orden de implementación V1:** Usuarios/Roles (base auth) → Inventario/Productos → Caja/Turnos → Ventas/POS.
+
 ## 5. Roadmap por épicas
 
 Las épicas vienen del tablero (V1 = MVP funcional, V2 = fiscal y compras, V3 = extras).
+
+### Infraestructura
 
 ### V1 — MVP operativo (orden de implementación recomendado)
 
