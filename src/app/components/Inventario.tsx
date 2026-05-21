@@ -1,42 +1,76 @@
-import { Package, TrendingDown, TrendingUp, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Package, TrendingDown, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-
-const movimientosData = [
-  { almacen: 'Principal', entradas: 450, salidas: 380 },
-  { almacen: 'Sucursal 1', entradas: 280, salidas: 320 },
-  { almacen: 'Sucursal 2', entradas: 190, salidas: 210 },
-  { almacen: 'Sucursal 3', entradas: 150, salidas: 140 },
-];
-
-const alertasStock = [
-  { producto: 'Camisa Polo Hombre', codigo: 'PROD-003', stock: 8, minimo: 15, almacen: 'Principal' },
-  { producto: 'Tablet Samsung Tab A8', codigo: 'PROD-012', stock: 3, minimo: 10, almacen: 'Sucursal 1' },
-  { producto: 'Auriculares Bluetooth', codigo: 'PROD-027', stock: 5, minimo: 20, almacen: 'Principal' },
-  { producto: 'Mouse Inalámbrico', codigo: 'PROD-045', stock: 12, minimo: 25, almacen: 'Sucursal 2' },
-];
-
-const ultimosMovimientos = [
-  { tipo: 'Entrada', producto: 'Laptop Dell Inspiron 15', cantidad: 10, almacen: 'Principal', fecha: '01/05/2026 08:30', usuario: 'Admin' },
-  { tipo: 'Salida', producto: 'Samsung Galaxy S24', cantidad: 3, almacen: 'Sucursal 1', fecha: '01/05/2026 09:15', usuario: 'Vendedor 1' },
-  { tipo: 'Entrada', producto: 'Zapatillas Nike Air Max', cantidad: 25, almacen: 'Principal', fecha: '01/05/2026 10:00', usuario: 'Admin' },
-  { tipo: 'Salida', producto: 'Cafetera Espresso', cantidad: 2, almacen: 'Sucursal 2', fecha: '01/05/2026 11:30', usuario: 'Vendedor 3' },
-  { tipo: 'Transferencia', producto: 'Laptop Dell Inspiron 15', cantidad: 5, almacen: 'Principal → S1', fecha: '01/05/2026 12:45', usuario: 'Admin' },
-];
+import { existenciasApi, type Existencia } from '../../imports/api';
 
 export default function Inventario() {
+  const [bajoStock, setBajoStock] = useState<Existencia[]>([]);
+  const [todas, setTodas] = useState<Existencia[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargarDatos = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [pageTodas, pageBajoStock] = await Promise.all([
+        existenciasApi.listar(0, 100),
+        existenciasApi.bajoStock(0, 20),
+      ]);
+      setTodas(pageTodas.content);
+      setBajoStock(pageBajoStock.content);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al conectar con el servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  // Datos para el gráfico — agrupa por nombre de producto (primeras 6)
+  const datosGrafico = todas.slice(0, 6).map((e) => ({
+    producto: e.productoNombre.length > 15 ? e.productoNombre.slice(0, 15) + '…' : e.productoNombre,
+    actual: e.cantidadActual,
+    minimo: e.cantidadMinima,
+  }));
+
+  const totalUnidades = todas.reduce((sum, e) => sum + e.cantidadActual, 0);
+  const alertasCount = bajoStock.length;
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h2>Control de Inventario</h2>
-        <p className="text-muted-foreground mt-1">Monitorea los movimientos y niveles de stock</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2>Control de Inventario</h2>
+          <p className="text-muted-foreground mt-1">Monitorea los movimientos y niveles de stock</p>
+        </div>
+        <button
+          onClick={cargarDatos}
+          className="px-3 py-2 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-2 hover:opacity-90"
+        >
+          <RefreshCw size={18} />
+          Actualizar
+        </button>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 flex items-center gap-2">
+          <AlertTriangle size={18} />
+          {error}
+        </div>
+      )}
+
+      {/* Tarjetas de resumen */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-muted-foreground text-sm">Valor Total Stock</p>
-              <p className="text-2xl mt-1">RD$ 2.5M</p>
+              <p className="text-muted-foreground text-sm">Productos con Existencia</p>
+              <p className="text-2xl mt-1">{loading ? '...' : todas.length}</p>
             </div>
             <div className="w-12 h-12 bg-chart-1 rounded-lg flex items-center justify-center text-white">
               <Package size={24} />
@@ -47,8 +81,8 @@ export default function Inventario() {
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-muted-foreground text-sm">Entradas (Hoy)</p>
-              <p className="text-2xl mt-1 text-green-600">152</p>
+              <p className="text-muted-foreground text-sm">Total Unidades</p>
+              <p className="text-2xl mt-1 text-green-600">{loading ? '...' : totalUnidades.toLocaleString()}</p>
             </div>
             <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-white">
               <TrendingUp size={24} />
@@ -59,8 +93,8 @@ export default function Inventario() {
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-muted-foreground text-sm">Salidas (Hoy)</p>
-              <p className="text-2xl mt-1 text-blue-600">89</p>
+              <p className="text-muted-foreground text-sm">Con Stock Normal</p>
+              <p className="text-2xl mt-1 text-blue-600">{loading ? '...' : todas.length - alertasCount}</p>
             </div>
             <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center text-white">
               <TrendingDown size={24} />
@@ -72,91 +106,126 @@ export default function Inventario() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-muted-foreground text-sm">Alertas Stock</p>
-              <p className="text-2xl mt-1 text-red-600">23</p>
+              <p className={`text-2xl mt-1 ${alertasCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {loading ? '...' : alertasCount}
+              </p>
             </div>
-            <div className="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center text-white">
+            <div className={`w-12 h-12 ${alertasCount > 0 ? 'bg-red-500' : 'bg-green-500'} rounded-lg flex items-center justify-center text-white`}>
               <AlertTriangle size={24} />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h3 className="mb-4">Movimientos por Almacén</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={movimientosData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="almacen" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="entradas" fill="#10b981" />
-              <Bar dataKey="salidas" fill="#3b82f6" />
-            </BarChart>
-          </ResponsiveContainer>
+      {loading ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <RefreshCw className="animate-spin mx-auto mb-3" size={28} />
+          Cargando datos de inventario...
         </div>
-
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h3 className="mb-4">Productos Bajo Stock</h3>
-          <div className="space-y-3">
-            {alertasStock.map((alerta, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex-1">
-                  <p className="text-sm">{alerta.producto}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {alerta.codigo} - {alerta.almacen}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-red-600">Stock: {alerta.stock}</p>
-                  <p className="text-xs text-muted-foreground">Mín: {alerta.minimo}</p>
-                </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico */}
+          <div className="bg-card border border-border rounded-lg p-6">
+            <h3 className="mb-4">Stock Actual vs Mínimo</h3>
+            {datosGrafico.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                No hay existencias registradas aún.
               </div>
-            ))}
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={datosGrafico}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis dataKey="producto" tick={{ fontSize: 11 }} />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="actual" name="Stock Actual" fill="#10b981" />
+                  <Bar dataKey="minimo" name="Stock Mínimo" fill="#f59e0b" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Alertas de bajo stock */}
+          <div className="bg-card border border-border rounded-lg p-6">
+            <h3 className="mb-4">
+              Productos Bajo Stock
+              {alertasCount > 0 && (
+                <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-sm rounded-full">
+                  {alertasCount}
+                </span>
+              )}
+            </h3>
+            {bajoStock.length === 0 ? (
+              <div className="text-center py-12 text-green-600">
+                <Package className="mx-auto mb-2" size={32} />
+                ¡Todo el stock está dentro del nivel mínimo!
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {bajoStock.map((alerta) => (
+                  <div
+                    key={alerta.idExistencia}
+                    className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{alerta.productoNombre}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{alerta.productoCodigo}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-red-600">Stock: {alerta.cantidadActual}</p>
+                      <p className="text-xs text-muted-foreground">Mín: {alerta.cantidadMinima}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="bg-card border border-border rounded-lg p-6">
-        <h3 className="mb-4">Últimos Movimientos</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 text-muted-foreground">Tipo</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Producto</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Cantidad</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Almacén</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Fecha</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Usuario</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ultimosMovimientos.map((mov, index) => (
-                <tr key={index} className="border-b border-border hover:bg-accent transition-colors">
-                  <td className="py-3 px-4">
-                    <span className={`px-3 py-1 rounded-full text-sm ${
-                      mov.tipo === 'Entrada'
-                        ? 'bg-green-100 text-green-700'
-                        : mov.tipo === 'Salida'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-purple-100 text-purple-700'
-                    }`}>
-                      {mov.tipo}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">{mov.producto}</td>
-                  <td className="py-3 px-4">{mov.cantidad}</td>
-                  <td className="py-3 px-4 text-sm text-muted-foreground">{mov.almacen}</td>
-                  <td className="py-3 px-4 text-sm text-muted-foreground">{mov.fecha}</td>
-                  <td className="py-3 px-4 text-sm">{mov.usuario}</td>
+      {/* Tabla de todas las existencias */}
+      {!loading && todas.length > 0 && (
+        <div className="bg-card border border-border rounded-lg p-6">
+          <h3 className="mb-4">Existencias por Producto</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 text-muted-foreground">Código</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Producto</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Stock Actual</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Mínimo</th>
+                  <th className="text-left py-3 px-4 text-muted-foreground">Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {todas.map((e) => (
+                  <tr key={e.idExistencia} className="border-b border-border hover:bg-accent transition-colors">
+                    <td className="py-3 px-4 font-mono text-sm">{e.productoCodigo}</td>
+                    <td className="py-3 px-4">{e.productoNombre}</td>
+                    <td className={`py-3 px-4 font-medium ${e.bajoPuntoReorden ? 'text-red-600' : 'text-green-600'}`}>
+                      {e.cantidadActual}
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground">{e.cantidadMinima}</td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm ${
+                          e.bajoPuntoReorden
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}
+                      >
+                        {e.bajoPuntoReorden ? 'Bajo Stock' : 'Normal'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
