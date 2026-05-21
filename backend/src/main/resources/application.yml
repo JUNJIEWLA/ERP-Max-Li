@@ -13,6 +13,10 @@ spring:
 server:
   port: 8080
 
+jwt:
+  secret: ${JWT_SECRET:maxli-dev-secret-key-minimo-256-bits-no-usar-en-prod}
+  expiration: ${JWT_EXPIRATION:86400000}
+
 logging:
   level:
     com.maxli: INFO
