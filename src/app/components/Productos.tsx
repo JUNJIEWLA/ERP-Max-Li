@@ -1,233 +1,282 @@
-import { useEffect, useState } from 'react';
-import { Plus, Search, Eye, Edit, Trash2, Package, AlertTriangle, Filter, RefreshCw } from 'lucide-react';
-import { productosApi, categoriasApi, type Producto, type Categoria } from '../../imports/api';
+import { useEffect, useState, useCallback } from 'react';
+import {
+  Plus, Search, Pencil, Trash2, Package, RefreshCw,
+  X, Loader2, AlertTriangle, Filter
+} from 'lucide-react';
+import {
+  productosApi, categoriasApi, marcasApi,
+  type Producto, type Categoria, type Marca
+} from '../../imports/api';
+
+interface ProductoForm {
+  codigoBarras: string;
+  nombre: string;
+  descripcion: string;
+  precioVenta: string;
+  costo: string;
+  idCategoria: string;
+  idMarca: string;
+  estado: string;
+}
+
+const EMPTY_FORM: ProductoForm = {
+  codigoBarras: '', nombre: '', descripcion: '',
+  precioVenta: '', costo: '',
+  idCategoria: '', idMarca: '', estado: 'ACTIVO',
+};
+
+const fmt = (v: number) =>
+  `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 
 export default function Productos() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [marcas, setMarcas] = useState<Marca[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busqueda, setBusqueda] = useState('');
+  const [search, setSearch] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [totalElementos, setTotalElementos] = useState(0);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const PAGE_SIZE = 20;
 
-  const cargarDatos = async () => {
+  // Modal
+  const [showModal, setShowModal] = useState(false);
+  const [editTarget, setEditTarget] = useState<Producto | null>(null);
+  const [form, setForm] = useState<ProductoForm>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+
+  const cargarDatos = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [pageProductos, pageCategorias] = await Promise.all([
-        productosApi.listar(0, 50),
+      const [pageProductos, pageCategorias, pageMarcas] = await Promise.all([
+        productosApi.listar(page, PAGE_SIZE),
         categoriasApi.listarActivas(),
+        marcasApi.listarActivas(),
       ]);
       setProductos(pageProductos.content);
       setTotalElementos(pageProductos.totalElements);
+      setTotalPages(pageProductos.totalPages);
       setCategorias(pageCategorias.content);
+      setMarcas(pageMarcas.content);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al conectar con el servidor');
     } finally {
       setLoading(false);
     }
+  }, [page]);
+
+  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  const openCreate = () => {
+    setEditTarget(null);
+    setForm(EMPTY_FORM);
+    setFormError('');
+    setShowModal(true);
   };
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+  const openEdit = (p: Producto) => {
+    setEditTarget(p);
+    setForm({
+      codigoBarras: p.codigoBarras ?? '',
+      nombre: p.nombre,
+      descripcion: p.descripcion ?? '',
+      precioVenta: String(p.precioVenta),
+      costo: String(p.costo),
+      idCategoria: String(p.idCategoria),
+      idMarca: String(p.idMarca),
+      estado: p.estado,
+    });
+    setFormError('');
+    setShowModal(true);
+  };
 
-  const desactivarProducto = async (id: number) => {
-    if (!confirm('¿Desactivar este producto?')) return;
+  const closeModal = () => { setShowModal(false); setEditTarget(null); };
+
+  const validate = () => {
+    if (!form.nombre.trim()) return 'El nombre es obligatorio';
+    if (!form.precioVenta || isNaN(Number(form.precioVenta)) || Number(form.precioVenta) < 0)
+      return 'El precio de venta debe ser un número válido ≥ 0';
+    if (!form.costo || isNaN(Number(form.costo)) || Number(form.costo) < 0)
+      return 'El costo debe ser un número válido ≥ 0';
+    if (!form.idCategoria) return 'Selecciona una categoría';
+    if (!form.idMarca) return 'Selecciona una marca';
+    return null;
+  };
+
+  const handleSave = async () => {
+    const err = validate();
+    if (err) { setFormError(err); return; }
+    setSaving(true); setFormError('');
+    const payload = {
+      codigoBarras: form.codigoBarras.trim() || null,
+      nombre: form.nombre.trim(),
+      descripcion: form.descripcion,
+      precioVenta: Number(form.precioVenta),
+      costo: Number(form.costo),
+      idCategoria: Number(form.idCategoria),
+      idMarca: Number(form.idMarca),
+      estado: form.estado,
+    };
     try {
-      await productosApi.desactivar(id);
-      await cargarDatos();
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Error al desactivar');
+      if (editTarget) {
+        await productosApi.actualizar(editTarget.idProducto, payload);
+      } else {
+        await productosApi.crear(payload as any);
+      }
+      closeModal();
+      cargarDatos();
+    } catch (e: any) {
+      setFormError(e.message || 'Error al guardar');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const productosFiltrados = productos.filter((p) => {
-    const coincideBusqueda =
-      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      p.codigo.toLowerCase().includes(busqueda.toLowerCase());
-    const coincideCategoria = !categoriaFiltro || p.categoriaNombre === categoriaFiltro;
-    return coincideBusqueda && coincideCategoria;
+  const handleDesactivar = async (id: number) => {
+    try { await productosApi.desactivar(id); cargarDatos(); }
+    catch (e: any) { alert(e.message || 'Error al desactivar'); }
+    finally { setConfirmId(null); }
+  };
+
+  const productosFiltrados = productos.filter(p => {
+    const matchSearch =
+      p.nombre.toLowerCase().includes(search.toLowerCase()) ||
+      p.sku.toLowerCase().includes(search.toLowerCase()) ||
+      (p.codigoBarras ?? '').toLowerCase().includes(search.toLowerCase());
+    const matchCat = !categoriaFiltro || p.categoriaNombre === categoriaFiltro;
+    return matchSearch && matchCat;
   });
 
-  const totalActivos = productos.filter((p) => p.estado === 'ACTIVO').length;
-  const totalCategorias = new Set(productos.map((p) => p.categoriaNombre)).size;
-
-  const formatPrecio = (valor: number) =>
-    `RD$ ${Number(valor).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+  const totalActivos = productos.filter(p => p.estado === 'ACTIVO').length;
 
   return (
     <div className="p-6 space-y-6">
-      {/* Encabezado */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2>Catálogo de Productos</h2>
-          <p className="text-muted-foreground mt-1">Gestiona tu inventario de productos</p>
+          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Package size={26} className="text-primary" /> Catálogo de Productos
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">Gestiona tu catálogo de productos</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={cargarDatos}
-            className="px-3 py-2 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
-          >
+          <button onClick={cargarDatos}
+            className="px-3 py-2 bg-secondary text-secondary-foreground rounded-lg hover:opacity-90 transition-opacity">
             <RefreshCw size={18} />
           </button>
-          <button className="bg-primary text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
-            <Plus size={20} />
-            Nuevo Producto
+          <button id="btn-nuevo-producto" onClick={openCreate}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity font-medium">
+            <Plus size={20} /> Nuevo Producto
           </button>
         </div>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 flex items-center gap-2">
-          <AlertTriangle size={18} />
-          {error}
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg p-4 flex items-center gap-2">
+          <AlertTriangle size={18} /> {error}
         </div>
       )}
 
-      {/* Tarjetas de resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Total Productos</p>
-              <p className="text-2xl mt-1">{loading ? '...' : totalElementos}</p>
-            </div>
-            <div className="w-12 h-12 bg-chart-1 rounded-lg flex items-center justify-center text-white">
-              <Package size={24} />
-            </div>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Productos', value: totalElementos, color: 'bg-primary/10 text-primary' },
+          { label: 'Activos', value: totalActivos, color: 'bg-green-500/10 text-green-600' },
+          { label: 'Inactivos', value: totalElementos - totalActivos, color: 'bg-rose-500/10 text-rose-600' },
+          { label: 'Categorías', value: new Set(productos.map(p => p.categoriaNombre)).size, color: 'bg-violet-500/10 text-violet-600' },
+        ].map(s => (
+          <div key={s.label} className="bg-card border border-border rounded-xl p-4">
+            <p className="text-muted-foreground text-sm">{s.label}</p>
+            <p className={`text-2xl font-bold mt-1 ${s.color.split(' ')[1]}`}>{loading ? '—' : s.value}</p>
           </div>
-        </div>
+        ))}
+      </div>
 
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Activos</p>
-              <p className="text-2xl mt-1 text-green-600">{loading ? '...' : totalActivos}</p>
-            </div>
-            <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-white">
-              <Package size={24} />
-            </div>
-          </div>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input type="text" placeholder="Buscar por nombre o código interno..."
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X size={14} /></button>}
         </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Inactivos</p>
-              <p className="text-2xl mt-1 text-red-600">{loading ? '...' : totalElementos - totalActivos}</p>
-            </div>
-            <div className="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center text-white">
-              <Package size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Categorías</p>
-              <p className="text-2xl mt-1">{loading ? '...' : totalCategorias}</p>
-            </div>
-            <div className="w-12 h-12 bg-chart-3 rounded-lg flex items-center justify-center text-white">
-              <Package size={24} />
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          <Filter size={16} className="text-muted-foreground" />
+          <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="">Todas las categorías</option>
+            {categorias.map(c => <option key={c.idCategoria} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+          {categoriaFiltro && (
+            <button onClick={() => setCategoriaFiltro('')} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
+          )}
         </div>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar por nombre o código..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-80 pl-10 pr-4 py-2 bg-input-background border border-border rounded-lg"
-            />
-          </div>
-
-          <select
-            value={categoriaFiltro}
-            onChange={(e) => setCategoriaFiltro(e.target.value)}
-            className="px-3 py-2 bg-input-background border border-border rounded-lg"
-          >
-            <option value="">Todas las categorías</option>
-            {categorias.map((cat) => (
-              <option key={cat.idCategoria} value={cat.nombre}>
-                {cat.nombre}
-              </option>
-            ))}
-          </select>
-
-          <button className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-2">
-            <Filter size={18} />
-            Filtros
-          </button>
-        </div>
-
+      {/* Table */}
+      <div className="rounded-xl border border-border overflow-hidden bg-card">
         {loading ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
-            Cargando productos...
+          <div className="flex items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-primary" />
           </div>
         ) : productosFiltrados.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Package className="mx-auto mb-2" size={32} />
-            {busqueda || categoriaFiltro ? 'No se encontraron productos con ese filtro.' : 'No hay productos registrados aún.'}
+          <div className="text-center py-20 text-muted-foreground">
+            <Package size={48} className="mx-auto mb-3 opacity-30" />
+            <p className="font-medium">{search || categoriaFiltro ? 'No se encontraron productos con ese filtro.' : 'No hay productos registrados aún.'}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-muted-foreground">Código</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Nombre</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Categoría</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Marca</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Precio Venta</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Estado</th>
-                  <th className="text-left py-3 px-4 text-muted-foreground">Acciones</th>
+          <>
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b border-border">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Código interno</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Cód. Barras</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Categoría</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Marca</th>
+                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Precio Venta</th>
+                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Costo</th>
+                  <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
+                  <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acciones</th>
                 </tr>
               </thead>
-              <tbody>
-                {productosFiltrados.map((producto) => (
-                  <tr key={producto.idProducto} className="border-b border-border hover:bg-accent transition-colors">
-                    <td className="py-3 px-4 font-mono text-sm">{producto.codigo}</td>
-                    <td className="py-3 px-4">{producto.nombre}</td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">{producto.categoriaNombre}</td>
-                    <td className="py-3 px-4 text-sm">{producto.marcaNombre}</td>
-                    <td className="py-3 px-4">{formatPrecio(producto.precioVenta)}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm ${
-                          producto.estado === 'ACTIVO'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {producto.estado}
+              <tbody className="divide-y divide-border">
+                {productosFiltrados.map(p => (
+                  <tr key={p.idProducto} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {p.codigoBarras || <span className="italic opacity-40">—</span>}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-foreground">{p.nombre}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-violet-500/10 text-violet-600 font-medium">
+                        {p.categoriaNombre}
                       </span>
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <button className="p-1 hover:bg-accent rounded" title="Ver">
-                          <Eye size={18} className="text-muted-foreground" />
+                    <td className="px-4 py-3 text-muted-foreground">{p.marcaNombre}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-foreground">{fmt(p.precioVenta)}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{fmt(p.costo)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${p.estado === 'ACTIVO' ? 'bg-green-500/15 text-green-600' : 'bg-rose-500/15 text-rose-600'}`}>
+                        {p.estado}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <button id={`btn-editar-prod-${p.idProducto}`} onClick={() => openEdit(p)}
+                          className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors" title="Editar">
+                          <Pencil size={15} />
                         </button>
-                        <button className="p-1 hover:bg-accent rounded" title="Editar">
-                          <Edit size={18} className="text-muted-foreground" />
-                        </button>
-                        <button
-                          className="p-1 hover:bg-accent rounded"
-                          title="Desactivar"
-                          onClick={() => desactivarProducto(producto.idProducto)}
-                        >
-                          <Trash2 size={18} className="text-destructive" />
+                        <button id={`btn-desactivar-prod-${p.idProducto}`} onClick={() => setConfirmId(p.idProducto)}
+                          className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-colors" title="Desactivar">
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </td>
@@ -235,12 +284,163 @@ export default function Productos() {
                 ))}
               </tbody>
             </table>
-            <p className="text-xs text-muted-foreground mt-4">
+            <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
               Mostrando {productosFiltrados.length} de {totalElementos} productos
-            </p>
-          </div>
+            </div>
+          </>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>Página {page + 1} de {totalPages}</span>
+          <div className="flex gap-2">
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+              className="px-3 py-1 rounded-lg border border-border disabled:opacity-40 hover:bg-muted transition-colors">Anterior</button>
+            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+              className="px-3 py-1 rounded-lg border border-border disabled:opacity-40 hover:bg-muted transition-colors">Siguiente</button>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl border border-border max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+              <h3 className="text-lg font-bold text-foreground">
+                {editTarget ? `Editar: ${editTarget.nombre}` : 'Nuevo Producto'}
+              </h3>
+              <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto">
+
+              {/* Código interno auto-generado - solo visible al editar */}
+              {editTarget && (
+                <div className="flex items-center gap-3 bg-muted/50 rounded-lg px-4 py-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Código interno</span>
+                  <span className="font-mono text-sm font-bold text-foreground">{editTarget.sku}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">(generado automáticamente)</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Código de Barras (EAN/UPC)</label>
+                <input id="input-prod-barcode" type="text" value={form.codigoBarras}
+                  onChange={e => setForm(f => ({ ...f, codigoBarras: e.target.value }))}
+                  placeholder="Ej: 7501000000000 (opcional)"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                <p className="text-xs text-muted-foreground mt-1">Código del fabricante — no necesita ser único</p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <label className="block text-sm font-medium text-foreground">Estado</label>
+                <select id="input-prod-estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                  <option value="ACTIVO">ACTIVO</option>
+                  <option value="INACTIVO">INACTIVO</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Nombre <span className="text-rose-500">*</span></label>
+                <input id="input-prod-nombre" type="text" value={form.nombre}
+                  onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                  placeholder="Nombre del producto"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Descripción</label>
+                <textarea id="input-prod-descripcion" value={form.descripcion}
+                  onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
+                  placeholder="Descripción del producto..." rows={2}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Precio de Venta (RD$) <span className="text-rose-500">*</span></label>
+                  <input id="input-prod-precio" type="number" min="0" step="0.01" value={form.precioVenta}
+                    onChange={e => setForm(f => ({ ...f, precioVenta: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Costo (RD$) <span className="text-rose-500">*</span></label>
+                  <input id="input-prod-costo" type="number" min="0" step="0.01" value={form.costo}
+                    onChange={e => setForm(f => ({ ...f, costo: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Categoría <span className="text-rose-500">*</span></label>
+                  <select id="input-prod-categoria" value={form.idCategoria}
+                    onChange={e => setForm(f => ({ ...f, idCategoria: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="">Seleccionar categoría...</option>
+                    {categorias.map(c => <option key={c.idCategoria} value={c.idCategoria}>{c.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Marca <span className="text-rose-500">*</span></label>
+                  <select id="input-prod-marca" value={form.idMarca}
+                    onChange={e => setForm(f => ({ ...f, idMarca: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="">Seleccionar marca...</option>
+                    {marcas.map(m => <option key={m.idMarca} value={m.idMarca}>{m.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {form.precioVenta && form.costo && Number(form.precioVenta) > 0 && Number(form.costo) > 0 && (
+                <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm flex items-center justify-between">
+                  <span className="text-muted-foreground">Margen de ganancia estimado</span>
+                  <span className={`font-bold ${(Number(form.precioVenta) - Number(form.costo)) >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
+                    {(((Number(form.precioVenta) - Number(form.costo)) / Number(form.costo)) * 100).toFixed(1)}%
+                    &nbsp;({fmt(Number(form.precioVenta) - Number(form.costo))})
+                  </span>
+                </div>
+              )}
+
+              {formError && (
+                <div className="flex items-center gap-2 text-rose-500 text-sm bg-rose-500/10 px-3 py-2 rounded-lg">
+                  <X size={14} /> {formError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
+              <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm">Cancelar</button>
+              <button id="btn-guardar-producto" onClick={handleSave} disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-60">
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                {saving ? 'Guardando...' : (editTarget ? 'Actualizar Producto' : 'Crear Producto')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm deactivate */}
+      {confirmId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border p-6 space-y-4">
+            <h3 className="text-lg font-bold text-foreground">¿Desactivar producto?</h3>
+            <p className="text-sm text-muted-foreground">El estado cambiará a <strong>INACTIVO</strong>. No se eliminará del sistema.</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmId(null)} className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm">Cancelar</button>
+              <button id="btn-confirmar-desactivar-prod" onClick={() => handleDesactivar(confirmId!)}
+                className="px-4 py-2 rounded-lg bg-rose-500 text-white hover:bg-rose-600 transition-colors text-sm font-medium">Desactivar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

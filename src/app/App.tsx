@@ -8,6 +8,9 @@ import Inventario from './components/Inventario';
 import Cajas from './components/Cajas';
 import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
+import Almacenes from './components/Almacenes';
+import Categorias from './components/Categorias';
+import Marcas from './components/Marcas';
 
 const viewTitles: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -51,6 +54,12 @@ export default function App() {
         return <Productos />;
       case 'existencias':
         return <Inventario />;
+      case 'almacenes':
+        return <Almacenes />;
+      case 'categorias':
+        return <Categorias />;
+      case 'marcas':
+        return <Marcas />;
       case 'turnos-caja':
         return <Cajas />;
       case 'devoluciones':

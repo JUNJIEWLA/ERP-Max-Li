@@ -44,10 +44,15 @@ export default function POSHeader({ ncf, tipoDocumento, cajero, caja, turno, onC
         <button
           onClick={onChangeTipoDocumento}
           className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs hover:bg-orange-200 transition-colors"
-          title="Presione F7 para cambiar"
+          title="F7: ciclar comprobante | F10: selector completo"
         >
           {tipoDocumento}
         </button>
+        <span className="text-xs text-muted-foreground select-none">
+          <kbd className="px-1.5 py-0.5 bg-muted border border-border rounded font-mono text-foreground">F10</kbd>
+          {' '}
+          <span className="text-muted-foreground">Cambiar NCF</span>
+        </span>
       </div>
       <div className="text-xs text-muted-foreground flex items-center gap-4">
         <span>{formatDate(currentTime)}</span>

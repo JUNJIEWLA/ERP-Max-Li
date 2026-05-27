@@ -3,15 +3,12 @@ import POSHeader from './POSHeader';
 import SearchBar from './SearchBar';
 import CartTable from './CartTable';
 import { CartItem } from './CartRow';
-import SaleFooter from './SaleFooter';
+import SaleSummaryPanel from './SaleSummaryPanel';
 import ActionBar from './ActionBar';
+import HoldListModal, { HeldSale } from './HoldListModal';
+import NCFSelectorModal from './NCFSelectorModal';
 
-interface HeldSale {
-  id: number;
-  items: CartItem[];
-  total: number;
-  timestamp: Date;
-}
+// HeldSale is imported from HoldListModal
 
 const tiposNCF = [
   { codigo: 'B01', nombre: 'Crédito Fiscal' },
@@ -28,6 +25,8 @@ export default function SaleScreen() {
   const [qtyToAdd, setQtyToAdd] = useState(1);
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
   const [tipoNCFIndex, setTipoNCFIndex] = useState(0);
+  const [showHoldList, setShowHoldList] = useState(false);
+  const [showNCFSelector, setShowNCFSelector] = useState(false);
 
   const cajeroNombre = 'Juan P.';
   const cajaId = 'CAJA-01';
@@ -129,24 +128,46 @@ export default function SaleScreen() {
 
   const handleHold = () => {
     if (cart.length === 0) return;
+    // Si hay una orden activa en la caja, la pausamos antes de cargar
     const newHeldSale: HeldSale = {
       id: Date.now(),
       items: [...cart],
       total: calculateTotal(),
       timestamp: new Date(),
+      clienteNombre,
     };
     setHoldList([...holdList, newHeldSale]);
     setCart([]);
+    setDescuentoGlobal(0);
     setSelectedRowIndex(-1);
-    alert('Venta guardada en espera');
   };
 
   const handleHoldList = () => {
-    if (holdList.length === 0) {
-      alert('No hay ventas en espera');
-      return;
+    setShowHoldList(true);
+  };
+
+  const handleResumeHeld = (sale: HeldSale) => {
+    // Si hay carrito activo, pausarlo primero
+    if (cart.length > 0) {
+      const currentHeld: HeldSale = {
+        id: Date.now(),
+        items: [...cart],
+        total: calculateTotal(),
+        timestamp: new Date(),
+        clienteNombre,
+      };
+      setHoldList((prev) => [...prev.filter((s) => s.id !== sale.id), currentHeld]);
+    } else {
+      setHoldList((prev) => prev.filter((s) => s.id !== sale.id));
     }
-    alert(`Hay ${holdList.length} venta(s) en espera. (Funcionalidad de lista en desarrollo)`);
+    setCart(sale.items);
+    setDescuentoGlobal(0);
+    setSelectedRowIndex(-1);
+    setShowHoldList(false);
+  };
+
+  const handleDeleteHeld = (id: number) => {
+    setHoldList((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleCheckout = () => {
@@ -185,8 +206,14 @@ export default function SaleScreen() {
           e.preventDefault();
           alert('Función Pesar (F8)');
           break;
+        case 'F10':
+          e.preventDefault();
+          setShowNCFSelector(true);
+          break;
         case 'Escape':
           e.preventDefault();
+          if (showHoldList) { setShowHoldList(false); break; }
+          if (showNCFSelector) { setShowNCFSelector(false); break; }
           handleCheckout();
           break;
       }
@@ -194,7 +221,7 @@ export default function SaleScreen() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, holdList, tipoNCFIndex]);
+  }, [cart, holdList, tipoNCFIndex, showHoldList, showNCFSelector]);
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -212,52 +239,56 @@ export default function SaleScreen() {
           <div className="flex-1">
             <SearchBar onProductSelect={handleProductSelect} />
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Cant:</span>
             <input
               type="number"
               min="1"
               value={qtyToAdd}
               onChange={(e) => setQtyToAdd(parseInt(e.target.value) || 1)}
-              className="w-14 text-center px-1.5 py-1.5 border border-border rounded text-sm"
+              className="w-16 text-center px-1 py-1 border border-border rounded text-lg font-bold bg-background focus:ring-2 focus:ring-primary focus:outline-none"
             />
-            <button className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:opacity-90 transition-opacity">
+            <button className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:opacity-90 transition-opacity h-[38px] flex items-center justify-center">
               Agregar
             </button>
-            <button className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded text-sm hover:opacity-90 transition-opacity">
-              Pesar
-            </button>
-            <button className="px-2.5 py-1.5 bg-secondary text-secondary-foreground rounded text-sm hover:opacity-90 transition-opacity">
-              F8
+            <button
+              onClick={() => alert('Función Pesar (F8)')}
+              className="px-4 py-2 bg-secondary text-secondary-foreground rounded text-sm font-medium hover:opacity-90 transition-opacity h-[38px] flex items-center justify-center"
+            >
+              Pesar (F8)
             </button>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        <CartTable
-          items={cart}
-          selectedRowIndex={selectedRowIndex}
-          onSelectRow={setSelectedRowIndex}
-          onUpdateQty={handleUpdateQty}
-          onUpdateDiscount={handleUpdateDiscount}
-          onRemoveItem={handleRemoveItem}
+      {/* Área central: tabla + panel de resumen con la misma altura */}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-hidden">
+          <CartTable
+            items={cart}
+            selectedRowIndex={selectedRowIndex}
+            onSelectRow={setSelectedRowIndex}
+            onUpdateQty={handleUpdateQty}
+            onUpdateDiscount={handleUpdateDiscount}
+            onRemoveItem={handleRemoveItem}
+          />
+        </div>
+
+        <SaleSummaryPanel
+          totalItems={getTotalItems()}
+          clienteNombre={clienteNombre}
+          ncfTipo={tipoNCF.codigo}
+          tipoNCF={tipoNCF.nombre}
+          descuentoGlobal={descuentoGlobal}
+          onDescuentoGlobalChange={setDescuentoGlobal}
+          descuentoAutomatico={0}
+          descuentoLinea={calculateDescuentoLinea()}
+          totalAhorrado={getTotalAhorrado()}
+          subtotal={calculateSubtotal() - calculateDescuentoLinea() - descuentoGlobal}
+          itbis={calculateITBIS()}
+          total={calculateTotal()}
         />
       </div>
-
-      <SaleFooter
-        totalItems={getTotalItems()}
-        clienteNombre={clienteNombre}
-        ncfTipo={tipoNCF.codigo}
-        tipoNCF={tipoNCF.nombre}
-        descuentoGlobal={descuentoGlobal}
-        onDescuentoGlobalChange={setDescuentoGlobal}
-        descuentoAutomatico={0}
-        descuentoLinea={calculateDescuentoLinea()}
-        totalAhorrado={getTotalAhorrado()}
-        subtotal={calculateSubtotal() - calculateDescuentoLinea() - descuentoGlobal}
-        itbis={calculateITBIS()}
-        total={calculateTotal()}
-      />
 
       <ActionBar
         onCancel={handleCancel}
@@ -265,7 +296,28 @@ export default function SaleScreen() {
         onHoldList={handleHoldList}
         onCheckout={handleCheckout}
         disabled={cart.length === 0}
+        holdCount={holdList.length}
       />
+
+      {/* Modal: Lista de Espera */}
+      {showHoldList && (
+        <HoldListModal
+          holdList={holdList}
+          onResume={handleResumeHeld}
+          onDelete={handleDeleteHeld}
+          onClose={() => setShowHoldList(false)}
+        />
+      )}
+
+      {/* Modal: Selector NCF */}
+      {showNCFSelector && (
+        <NCFSelectorModal
+          tiposNCF={tiposNCF}
+          currentIndex={tipoNCFIndex}
+          onSelect={setTipoNCFIndex}
+          onClose={() => setShowNCFSelector(false)}
+        />
+      )}
     </div>
   );
 }

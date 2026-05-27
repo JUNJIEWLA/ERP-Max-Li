@@ -12,7 +12,8 @@ public class ProductoMapper {
 
     public Producto toEntity(ProductoRequestDTO dto, Categoria categoria, Marca marca) {
         Producto producto = new Producto();
-        producto.setCodigo(dto.getCodigo());
+        // SKU se genera automáticamente en el service tras el INSERT
+        producto.setCodigoBarras(dto.getCodigoBarras());
         producto.setNombre(dto.getNombre());
         producto.setDescripcion(dto.getDescripcion());
         producto.setPrecioVenta(dto.getPrecioVenta());
@@ -26,7 +27,8 @@ public class ProductoMapper {
     public ProductoResponseDTO toDto(Producto producto) {
         ProductoResponseDTO dto = new ProductoResponseDTO();
         dto.setIdProducto(producto.getIdProducto());
-        dto.setCodigo(producto.getCodigo());
+        dto.setSku(producto.getSku());
+        dto.setCodigoBarras(producto.getCodigoBarras());
         dto.setNombre(producto.getNombre());
         dto.setDescripcion(producto.getDescripcion());
         dto.setPrecioVenta(producto.getPrecioVenta());

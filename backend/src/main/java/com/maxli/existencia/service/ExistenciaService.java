@@ -1,5 +1,6 @@
 package com.maxli.existencia.service;
 
+import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.dto.ExistenciaRequestDTO;
@@ -21,6 +22,7 @@ public class ExistenciaService {
 
     private final ExistenciaRepository existenciaRepository;
     private final ProductoRepository productoRepository;
+    private final AlmacenService almacenService;
     private final ExistenciaMapper existenciaMapper;
 
     @Transactional(readOnly = true)
@@ -50,7 +52,8 @@ public class ExistenciaService {
     public ExistenciaResponseDTO crear(ExistenciaRequestDTO dto) {
         Producto producto = obtenerProductoActivo(dto.getIdProducto());
         validarExistenciaUnica(dto.getIdProducto());
-        Existencia existencia = existenciaMapper.toEntity(dto, producto);
+        var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
+        Existencia existencia = existenciaMapper.toEntity(dto, producto, almacen);
         return existenciaMapper.toDto(existenciaRepository.save(existencia));
     }
 
@@ -59,6 +62,10 @@ public class ExistenciaService {
         Existencia existencia = obtenerPorId(id);
         existencia.setCantidadActual(dto.getCantidadActual());
         existencia.setCantidadMinima(dto.getCantidadMinima());
+        if (dto.getIdAlmacen() != null) {
+            var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
+            existencia.setAlmacen(almacen);
+        }
         return existenciaMapper.toDto(existenciaRepository.save(existencia));
     }
 
@@ -81,3 +88,4 @@ public class ExistenciaService {
         }
     }
 }
+

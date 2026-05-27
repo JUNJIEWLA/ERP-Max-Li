@@ -14,9 +14,12 @@ public class ExistenciaResponseDTO {
     private String productoCodigo;
     private String productoNombre;
     private String productoEstado;
+    private Long idAlmacen;
+    private String almacenNombre;
     private Integer cantidadActual;
     private Integer cantidadMinima;
     private boolean bajoPuntoReorden;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaModificacion;
 }
+

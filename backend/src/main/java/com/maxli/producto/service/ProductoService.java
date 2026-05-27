@@ -1,6 +1,5 @@
 package com.maxli.producto.service;
 
-import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.producto.dto.ProductoRequestDTO;
 import com.maxli.producto.dto.ProductoResponseDTO;
@@ -16,6 +15,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -41,34 +42,42 @@ public class ProductoService {
 
     @Transactional(readOnly = true)
     public ProductoResponseDTO buscarPorId(Long id) {
-        Producto producto = obtenerPorId(id);
+        return productoMapper.toDto(obtenerPorId(id));
+    }
+
+    @Transactional(readOnly = true)
+    public ProductoResponseDTO buscarPorSku(String sku) {
+        Producto producto = productoRepository.findBySku(sku)
+                .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado con SKU: " + sku));
         return productoMapper.toDto(producto);
     }
 
     @Transactional(readOnly = true)
-    public ProductoResponseDTO buscarPorCodigo(String codigo) {
-        Producto producto = productoRepository.findByCodigo(codigo)
-                .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado con codigo: " + codigo));
-        return productoMapper.toDto(producto);
+    public List<ProductoResponseDTO> buscarPorCodigoBarras(String codigoBarras) {
+        return productoRepository.findByCodigoBarras(codigoBarras)
+                .stream()
+                .map(productoMapper::toDto)
+                .toList();
     }
 
     @Transactional
     public ProductoResponseDTO crear(ProductoRequestDTO dto) {
-        validarCodigoDisponible(dto.getCodigo());
         Categoria categoria = obtenerCategoriaActiva(dto.getIdCategoria());
         Marca marca = obtenerMarcaActiva(dto.getIdMarca());
         Producto producto = productoMapper.toEntity(dto, categoria, marca);
-        return productoMapper.toDto(productoRepository.save(producto));
+        // Primer guardado: obtiene el ID generado y permite construir el SKU interno
+        Producto guardado = productoRepository.save(producto);
+        guardado.setSku(String.format("PRD-%06d", guardado.getIdProducto()));
+        return productoMapper.toDto(productoRepository.save(guardado));
     }
 
     @Transactional
     public ProductoResponseDTO actualizar(Long id, ProductoRequestDTO dto) {
         Producto producto = obtenerPorId(id);
-        validarCodigoDisponibleParaActualizar(dto.getCodigo(), id);
         Categoria categoria = obtenerCategoriaActiva(dto.getIdCategoria());
         Marca marca = obtenerMarcaActiva(dto.getIdMarca());
 
-        producto.setCodigo(dto.getCodigo());
+        producto.setCodigoBarras(dto.getCodigoBarras());
         producto.setNombre(dto.getNombre());
         producto.setDescripcion(dto.getDescripcion());
         producto.setPrecioVenta(dto.getPrecioVenta());
@@ -96,25 +105,14 @@ public class ProductoService {
 
     private Categoria obtenerCategoriaActiva(Long idCategoria) {
         return categoriaRepository.findById(idCategoria)
-                .filter(categoria -> ACTIVO.equals(categoria.getEstado()))
-                .orElseThrow(() -> new ResourceNotFoundException("Categoria no encontrada o inactiva con id: " + idCategoria));
+                .filter(c -> ACTIVO.equals(c.getEstado()))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Categoría no encontrada o inactiva con id: " + idCategoria));
     }
 
     private Marca obtenerMarcaActiva(Long idMarca) {
         return marcaRepository.findById(idMarca)
-                .filter(marca -> ACTIVO.equals(marca.getEstado()))
+                .filter(m -> ACTIVO.equals(m.getEstado()))
                 .orElseThrow(() -> new ResourceNotFoundException("Marca no encontrada o inactiva con id: " + idMarca));
-    }
-
-    private void validarCodigoDisponible(String codigo) {
-        if (productoRepository.existsByCodigo(codigo)) {
-            throw new DuplicateResourceException("Ya existe un producto con codigo: " + codigo);
-        }
-    }
-
-    private void validarCodigoDisponibleParaActualizar(String codigo, Long idProducto) {
-        if (productoRepository.existsByCodigoAndIdProductoNot(codigo, idProducto)) {
-            throw new DuplicateResourceException("Ya existe un producto con codigo: " + codigo);
-        }
     }
 }

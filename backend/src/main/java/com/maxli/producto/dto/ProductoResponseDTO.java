@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
 public class ProductoResponseDTO {
 
     private Long idProducto;
-    private String codigo;
+    private String sku;
+    private String codigoBarras;
     private String nombre;
     private String descripcion;
     private BigDecimal precioVenta;

@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/productos")
 @RequiredArgsConstructor
@@ -35,9 +37,14 @@ public class ProductoController {
         return ResponseEntity.ok(productoService.listarActivos(pageable));
     }
 
-    @GetMapping("/codigo/{codigo}")
-    public ResponseEntity<ProductoResponseDTO> buscarPorCodigo(@PathVariable String codigo) {
-        return ResponseEntity.ok(productoService.buscarPorCodigo(codigo));
+    @GetMapping("/sku/{sku}")
+    public ResponseEntity<ProductoResponseDTO> buscarPorSku(@PathVariable String sku) {
+        return ResponseEntity.ok(productoService.buscarPorSku(sku));
+    }
+
+    @GetMapping("/barcode/{codigoBarras}")
+    public ResponseEntity<List<ProductoResponseDTO>> buscarPorCodigoBarras(@PathVariable String codigoBarras) {
+        return ResponseEntity.ok(productoService.buscarPorCodigoBarras(codigoBarras));
     }
 
     @GetMapping("/{id}")
@@ -62,3 +69,4 @@ public class ProductoController {
         return ResponseEntity.noContent().build();
     }
 }
+

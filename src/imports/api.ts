@@ -57,7 +57,8 @@ async function del(path: string): Promise<void> {
 
 export interface Producto {
   idProducto: number;
-  codigo: string;
+  sku: string;
+  codigoBarras: string | null;
   nombre: string;
   descripcion: string;
   precioVenta: number;
@@ -146,6 +147,15 @@ export const categoriasApi = {
 
   listarActivas: () =>
     get<PageResponse<Categoria>>('/categorias/activas', { page: 0, size: 100 }),
+
+  crear: (body: { nombre: string; descripcion?: string }) =>
+    post<Categoria>('/categorias', body),
+
+  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado?: string }) =>
+    put<Categoria>(`/categorias/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/categorias/${id}`),
 };
 
 // ── API: Marcas ──────────────────────────────────────────
@@ -156,6 +166,15 @@ export const marcasApi = {
 
   listarActivas: () =>
     get<PageResponse<Marca>>('/marcas/activas', { page: 0, size: 100 }),
+
+  crear: (body: { nombre: string; descripcion?: string }) =>
+    post<Marca>('/marcas', body),
+
+  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado?: string }) =>
+    put<Marca>(`/marcas/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/marcas/${id}`),
 };
 
 // ── API: Existencias ─────────────────────────────────────
@@ -170,10 +189,10 @@ export const existenciasApi = {
   buscarPorProducto: (idProducto: number) =>
     get<Existencia>(`/existencias/producto/${idProducto}`),
 
-  crear: (body: { idProducto: number; cantidadActual: number; cantidadMinima: number }) =>
+  crear: (body: { idProducto: number; idAlmacen: number; cantidadActual: number; cantidadMinima: number }) =>
     post<Existencia>('/existencias', body),
 
-  actualizar: (id: number, body: { idProducto: number; cantidadActual: number; cantidadMinima: number }) =>
+  actualizar: (id: number, body: { idProducto: number; idAlmacen: number; cantidadActual: number; cantidadMinima: number }) =>
     put<Existencia>(`/existencias/${id}`, body),
 };
 
