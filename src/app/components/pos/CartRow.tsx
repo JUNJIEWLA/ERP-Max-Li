@@ -39,10 +39,12 @@ export default function CartRow({ item, isSelected, onSelect, onUpdateQty, onUpd
       onClick={onSelect}
     >
       <td className="py-2 px-3">
-        <div>
-          <p className="text-sm">{item.descripcion}</p>
-          <p className="text-xs text-muted-foreground">{item.codigo}</p>
-        </div>
+        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">
+          {item.codigo}
+        </span>
+      </td>
+      <td className="py-2 px-3">
+        <p className="text-sm leading-snug">{item.descripcion}</p>
       </td>
       <td className="py-2 px-3 text-right text-sm">RD${item.precioUnitario.toFixed(2)}</td>
       <td className="py-2 px-3">
@@ -56,7 +58,7 @@ export default function CartRow({ item, isSelected, onSelect, onUpdateQty, onUpd
           >
             <Minus size={12} />
           </button>
-          <span className="w-10 text-center text-sm">{item.cantidad}</span>
+          <span className="w-10 text-center text-lg font-bold text-foreground">{item.cantidad}</span>
           <button
             onClick={(e) => {
               e.stopPropagation();

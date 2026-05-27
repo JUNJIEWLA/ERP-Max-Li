@@ -15,9 +15,8 @@ import java.math.BigDecimal;
 @Setter
 public class ProductoRequestDTO {
 
-    @NotBlank(message = "El codigo es obligatorio")
-    @Size(max = 50, message = "El codigo no puede superar 50 caracteres")
-    private String codigo;
+    @Size(max = 100, message = "El código de barras no puede superar 100 caracteres")
+    private String codigoBarras;
 
     @NotBlank(message = "El nombre es obligatorio")
     @Size(max = 150, message = "El nombre no puede superar 150 caracteres")

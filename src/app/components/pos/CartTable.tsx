@@ -13,21 +13,38 @@ interface CartTableProps {
 export default function CartTable({ items, selectedRowIndex, onSelectRow, onUpdateQty, onUpdateDiscount, onRemoveItem }: CartTableProps) {
   return (
     <div className="flex-1 overflow-auto">
-      <table className="w-full">
+      <table className="w-full table-fixed">
+        <colgroup>
+          {/* Código */}
+          <col style={{ width: '120px' }} />
+          {/* Descripción */}
+          <col />
+          {/* Precio unit. */}
+          <col style={{ width: '100px' }} />
+          {/* Cant. */}
+          <col style={{ width: '100px' }} />
+          {/* Desc./línea */}
+          <col style={{ width: '90px' }} />
+          {/* Importe */}
+          <col style={{ width: '100px' }} />
+          {/* Eliminar */}
+          <col style={{ width: '40px' }} />
+        </colgroup>
         <thead className="sticky top-0 bg-background border-b border-border">
           <tr>
-            <th className="text-left py-2 px-3 text-muted-foreground text-sm">Descripción</th>
-            <th className="text-right py-2 px-3 text-muted-foreground text-sm">Precio unit.</th>
-            <th className="text-center py-2 px-3 text-muted-foreground text-sm">Cant.</th>
-            <th className="text-center py-2 px-3 text-muted-foreground text-sm">Desc./línea</th>
-            <th className="text-right py-2 px-3 text-muted-foreground text-sm">Importe</th>
-            <th className="text-center py-2 px-3 text-muted-foreground text-sm"></th>
+            <th className="text-left py-2 px-3 text-muted-foreground text-sm font-medium">Código</th>
+            <th className="text-left py-2 px-3 text-muted-foreground text-sm font-medium">Descripción</th>
+            <th className="text-right py-2 px-3 text-muted-foreground text-sm font-medium">Precio unit.</th>
+            <th className="text-center py-2 px-3 text-muted-foreground text-sm font-medium">Cant.</th>
+            <th className="text-center py-2 px-3 text-muted-foreground text-sm font-medium">Desc./línea</th>
+            <th className="text-right py-2 px-3 text-muted-foreground text-sm font-medium">Importe</th>
+            <th className="py-2 px-3"></th>
           </tr>
         </thead>
         <tbody>
           {items.length === 0 ? (
             <tr>
-              <td colSpan={6} className="py-20 text-center text-muted-foreground">
+              <td colSpan={7} className="py-20 text-center text-muted-foreground">
                 <ShoppingCart size={48} className="mx-auto mb-3 opacity-20" />
                 <p>No hay productos. Use la búsqueda para agregar.</p>
               </td>

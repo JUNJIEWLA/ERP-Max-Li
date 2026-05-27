@@ -1,17 +1,11 @@
-package com.maxli.existencia.entity;
+package com.maxli.almacen.entity;
 
-import com.maxli.almacen.entity.Almacen;
-import com.maxli.producto.entity.Producto;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,31 +17,26 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "existencia")
+@Table(name = "almacen")
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
-public class Existencia {
+public class Almacen {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_existencia")
-    private Long idExistencia;
+    @Column(name = "id_almacen")
+    private Long idAlmacen;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_producto", nullable = false, unique = true)
-    private Producto producto;
+    @Column(name = "nombre", nullable = false, length = 100)
+    private String nombre;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_almacen", nullable = false)
-    private Almacen almacen;
+    @Column(name = "descripcion", length = 255)
+    private String descripcion;
 
-    @Column(name = "cantidad_actual", nullable = false)
-    private Integer cantidadActual;
-
-    @Column(name = "cantidad_minima", nullable = false)
-    private Integer cantidadMinima;
+    @Column(name = "estado", nullable = false, length = 20)
+    private String estado;
 
     @CreatedDate
     @Column(name = "fecha_creacion", updatable = false)

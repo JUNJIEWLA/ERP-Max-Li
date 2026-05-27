@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "producto",
-        uniqueConstraints = @UniqueConstraint(name = "uk_producto_codigo", columnNames = "codigo")
+        uniqueConstraints = @UniqueConstraint(name = "uk_producto_sku", columnNames = "sku")
 )
 @EntityListeners(AuditingEntityListener.class)
 @Getter
@@ -37,8 +37,11 @@ public class Producto {
     @Column(name = "id_producto")
     private Long idProducto;
 
-    @Column(name = "codigo", nullable = false, length = 50)
-    private String codigo;
+    @Column(name = "sku", nullable = false, length = 50)
+    private String sku;
+
+    @Column(name = "codigo_barras", length = 100)
+    private String codigoBarras;
 
     @Column(name = "nombre", nullable = false, length = 150)
     private String nombre;
