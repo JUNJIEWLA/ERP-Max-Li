@@ -11,6 +11,8 @@ import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
 import Categorias from './components/Categorias';
 import Marcas from './components/Marcas';
+import Login from './components/Login';
+import { setToken, clearToken, getToken } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -41,6 +43,29 @@ const viewTitles: Record<string, string> = {
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
+  // Inicializar sesión desde localStorage si ya hay token guardado
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!getToken());
+  const [username, setUsername] = useState(() => localStorage.getItem('maxli_user') || '');
+
+  const handleLogin = (token: string, user: string) => {
+    setToken(token);
+    localStorage.setItem('maxli_user', user);
+    setUsername(user);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    localStorage.removeItem('maxli_user');
+    setIsAuthenticated(false);
+    setUsername('');
+    setActiveView('dashboard');
+  };
+
+  // ── Pantalla de login ───────────────────────────────────
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   const renderView = () => {
     switch (activeView) {
@@ -78,7 +103,7 @@ export default function App() {
     <div className="size-full flex bg-background">
       <Sidebar activeView={activeView} onViewChange={setActiveView} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title={viewTitles[activeView] || 'ERP Sistema'} />
+        <Header title={viewTitles[activeView] || 'ERP Sistema'} username={username} onLogout={handleLogout} />
         <main className="flex-1 overflow-y-auto">
           {renderView()}
         </main>

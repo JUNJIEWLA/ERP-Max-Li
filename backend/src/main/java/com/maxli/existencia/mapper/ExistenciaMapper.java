@@ -23,7 +23,7 @@ public class ExistenciaMapper {
         ExistenciaResponseDTO dto = new ExistenciaResponseDTO();
         dto.setIdExistencia(existencia.getIdExistencia());
         dto.setIdProducto(existencia.getProducto().getIdProducto());
-        dto.setProductoCodigo(existencia.getProducto().getCodigo());
+        dto.setProductoCodigo(existencia.getProducto().getSku());
         dto.setProductoNombre(existencia.getProducto().getNombre());
         dto.setProductoEstado(existencia.getProducto().getEstado());
         dto.setIdAlmacen(existencia.getAlmacen().getIdAlmacen());

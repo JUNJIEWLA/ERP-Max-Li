@@ -6,6 +6,19 @@
 
 const BASE_URL = '/api';
 
+// ── Manejo del token JWT ─────────────────────────────────
+
+const TOKEN_KEY = 'maxli_token';
+
+export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
+export const setToken = (token: string): void => localStorage.setItem(TOKEN_KEY, token);
+export const clearToken = (): void => localStorage.removeItem(TOKEN_KEY);
+
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ── Tipos genéricos ──────────────────────────────────────
 
 export interface PageResponse<T> {
@@ -23,7 +36,7 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   }
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { headers: authHeaders() });
   if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
   return res.json();
 }
@@ -31,7 +44,7 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE_URL + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
@@ -41,7 +54,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 async function put<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE_URL + path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
@@ -49,9 +62,32 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(BASE_URL + path, { method: 'DELETE' });
+  const res = await fetch(BASE_URL + path, { method: 'DELETE', headers: authHeaders() });
   if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
 }
+
+// ── API: Auth ────────────────────────────────────────────
+
+export interface AuthResponse {
+  token: string;
+  username: string;
+  email: string;
+  roles: string[];
+  expiresIn: number;
+}
+
+export const authApi = {
+  login: (username: string, password: string) =>
+    // login no pasa por el helper para evitar el header de token
+    fetch(BASE_URL + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }).then(async res => {
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.json() as Promise<AuthResponse>;
+    }),
+};
 
 // ── Tipos del dominio ────────────────────────────────────
 
@@ -77,6 +113,15 @@ export interface Categoria {
   nombre: string;
   descripcion: string;
   estado: string;
+}
+
+export interface Almacen {
+  idAlmacen: number;
+  nombre: string;
+  descripcion: string | null;
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
 }
 
 export interface Marca {
@@ -156,6 +201,22 @@ export const categoriasApi = {
 
   desactivar: (id: number) =>
     del(`/categorias/${id}`),
+};
+
+// ── API: Almacenes ───────────────────────────────────────
+
+export const almacenesApi = {
+  listar: (page = 0, size = 10) =>
+    get<PageResponse<Almacen>>('/almacenes', { page, size, sort: 'nombre,asc' }),
+
+  crear: (body: { nombre: string; descripcion?: string; estado: string }) =>
+    post<Almacen>('/almacenes', body),
+
+  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado: string }) =>
+    put<Almacen>(`/almacenes/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/almacenes/${id}`),
 };
 
 // ── API: Marcas ──────────────────────────────────────────

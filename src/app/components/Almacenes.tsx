@@ -1,24 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, ToggleLeft, ToggleRight, Warehouse, Search, X, Loader2 } from 'lucide-react';
-
-interface Almacen {
-  idAlmacen: number;
-  nombre: string;
-  descripcion: string | null;
-  estado: string;
-  fechaCreacion: string;
-  fechaModificacion: string;
-}
-
-interface PageResponse<T> {
-  content: T[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
-}
-
-const API_BASE = '/api/almacenes';
+import { almacenesApi, Almacen } from '../../imports/api';
 
 export default function Almacenes() {
   const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
@@ -42,9 +24,7 @@ export default function Almacenes() {
   const fetchAlmacenes = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}?page=${page}&size=${PAGE_SIZE}&sort=nombre,asc`);
-      if (!res.ok) throw new Error('Error al cargar almacenes');
-      const data: PageResponse<Almacen> = await res.json();
+      const data = await almacenesApi.listar(page, PAGE_SIZE);
       setAlmacenes(data.content);
       setTotalPages(data.totalPages);
       setTotalElements(data.totalElements);
@@ -78,21 +58,15 @@ export default function Almacenes() {
     setSaving(true);
     setFormError('');
     try {
-      const url = editTarget ? `${API_BASE}/${editTarget.idAlmacen}` : API_BASE;
-      const method = editTarget ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Error al guardar');
+      if (editTarget) {
+        await almacenesApi.actualizar(editTarget.idAlmacen, formData);
+      } else {
+        await almacenesApi.crear(formData);
       }
       closeModal();
       fetchAlmacenes();
     } catch (err: any) {
-      setFormError(err.message);
+      setFormError(err.message || 'Error al guardar');
     } finally {
       setSaving(false);
     }
@@ -100,7 +74,7 @@ export default function Almacenes() {
 
   const handleToggle = async (id: number) => {
     try {
-      await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+      await almacenesApi.desactivar(id);
       fetchAlmacenes();
     } finally {
       setConfirmId(null);

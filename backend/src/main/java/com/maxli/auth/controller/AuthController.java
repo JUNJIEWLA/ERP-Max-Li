@@ -13,6 +13,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,6 +37,7 @@ public class AuthController {
      * Autentica al usuario y devuelve un JWT.
      */
     @PostMapping("/login")
+    @Transactional(readOnly = true)
     public LoginResponseDTO login(@Valid @RequestBody LoginRequestDTO dto) {
         try {
             authenticationManager.authenticate(

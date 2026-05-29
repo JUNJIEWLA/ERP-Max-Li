@@ -1,5 +1,7 @@
 package com.maxli.existencia.service;
 
+import com.maxli.almacen.entity.Almacen;
+import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.dto.ExistenciaRequestDTO;
@@ -22,6 +24,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +34,7 @@ class ExistenciaServiceTest {
 
     @Mock private ExistenciaRepository existenciaRepository;
     @Mock private ProductoRepository productoRepository;
+    @Mock private AlmacenService almacenService;
     @Mock private ExistenciaMapper existenciaMapper;
     @InjectMocks private ExistenciaService existenciaService;
 
@@ -45,9 +50,13 @@ class ExistenciaServiceTest {
         expectedDto.setIdExistencia(1L);
         expectedDto.setIdProducto(10L);
 
+        Almacen almacen = new Almacen();
+        almacen.setIdAlmacen(1L);
+
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
         when(existenciaRepository.existsByProducto_IdProducto(10L)).thenReturn(false);
-        when(existenciaMapper.toEntity(request, producto)).thenReturn(entity);
+        when(almacenService.obtenerEntidadPorId(any())).thenReturn(almacen);
+        when(existenciaMapper.toEntity(eq(request), eq(producto), any(Almacen.class))).thenReturn(entity);
         when(existenciaRepository.save(entity)).thenReturn(saved);
         when(existenciaMapper.toDto(saved)).thenReturn(expectedDto);
 
@@ -149,7 +158,7 @@ class ExistenciaServiceTest {
 
         Producto producto = new Producto();
         producto.setIdProducto(10L);
-        producto.setCodigo("P-001");
+        producto.setSku("PRD-000010");
         producto.setNombre("Camiseta");
         producto.setPrecioVenta(new BigDecimal("299.00"));
         producto.setCosto(new BigDecimal("150.00"));
