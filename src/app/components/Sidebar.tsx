@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { LogOut } from 'lucide-react';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -26,6 +27,8 @@ import {
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  username?: string;
+  onLogout?: () => void;
 }
 
 interface MenuItem {
@@ -109,7 +112,7 @@ const menuSections: MenuSection[] = [
   },
 ];
 
-export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
+export default function Sidebar({ activeView, onViewChange, username, onLogout }: SidebarProps) {
   const [expandedSections, setExpandedSections] = useState<string[]>(['ventas']);
 
   const toggleSection = (sectionId: string) => {
@@ -197,13 +200,25 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
 
       <div className="p-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground">
-            AD
+          <div className="w-9 h-9 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground text-sm font-semibold shrink-0">
+            {username
+              ? username.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+              : 'U'}
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-sidebar-foreground">Admin User</p>
-            <p className="text-xs text-sidebar-foreground/60">admin@tienda.com</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-sidebar-foreground truncate">{username || 'Usuario'}</p>
+            <p className="text-xs text-sidebar-foreground/60">Sesión activa</p>
           </div>
+          {onLogout && (
+            <button
+              id="sidebar-logout-btn"
+              onClick={onLogout}
+              title="Cerrar sesión"
+              className="p-1.5 rounded-md text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+            >
+              <LogOut size={16} />
+            </button>
+          )}
         </div>
       </div>
     </aside>

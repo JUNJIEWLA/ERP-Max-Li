@@ -101,9 +101,9 @@ export default function App() {
 
   return (
     <div className="size-full flex bg-background">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} username={username} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title={viewTitles[activeView] || 'ERP Sistema'} username={username} onLogout={handleLogout} />
+        <Header title={viewTitles[activeView] || 'ERP Sistema'} />
         <main className="flex-1 overflow-y-auto">
           {renderView()}
         </main>
