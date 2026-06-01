@@ -303,3 +303,151 @@ export const usuariosApi = {
   quitarRol: (idUsuario: number, idRol: number) =>
     del(`/usuarios/${idUsuario}/roles/${idRol}`),
 };
+
+// ── Tipos: Módulo de Compras ─────────────────────────────
+
+export interface Proveedor {
+  idProveedor: number;
+  nombreEmpresa: string;
+  rnc: string;
+  ubicacion: string | null;
+  vendedor: string | null;
+  telefono: string | null;
+  email: string | null;
+  estado: string;
+  balancePendiente: number;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+export interface DetalleOrdenCompra {
+  idDetalleOrdenCompra: number;
+  idProducto: number;
+  nombreProducto: string;
+  skuProducto: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  cantidadRecibida: number;
+  cantidadPendiente: number;
+}
+
+export interface PagoProveedor {
+  idPagoProveedor: number;
+  idOrdenCompra: number;
+  montoPagado: number;
+  metodo: string;
+  numeroReferencia: string | null;
+  fecha: string;
+}
+
+export interface OrdenCompra {
+  idOrdenCompra: number;
+  idProveedor: number;
+  nombreProveedor: string;
+  total: number;
+  estado: string;
+  estadoPago: string;
+  totalPagado: number;
+  balancePendiente: number;
+  detalles: DetalleOrdenCompra[];
+  pagos: PagoProveedor[];
+  fechaOrden: string;
+  fechaModificacion: string;
+}
+
+export interface DetalleNotaRecepcion {
+  idDetalleNotaRecepcion: number;
+  idDetalleOrdenCompra: number;
+  idProducto: number;
+  nombreProducto: string;
+  cantidadSolicitada: number;
+  cantidadRecibida: number;
+  observacion: string;
+  notas: string | null;
+}
+
+export interface NotaRecepcion {
+  idNotaRecepcion: number;
+  idOrdenCompra: number;
+  estado: string;
+  detalles: DetalleNotaRecepcion[];
+  fechaRecepcion: string;
+  fechaModificacion: string;
+}
+
+// ── API: Proveedores ─────────────────────────────────────
+
+export const proveedoresApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Proveedor>>('/proveedores', { page, size }),
+
+  listarActivos: (page = 0, size = 100) =>
+    get<PageResponse<Proveedor>>('/proveedores/activos', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<Proveedor>(`/proveedores/${id}`),
+
+  crear: (body: Omit<Proveedor, 'idProveedor' | 'balancePendiente' | 'fechaCreacion' | 'fechaModificacion'>) =>
+    post<Proveedor>('/proveedores', body),
+
+  actualizar: (id: number, body: Partial<Proveedor>) =>
+    put<Proveedor>(`/proveedores/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/proveedores/${id}`),
+};
+
+// ── API: Órdenes de Compra ───────────────────────────────
+
+export const ordenesCompraApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<OrdenCompra>>('/ordenes-compra', { page, size }),
+
+  listarPorProveedor: (idProveedor: number, page = 0, size = 20) =>
+    get<PageResponse<OrdenCompra>>(`/ordenes-compra/proveedor/${idProveedor}`, { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<OrdenCompra>(`/ordenes-compra/${id}`),
+
+  crear: (body: { idProveedor: number; detalles: { idProducto: number; cantidad: number; precioUnitario: number }[] }) =>
+    post<OrdenCompra>('/ordenes-compra', body),
+
+  enviar: (id: number) =>
+    put<OrdenCompra>(`/ordenes-compra/${id}/enviar`, {}),
+
+  anular: (id: number) =>
+    put<OrdenCompra>(`/ordenes-compra/${id}/anular`, {}),
+
+  forzarCierre: (id: number) =>
+    put<OrdenCompra>(`/ordenes-compra/${id}/forzar-cierre`, {}),
+
+  registrarPago: (idOrden: number, body: { montoPagado: number; metodo: string; numeroReferencia?: string }) =>
+    post<PagoProveedor>(`/ordenes-compra/${idOrden}/pagos`, body),
+
+  listarPagos: (idOrden: number) =>
+    get<PagoProveedor[]>(`/ordenes-compra/${idOrden}/pagos`),
+};
+
+// ── API: Notas de Recepción ──────────────────────────────
+
+export const notasRecepcionApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<NotaRecepcion>>('/notas-recepcion', { page, size }),
+
+  listarPorOrden: (idOrden: number, page = 0, size = 20) =>
+    get<PageResponse<NotaRecepcion>>(`/notas-recepcion/orden/${idOrden}`, { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<NotaRecepcion>(`/notas-recepcion/${id}`),
+
+  crear: (body: { idOrdenCompra: number; detalles: { idDetalleOrdenCompra: number; cantidadRecibida: number; observacion: string; notas?: string }[] }) =>
+    post<NotaRecepcion>('/notas-recepcion', body),
+
+  confirmar: (id: number) =>
+    put<NotaRecepcion>(`/notas-recepcion/${id}/confirmar`, {}),
+
+  rechazar: (id: number) =>
+    put<NotaRecepcion>(`/notas-recepcion/${id}/rechazar`, {}),
+};
+

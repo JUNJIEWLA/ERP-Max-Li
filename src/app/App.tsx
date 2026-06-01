@@ -12,6 +12,9 @@ import Almacenes from './components/Almacenes';
 import Categorias from './components/Categorias';
 import Marcas from './components/Marcas';
 import Login from './components/Login';
+import Proveedores from './components/Proveedores';
+import OrdenesCompra from './components/OrdenesCompra';
+import NotasRecepcion from './components/NotasRecepcion';
 import { setToken, clearToken, getToken } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
@@ -89,6 +92,12 @@ export default function App() {
         return <Cajas />;
       case 'devoluciones':
         return <Devoluciones />;
+      case 'proveedores':
+        return <Proveedores />;
+      case 'ordenes-compra':
+        return <OrdenesCompra />;
+      case 'notas-recepcion':
+        return <NotasRecepcion />;
       default:
         return (
           <div className="p-6">
