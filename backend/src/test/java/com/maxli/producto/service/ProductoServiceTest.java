@@ -117,8 +117,6 @@ class ProductoServiceTest {
         when(productoRepository.findById(1L)).thenReturn(Optional.of(producto));
         when(categoriaRepository.findById(10L)).thenReturn(Optional.of(categoriaActiva()));
         when(marcaRepository.findById(20L)).thenReturn(Optional.of(marcaActiva()));
-        when(productoMapper.toEntity(request, categoriaActiva(), marcaActiva())).thenReturn(producto);
-
         // actualizar succeeds because the service no longer checks sku uniqueness on update via existsBySku
         // If the service does check it, mock it here. For now verify the update path works.
         when(productoRepository.save(producto)).thenReturn(producto);

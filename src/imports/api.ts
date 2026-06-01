@@ -159,6 +159,32 @@ export interface Usuario {
   fechaModificacion: string;
 }
 
+export interface Caja {
+  idCaja: number;
+  nombre: string;
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+export interface TurnoCaja {
+  idTurnoCaja: number;
+  idCaja: number;
+  cajaNombre: string;
+  idUsuarioApertura: number;
+  usernameUsuarioApertura: string;
+  idUsuarioCierre: number | null;
+  usernameUsuarioCierre: string | null;
+  montoInicial: number;
+  montoFinalDeclarado: number | null;
+  estado: string;
+  observacionApertura: string | null;
+  observacionCierre: string | null;
+  fechaApertura: string;
+  fechaCierre: string | null;
+  fechaModificacion: string | null;
+}
+
 // ── API: Productos ───────────────────────────────────────
 
 export const productosApi = {
@@ -302,6 +328,51 @@ export const usuariosApi = {
 
   quitarRol: (idUsuario: number, idRol: number) =>
     del(`/usuarios/${idUsuario}/roles/${idRol}`),
+};
+
+// ── API: Cajas y Turnos ──────────────────────────────────
+
+export const cajasApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Caja>>('/cajas', { page, size }),
+
+  listarActivas: (page = 0, size = 100) =>
+    get<PageResponse<Caja>>('/cajas/activas', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<Caja>(`/cajas/${id}`),
+
+  crear: (body: { nombre: string; estado?: string }) =>
+    post<Caja>('/cajas', body),
+
+  actualizar: (id: number, body: { nombre: string; estado?: string }) =>
+    put<Caja>(`/cajas/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/cajas/${id}`),
+};
+
+export const turnosCajaApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<TurnoCaja>>('/cajas/turnos', { page, size }),
+
+  listarAbiertos: (page = 0, size = 20) =>
+    get<PageResponse<TurnoCaja>>('/cajas/turnos/abiertos', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<TurnoCaja>(`/cajas/turnos/${id}`),
+
+  buscarAbiertoPorCaja: (idCaja: number) =>
+    get<TurnoCaja>(`/cajas/turnos/caja/${idCaja}/abierto`),
+
+  abiertoActual: () =>
+    get<TurnoCaja>('/cajas/turnos/actual/abierto'),
+
+  abrir: (body: { idCaja: number; montoInicial: number; observacionApertura?: string }) =>
+    post<TurnoCaja>('/cajas/turnos/abrir', body),
+
+  cerrar: (id: number, body: { montoFinalDeclarado: number; observacionCierre?: string }) =>
+    post<TurnoCaja>(`/cajas/turnos/${id}/cerrar`, body),
 };
 
 // ── Tipos: Módulo de Compras ─────────────────────────────
@@ -450,4 +521,3 @@ export const notasRecepcionApi = {
   rechazar: (id: number) =>
     put<NotaRecepcion>(`/notas-recepcion/${id}/rechazar`, {}),
 };
-

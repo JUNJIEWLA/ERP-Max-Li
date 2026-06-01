@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import Ventas from './components/Ventas';
 import Productos from './components/Productos';
 import Inventario from './components/Inventario';
-import Cajas from './components/Cajas';
+import TurnosCaja from './components/TurnosCaja';
 import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
@@ -89,7 +89,7 @@ export default function App() {
       case 'marcas':
         return <Marcas />;
       case 'turnos-caja':
-        return <Cajas />;
+        return <TurnosCaja />;
       case 'devoluciones':
         return <Devoluciones />;
       case 'proveedores':
