@@ -167,6 +167,17 @@ export interface Caja {
   fechaModificacion: string;
 }
 
+export interface CajaChica {
+  idCajaChica: number;
+  nombre: string;
+  responsable: string;
+  saldoActual: number;
+  limiteMonto: number;
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
 export interface TurnoCaja {
   idTurnoCaja: number;
   idCaja: number;
@@ -370,6 +381,26 @@ export const cajasApi = {
 
   desactivar: (id: number) =>
     del(`/cajas/${id}`),
+};
+
+export const cajasChicasApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<CajaChica>>('/cajas/chicas', { page, size }),
+
+  listarActivas: (page = 0, size = 100) =>
+    get<PageResponse<CajaChica>>('/cajas/chicas/activas', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<CajaChica>(`/cajas/chicas/${id}`),
+
+  crear: (body: { nombre: string; responsable: string; saldoActual: number; limiteMonto: number; estado?: string }) =>
+    post<CajaChica>('/cajas/chicas', body),
+
+  actualizar: (id: number, body: { nombre: string; responsable: string; saldoActual: number; limiteMonto: number; estado?: string }) =>
+    put<CajaChica>(`/cajas/chicas/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/cajas/chicas/${id}`),
 };
 
 export const turnosCajaApi = {
