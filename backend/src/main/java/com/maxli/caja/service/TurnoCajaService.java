@@ -2,6 +2,7 @@ package com.maxli.caja.service;
 
 import com.maxli.caja.dto.AbrirTurnoCajaRequestDTO;
 import com.maxli.caja.dto.CerrarTurnoCajaRequestDTO;
+import com.maxli.caja.dto.CuadreTurnoCajaResponseDTO;
 import com.maxli.caja.dto.TurnoCajaResponseDTO;
 import com.maxli.caja.entity.Caja;
 import com.maxli.caja.entity.TurnoCaja;
@@ -18,6 +19,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Set;
 
@@ -28,6 +31,7 @@ public class TurnoCajaService {
     private static final String ACTIVO = "ACTIVO";
     private static final String ABIERTO = "ABIERTO";
     private static final String CERRADO = "CERRADO";
+    private static final BigDecimal CERO = new BigDecimal("0.00");
 
     private final TurnoCajaRepository turnoCajaRepository;
     private final CajaRepository cajaRepository;
@@ -63,6 +67,15 @@ public class TurnoCajaService {
                         "No hay turno abierto para el usuario: " + username)));
     }
 
+    @Transactional(readOnly = true)
+    public CuadreTurnoCajaResponseDTO calcularCuadre(Long id) {
+        TurnoCaja turno = obtenerPorId(id);
+        if (CERRADO.equals(turno.getEstado())) {
+            return construirCuadreDesdeTurno(turno);
+        }
+        return calcularCuadreActual(turno);
+    }
+
     @Transactional
     public TurnoCajaResponseDTO abrir(AbrirTurnoCajaRequestDTO dto, String username) {
         Caja caja = obtenerCajaActiva(dto.getIdCaja());
@@ -83,6 +96,7 @@ public class TurnoCajaService {
         turno.setObservacionApertura(dto.getObservacionApertura());
         turno.setEstado(ABIERTO);
         turno.setFechaApertura(LocalDateTime.now());
+        aplicarCuadre(turno, calcularCuadreActual(turno));
 
         return turnoCajaMapper.toDto(turnoCajaRepository.save(turno));
     }
@@ -93,11 +107,14 @@ public class TurnoCajaService {
         validarEstado(turno, Set.of(ABIERTO), "cerrar");
 
         Usuario usuarioCierre = obtenerUsuarioActivo(username);
+        CuadreTurnoCajaResponseDTO cuadre = calcularCuadreActual(turno);
         turno.setUsuarioCierre(usuarioCierre);
         turno.setMontoFinalDeclarado(dto.getMontoFinalDeclarado());
         turno.setObservacionCierre(dto.getObservacionCierre());
         turno.setFechaCierre(LocalDateTime.now());
         turno.setEstado(CERRADO);
+        aplicarCuadre(turno, cuadre);
+        turno.setDiferencia(dto.getMontoFinalDeclarado().subtract(turno.getMontoEsperado()));
 
         return turnoCajaMapper.toDto(turnoCajaRepository.save(turno));
     }
@@ -131,5 +148,82 @@ public class TurnoCajaService {
                     "No se puede " + accion + " un turno en estado '" + turno.getEstado() +
                     "'. Estados permitidos: " + estadosPermitidos);
         }
+    }
+
+    private CuadreTurnoCajaResponseDTO calcularCuadreActual(TurnoCaja turno) {
+        BigDecimal totalVentasEfectivo = totalVentasEfectivo(turno);
+        BigDecimal totalVentasTarjeta = totalVentasTarjeta(turno);
+        BigDecimal totalVentasTransferencia = totalVentasTransferencia(turno);
+        BigDecimal totalOtrosIngresos = totalOtrosIngresos(turno);
+        BigDecimal totalEgresos = totalEgresos(turno);
+        BigDecimal montoEsperado = normalizar(turno.getMontoInicial()
+                .add(totalVentasEfectivo)
+                .add(totalOtrosIngresos)
+                .subtract(totalEgresos));
+
+        CuadreTurnoCajaResponseDTO dto = new CuadreTurnoCajaResponseDTO();
+        dto.setIdTurnoCaja(turno.getIdTurnoCaja());
+        dto.setTotalVentasEfectivo(totalVentasEfectivo);
+        dto.setTotalVentasTarjeta(totalVentasTarjeta);
+        dto.setTotalVentasTransferencia(totalVentasTransferencia);
+        dto.setTotalOtrosIngresos(totalOtrosIngresos);
+        dto.setTotalEgresos(totalEgresos);
+        dto.setMontoEsperado(montoEsperado);
+        dto.setMontoFinalDeclarado(turno.getMontoFinalDeclarado());
+        dto.setDiferencia(turno.getDiferencia());
+        dto.setCalculadoEn(LocalDateTime.now());
+        return dto;
+    }
+
+    private CuadreTurnoCajaResponseDTO construirCuadreDesdeTurno(TurnoCaja turno) {
+        CuadreTurnoCajaResponseDTO dto = new CuadreTurnoCajaResponseDTO();
+        dto.setIdTurnoCaja(turno.getIdTurnoCaja());
+        dto.setTotalVentasEfectivo(valor(turno.getTotalVentasEfectivo()));
+        dto.setTotalVentasTarjeta(valor(turno.getTotalVentasTarjeta()));
+        dto.setTotalVentasTransferencia(valor(turno.getTotalVentasTransferencia()));
+        dto.setTotalOtrosIngresos(valor(turno.getTotalOtrosIngresos()));
+        dto.setTotalEgresos(valor(turno.getTotalEgresos()));
+        dto.setMontoEsperado(valor(turno.getMontoEsperado()));
+        dto.setMontoFinalDeclarado(turno.getMontoFinalDeclarado());
+        dto.setDiferencia(turno.getDiferencia());
+        dto.setCalculadoEn(LocalDateTime.now());
+        return dto;
+    }
+
+    private void aplicarCuadre(TurnoCaja turno, CuadreTurnoCajaResponseDTO cuadre) {
+        turno.setTotalVentasEfectivo(cuadre.getTotalVentasEfectivo());
+        turno.setTotalVentasTarjeta(cuadre.getTotalVentasTarjeta());
+        turno.setTotalVentasTransferencia(cuadre.getTotalVentasTransferencia());
+        turno.setTotalOtrosIngresos(cuadre.getTotalOtrosIngresos());
+        turno.setTotalEgresos(cuadre.getTotalEgresos());
+        turno.setMontoEsperado(cuadre.getMontoEsperado());
+    }
+
+    private BigDecimal totalVentasEfectivo(TurnoCaja turno) {
+        return valor(turno.getTotalVentasEfectivo());
+    }
+
+    private BigDecimal totalVentasTarjeta(TurnoCaja turno) {
+        return valor(turno.getTotalVentasTarjeta());
+    }
+
+    private BigDecimal totalVentasTransferencia(TurnoCaja turno) {
+        return valor(turno.getTotalVentasTransferencia());
+    }
+
+    private BigDecimal totalOtrosIngresos(TurnoCaja turno) {
+        return valor(turno.getTotalOtrosIngresos());
+    }
+
+    private BigDecimal totalEgresos(TurnoCaja turno) {
+        return valor(turno.getTotalEgresos());
+    }
+
+    private BigDecimal valor(BigDecimal valor) {
+        return valor == null ? CERO : normalizar(valor);
+    }
+
+    private BigDecimal normalizar(BigDecimal valor) {
+        return valor.setScale(2, RoundingMode.HALF_UP);
     }
 }

@@ -14,6 +14,13 @@ public class TurnoCajaMapper {
         dto.setIdTurnoCaja(turno.getIdTurnoCaja());
         dto.setMontoInicial(turno.getMontoInicial());
         dto.setMontoFinalDeclarado(turno.getMontoFinalDeclarado());
+        dto.setTotalVentasEfectivo(turno.getTotalVentasEfectivo());
+        dto.setTotalVentasTarjeta(turno.getTotalVentasTarjeta());
+        dto.setTotalVentasTransferencia(turno.getTotalVentasTransferencia());
+        dto.setTotalOtrosIngresos(turno.getTotalOtrosIngresos());
+        dto.setTotalEgresos(turno.getTotalEgresos());
+        dto.setMontoEsperado(turno.getMontoEsperado());
+        dto.setDiferencia(turno.getDiferencia());
         dto.setEstado(turno.getEstado());
         dto.setObservacionApertura(turno.getObservacionApertura());
         dto.setObservacionCierre(turno.getObservacionCierre());

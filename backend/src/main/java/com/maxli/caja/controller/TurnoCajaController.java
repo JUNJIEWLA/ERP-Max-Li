@@ -2,6 +2,7 @@ package com.maxli.caja.controller;
 
 import com.maxli.caja.dto.AbrirTurnoCajaRequestDTO;
 import com.maxli.caja.dto.CerrarTurnoCajaRequestDTO;
+import com.maxli.caja.dto.CuadreTurnoCajaResponseDTO;
 import com.maxli.caja.dto.TurnoCajaResponseDTO;
 import com.maxli.caja.service.TurnoCajaService;
 import jakarta.validation.Valid;
@@ -49,6 +50,11 @@ public class TurnoCajaController {
     @GetMapping("/actual/abierto")
     public ResponseEntity<TurnoCajaResponseDTO> buscarAbiertoActual(Principal principal) {
         return ResponseEntity.ok(turnoCajaService.buscarAbiertoPorUsuario(principal.getName()));
+    }
+
+    @GetMapping("/{id}/cuadre")
+    public ResponseEntity<CuadreTurnoCajaResponseDTO> calcularCuadre(@PathVariable Long id) {
+        return ResponseEntity.ok(turnoCajaService.calcularCuadre(id));
     }
 
     @PostMapping("/abrir")

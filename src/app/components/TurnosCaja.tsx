@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, Loader2, Plus, Search, X, Lock, Unlock, Wallet } from 'lucide-react';
-import { cajasApi, turnosCajaApi, Caja, TurnoCaja } from '../../imports/api';
+import { cajasApi, turnosCajaApi, Caja, TurnoCaja, CuadreTurnoCaja } from '../../imports/api';
 
 const PAGE_SIZE = 20;
 
@@ -26,6 +26,8 @@ export default function TurnosCaja() {
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeTarget, setCloseTarget] = useState<TurnoCaja | null>(null);
+  const [cuadrePreview, setCuadrePreview] = useState<CuadreTurnoCaja | null>(null);
+  const [loadingCuadre, setLoadingCuadre] = useState(false);
   const [openForm, setOpenForm] = useState({ idCaja: '', montoInicial: '', observacionApertura: '' });
   const [closeForm, setCloseForm] = useState({ montoFinalDeclarado: '', observacionCierre: '' });
   const [saving, setSaving] = useState(false);
@@ -65,17 +67,28 @@ export default function TurnosCaja() {
     setShowOpenModal(true);
   };
 
-  const openCierre = (turno: TurnoCaja) => {
+  const openCierre = async (turno: TurnoCaja) => {
     setFormError('');
     setCloseTarget(turno);
+    setCuadrePreview(null);
     setCloseForm({ montoFinalDeclarado: '', observacionCierre: '' });
     setShowCloseModal(true);
+    setLoadingCuadre(true);
+    try {
+      setCuadrePreview(await turnosCajaApi.calcularCuadre(turno.idTurnoCaja));
+    } catch (err: any) {
+      setFormError(err.message || 'Error al calcular cuadre');
+    } finally {
+      setLoadingCuadre(false);
+    }
   };
 
   const closeModals = () => {
     setShowOpenModal(false);
     setShowCloseModal(false);
     setCloseTarget(null);
+    setCuadrePreview(null);
+    setLoadingCuadre(false);
     setSaving(false);
     setFormError('');
   };
@@ -134,6 +147,10 @@ export default function TurnosCaja() {
   );
 
   const abiertosEnPagina = turnos.filter(turno => turno.estado === 'ABIERTO').length;
+  const montoDeclaradoPreview = Number(closeForm.montoFinalDeclarado);
+  const diferenciaPreview = cuadrePreview && closeForm.montoFinalDeclarado.trim() !== '' && !Number.isNaN(montoDeclaradoPreview)
+    ? montoDeclaradoPreview - cuadrePreview.montoEsperado
+    : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -187,7 +204,7 @@ export default function TurnosCaja() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-muted-foreground text-sm">Monto Inicial Actual</p>
-              <p className="text-xl mt-1">{fmtMoney(turnoActual?.montoInicial)}</p>
+              <p className="text-xl mt-1">{fmtMoney(turnoActual?.montoEsperado ?? turnoActual?.montoInicial)}</p>
             </div>
             <div className="w-11 h-11 bg-blue-500 rounded-lg flex items-center justify-center text-white">
               <Wallet size={22} />
@@ -238,7 +255,7 @@ export default function TurnosCaja() {
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Caja</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Apertura</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Cierre</th>
-                <th className="px-5 py-3 text-right font-semibold text-muted-foreground">Montos</th>
+                <th className="px-5 py-3 text-right font-semibold text-muted-foreground">Cuadre</th>
                 <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Estado</th>
                 <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Acciones</th>
               </tr>
@@ -257,8 +274,16 @@ export default function TurnosCaja() {
                     <div className="text-xs">{fmtDate(turno.fechaCierre)}</div>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <div className="font-medium">{fmtMoney(turno.montoInicial)}</div>
-                    <div className="text-xs text-muted-foreground">{turno.montoFinalDeclarado === null ? '-' : fmtMoney(turno.montoFinalDeclarado)}</div>
+                    <div className="font-medium">{fmtMoney(turno.montoEsperado)}</div>
+                    <div className={`text-xs ${
+                      turno.diferencia === null
+                        ? 'text-muted-foreground'
+                        : turno.diferencia === 0
+                        ? 'text-green-600'
+                        : 'text-rose-600'
+                    }`}>
+                      {turno.diferencia === null ? 'Sin declarar' : fmtMoney(turno.diferencia)}
+                    </div>
                   </td>
                   <td className="px-5 py-3 text-center">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -375,6 +400,42 @@ export default function TurnosCaja() {
                 <div className="text-muted-foreground">{closeTarget.usernameUsuarioApertura} · {fmtDate(closeTarget.fechaApertura)}</div>
                 <div className="text-muted-foreground">Inicial: {fmtMoney(closeTarget.montoInicial)}</div>
               </div>
+
+              <div className="rounded-lg border border-border p-3 text-sm space-y-2">
+                {loadingCuadre ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 size={14} className="animate-spin" />
+                    Calculando cuadre...
+                  </div>
+                ) : cuadrePreview ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Ventas efectivo</p>
+                        <p className="font-medium">{fmtMoney(cuadrePreview.totalVentasEfectivo)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Ventas tarjeta</p>
+                        <p className="font-medium">{fmtMoney(cuadrePreview.totalVentasTarjeta)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Otros ingresos</p>
+                        <p className="font-medium">{fmtMoney(cuadrePreview.totalOtrosIngresos)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Egresos</p>
+                        <p className="font-medium">{fmtMoney(cuadrePreview.totalEgresos)}</p>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-border flex items-center justify-between">
+                      <span className="text-muted-foreground">Efectivo esperado</span>
+                      <span className="font-bold text-foreground">{fmtMoney(cuadrePreview.montoEsperado)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-muted-foreground">Cuadre no disponible</div>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Monto Final Declarado</label>
                 <input
@@ -386,6 +447,15 @@ export default function TurnosCaja() {
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
+              {diferenciaPreview !== null && (
+                <div className={`rounded-lg px-3 py-2 text-sm border ${
+                  diferenciaPreview === 0
+                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                    : 'bg-rose-500/10 text-rose-600 border-rose-500/20'
+                }`}>
+                  Diferencia: {fmtMoney(diferenciaPreview)}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Observación</label>
                 <textarea

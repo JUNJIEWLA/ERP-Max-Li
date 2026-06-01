@@ -51,6 +51,27 @@ public class TurnoCaja {
     @Column(name = "monto_final_declarado", precision = 12, scale = 2)
     private BigDecimal montoFinalDeclarado;
 
+    @Column(name = "total_ventas_efectivo", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalVentasEfectivo;
+
+    @Column(name = "total_ventas_tarjeta", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalVentasTarjeta;
+
+    @Column(name = "total_ventas_transferencia", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalVentasTransferencia;
+
+    @Column(name = "total_otros_ingresos", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalOtrosIngresos;
+
+    @Column(name = "total_egresos", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalEgresos;
+
+    @Column(name = "monto_esperado", nullable = false, precision = 12, scale = 2)
+    private BigDecimal montoEsperado;
+
+    @Column(name = "diferencia", precision = 12, scale = 2)
+    private BigDecimal diferencia;
+
     @Column(name = "estado", nullable = false, length = 20)
     private String estado;
 

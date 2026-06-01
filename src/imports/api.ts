@@ -177,12 +177,32 @@ export interface TurnoCaja {
   usernameUsuarioCierre: string | null;
   montoInicial: number;
   montoFinalDeclarado: number | null;
+  totalVentasEfectivo: number;
+  totalVentasTarjeta: number;
+  totalVentasTransferencia: number;
+  totalOtrosIngresos: number;
+  totalEgresos: number;
+  montoEsperado: number;
+  diferencia: number | null;
   estado: string;
   observacionApertura: string | null;
   observacionCierre: string | null;
   fechaApertura: string;
   fechaCierre: string | null;
   fechaModificacion: string | null;
+}
+
+export interface CuadreTurnoCaja {
+  idTurnoCaja: number;
+  totalVentasEfectivo: number;
+  totalVentasTarjeta: number;
+  totalVentasTransferencia: number;
+  totalOtrosIngresos: number;
+  totalEgresos: number;
+  montoEsperado: number;
+  montoFinalDeclarado: number | null;
+  diferencia: number | null;
+  calculadoEn: string;
 }
 
 // ── API: Productos ───────────────────────────────────────
@@ -367,6 +387,9 @@ export const turnosCajaApi = {
 
   abiertoActual: () =>
     get<TurnoCaja>('/cajas/turnos/actual/abierto'),
+
+  calcularCuadre: (id: number) =>
+    get<CuadreTurnoCaja>(`/cajas/turnos/${id}/cuadre`),
 
   abrir: (body: { idCaja: number; montoInicial: number; observacionApertura?: string }) =>
     post<TurnoCaja>('/cajas/turnos/abrir', body),

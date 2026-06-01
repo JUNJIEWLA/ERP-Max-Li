@@ -19,6 +19,13 @@ public class TurnoCajaResponseDTO {
     private String usernameUsuarioCierre;
     private BigDecimal montoInicial;
     private BigDecimal montoFinalDeclarado;
+    private BigDecimal totalVentasEfectivo;
+    private BigDecimal totalVentasTarjeta;
+    private BigDecimal totalVentasTransferencia;
+    private BigDecimal totalOtrosIngresos;
+    private BigDecimal totalEgresos;
+    private BigDecimal montoEsperado;
+    private BigDecimal diferencia;
     private String estado;
     private String observacionApertura;
     private String observacionCierre;

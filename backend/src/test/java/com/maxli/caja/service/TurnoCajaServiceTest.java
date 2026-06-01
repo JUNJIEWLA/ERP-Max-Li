@@ -2,6 +2,7 @@ package com.maxli.caja.service;
 
 import com.maxli.caja.dto.AbrirTurnoCajaRequestDTO;
 import com.maxli.caja.dto.CerrarTurnoCajaRequestDTO;
+import com.maxli.caja.dto.CuadreTurnoCajaResponseDTO;
 import com.maxli.caja.dto.TurnoCajaResponseDTO;
 import com.maxli.caja.entity.Caja;
 import com.maxli.caja.entity.TurnoCaja;
@@ -68,6 +69,10 @@ class TurnoCajaServiceTest {
         assertThat(turnoGuardado.getCaja()).isSameAs(caja);
         assertThat(turnoGuardado.getUsuarioApertura()).isSameAs(usuario);
         assertThat(turnoGuardado.getMontoInicial()).isEqualByComparingTo("5000.00");
+        assertThat(turnoGuardado.getTotalVentasEfectivo()).isEqualByComparingTo("0.00");
+        assertThat(turnoGuardado.getTotalVentasTarjeta()).isEqualByComparingTo("0.00");
+        assertThat(turnoGuardado.getMontoEsperado()).isEqualByComparingTo("5000.00");
+        assertThat(turnoGuardado.getDiferencia()).isNull();
         assertThat(turnoGuardado.getEstado()).isEqualTo("ABIERTO");
         assertThat(turnoGuardado.getFechaApertura()).isNotNull();
     }
@@ -130,8 +135,34 @@ class TurnoCajaServiceTest {
         assertThat(turno.getEstado()).isEqualTo("CERRADO");
         assertThat(turno.getUsuarioCierre()).isSameAs(supervisor);
         assertThat(turno.getMontoFinalDeclarado()).isEqualByComparingTo("7600.00");
+        assertThat(turno.getTotalVentasEfectivo()).isEqualByComparingTo("0.00");
+        assertThat(turno.getTotalVentasTarjeta()).isEqualByComparingTo("0.00");
+        assertThat(turno.getMontoEsperado()).isEqualByComparingTo("5000.00");
+        assertThat(turno.getDiferencia()).isEqualByComparingTo("2600.00");
         assertThat(turno.getFechaCierre()).isNotNull();
         verify(turnoCajaRepository).save(turno);
+    }
+
+    @Test
+    void calcularCuadre_retorna_monto_esperado_sin_cerrar_turno() {
+        TurnoCaja turno = turnoAbierto();
+        turno.setTotalVentasEfectivo(new BigDecimal("1200.00"));
+        turno.setTotalVentasTarjeta(new BigDecimal("800.00"));
+        turno.setTotalOtrosIngresos(new BigDecimal("100.00"));
+        turno.setTotalEgresos(new BigDecimal("250.00"));
+
+        when(turnoCajaRepository.findById(10L)).thenReturn(Optional.of(turno));
+
+        CuadreTurnoCajaResponseDTO result = turnoCajaService.calcularCuadre(10L);
+
+        assertThat(result.getTotalVentasEfectivo()).isEqualByComparingTo("1200.00");
+        assertThat(result.getTotalVentasTarjeta()).isEqualByComparingTo("800.00");
+        assertThat(result.getTotalOtrosIngresos()).isEqualByComparingTo("100.00");
+        assertThat(result.getTotalEgresos()).isEqualByComparingTo("250.00");
+        assertThat(result.getMontoEsperado()).isEqualByComparingTo("6050.00");
+        assertThat(result.getMontoFinalDeclarado()).isNull();
+        assertThat(result.getDiferencia()).isNull();
+        assertThat(result.getCalculadoEn()).isNotNull();
     }
 
     @Test
@@ -195,6 +226,12 @@ class TurnoCajaServiceTest {
         turno.setCaja(cajaActiva());
         turno.setUsuarioApertura(usuarioActivo("cajero"));
         turno.setMontoInicial(new BigDecimal("5000.00"));
+        turno.setTotalVentasEfectivo(BigDecimal.ZERO);
+        turno.setTotalVentasTarjeta(BigDecimal.ZERO);
+        turno.setTotalVentasTransferencia(BigDecimal.ZERO);
+        turno.setTotalOtrosIngresos(BigDecimal.ZERO);
+        turno.setTotalEgresos(BigDecimal.ZERO);
+        turno.setMontoEsperado(new BigDecimal("5000.00"));
         turno.setEstado("ABIERTO");
         turno.setFechaApertura(LocalDateTime.now().minusHours(4));
         return turno;
