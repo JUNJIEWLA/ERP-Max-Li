@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -62,6 +63,7 @@ public class PagoProveedorService {
         pago.setMontoPagado(dto.getMontoPagado());
         pago.setMetodo(dto.getMetodo());
         pago.setNumeroReferencia(dto.getNumeroReferencia());
+        pago.setFecha(LocalDateTime.now()); // asignado explícitamente para garantizar que se persiste con hora exacta
 
         return ordenCompraMapper.toPagoDto(pagoProveedorRepository.save(pago));
     }

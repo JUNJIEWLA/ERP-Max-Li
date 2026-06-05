@@ -1,8 +1,11 @@
-import { Percent, Tag, Receipt } from 'lucide-react';
+import { Percent, Tag, Receipt, UserCircle, CheckCircle2 } from 'lucide-react';
 
 interface SaleSummaryPanelProps {
   totalItems: number;
   clienteNombre: string;
+  tieneClienteSeleccionado: boolean;
+  descuentoClientePredeterminado: number;
+  onAbrirSelectorCliente: () => void;
   ncfTipo: string;
   tipoNCF: string;
   descuentoGlobal: number;
@@ -18,6 +21,9 @@ interface SaleSummaryPanelProps {
 export default function SaleSummaryPanel({
   totalItems,
   clienteNombre,
+  tieneClienteSeleccionado,
+  descuentoClientePredeterminado,
+  onAbrirSelectorCliente,
   ncfTipo,
   tipoNCF,
   descuentoGlobal,
@@ -32,16 +38,34 @@ export default function SaleSummaryPanel({
   return (
     <div className="flex flex-col border-l border-border bg-background" style={{ width: '268px', minWidth: '268px' }}>
       {/* Cliente / NCF */}
-      <div className="px-3 py-2 border-b border-border bg-muted/30">
+      <button
+        id="pos-btn-cliente"
+        onClick={onAbrirSelectorCliente}
+        title="F3 — Seleccionar cliente"
+        className={`w-full px-3 py-2 border-b border-border text-left transition-colors ${
+          tieneClienteSeleccionado
+            ? 'bg-emerald-50/60 hover:bg-emerald-100/60'
+            : 'bg-muted/30 hover:bg-muted/50'
+        }`}
+      >
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-0.5">
-          <Receipt size={12} />
+          {tieneClienteSeleccionado
+            ? <CheckCircle2 size={12} className="text-emerald-500" />
+            : <UserCircle size={12} />}
           <span>Cliente (F3)</span>
+          {tieneClienteSeleccionado && descuentoClientePredeterminado > 0 && (
+            <span className="ml-auto text-xs font-bold text-emerald-600 flex items-center gap-0.5">
+              <Percent size={10} />{descuentoClientePredeterminado}%
+            </span>
+          )}
         </div>
-        <p className="text-sm font-medium truncate">{clienteNombre}</p>
+        <p className={`text-sm font-medium truncate ${
+          tieneClienteSeleccionado ? 'text-emerald-700' : ''
+        }`}>{clienteNombre}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
           NCF: <strong className="text-foreground">{ncfTipo}</strong> &bull; {tipoNCF}
         </p>
-      </div>
+      </button>
 
       {/* Descuento global */}
       <div className="px-3 py-3 border-b border-border">

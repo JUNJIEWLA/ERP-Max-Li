@@ -15,6 +15,7 @@ import Login from './components/Login';
 import Proveedores from './components/Proveedores';
 import OrdenesCompra from './components/OrdenesCompra';
 import NotasRecepcion from './components/NotasRecepcion';
+import Clientes from './components/Clientes';
 import { setToken, clearToken, getToken } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
@@ -94,6 +95,8 @@ export default function App() {
         return <Devoluciones />;
       case 'proveedores':
         return <Proveedores />;
+      case 'clientes':
+        return <Clientes />;
       case 'ordenes-compra':
         return <OrdenesCompra />;
       case 'notas-recepcion':
