@@ -7,6 +7,8 @@ import SaleSummaryPanel from './SaleSummaryPanel';
 import ActionBar from './ActionBar';
 import HoldListModal, { HeldSale } from './HoldListModal';
 import NCFSelectorModal from './NCFSelectorModal';
+import ClienteSelectorModal from './ClienteSelectorModal';
+import { ClienteResumen } from '../../../imports/api';
 
 // HeldSale is imported from HoldListModal
 
@@ -27,11 +29,13 @@ export default function SaleScreen() {
   const [tipoNCFIndex, setTipoNCFIndex] = useState(0);
   const [showHoldList, setShowHoldList] = useState(false);
   const [showNCFSelector, setShowNCFSelector] = useState(false);
+  const [showClienteSelector, setShowClienteSelector] = useState(false);
+  const [selectedCliente, setSelectedCliente] = useState<ClienteResumen | null>(null);
 
   const cajeroNombre = 'Juan P.';
   const cajaId = 'CAJA-01';
   const turnoId = 'T-2026042';
-  const clienteNombre = 'Cliente General';
+  const clienteNombre = selectedCliente ? selectedCliente.nombreCompleto : 'Consumidor Final';
   const ncf = 'B01-00000042';
   const tipoNCF = tiposNCF[tipoNCFIndex];
 
@@ -126,6 +130,22 @@ export default function SaleScreen() {
     }
   };
 
+  /** Selección de cliente: auto-rellena descuento y NCF; ambos permanecen editables. */
+  const handleClienteSelect = (cliente: ClienteResumen | null) => {
+    setSelectedCliente(cliente);
+    if (cliente) {
+      // Auto-fill descuento global con el predeterminado del cliente
+      setDescuentoGlobal(cliente.descuentoPredeterminado);
+      // Auto-seleccionar tipo NCF preferido del cliente
+      const ncfIdx = tiposNCF.findIndex((t) => t.codigo === cliente.tipoNcfPreferido);
+      if (ncfIdx >= 0) setTipoNCFIndex(ncfIdx);
+    } else {
+      // Limpiar cliente → resetear a defaults
+      setDescuentoGlobal(0);
+      setTipoNCFIndex(0);
+    }
+  };
+
   const handleHold = () => {
     if (cart.length === 0) return;
     // Si hay una orden activa en la caja, la pausamos antes de cargar
@@ -139,6 +159,7 @@ export default function SaleScreen() {
     setHoldList([...holdList, newHeldSale]);
     setCart([]);
     setDescuentoGlobal(0);
+    setSelectedCliente(null);
     setSelectedRowIndex(-1);
   };
 
@@ -162,6 +183,7 @@ export default function SaleScreen() {
     }
     setCart(sale.items);
     setDescuentoGlobal(0);
+    setSelectedCliente(null);
     setSelectedRowIndex(-1);
     setShowHoldList(false);
   };
@@ -184,7 +206,7 @@ export default function SaleScreen() {
       switch (e.key) {
         case 'F3':
           e.preventDefault();
-          alert('Seleccionar cliente (F3)');
+          setShowClienteSelector(true);
           break;
         case 'F4':
           e.preventDefault();
@@ -214,6 +236,7 @@ export default function SaleScreen() {
           e.preventDefault();
           if (showHoldList) { setShowHoldList(false); break; }
           if (showNCFSelector) { setShowNCFSelector(false); break; }
+          if (showClienteSelector) { setShowClienteSelector(false); break; }
           handleCheckout();
           break;
       }
@@ -221,7 +244,7 @@ export default function SaleScreen() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, holdList, tipoNCFIndex, showHoldList, showNCFSelector]);
+  }, [cart, holdList, tipoNCFIndex, showHoldList, showNCFSelector, showClienteSelector]);
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -277,6 +300,9 @@ export default function SaleScreen() {
         <SaleSummaryPanel
           totalItems={getTotalItems()}
           clienteNombre={clienteNombre}
+          tieneClienteSeleccionado={selectedCliente !== null}
+          descuentoClientePredeterminado={selectedCliente?.descuentoPredeterminado ?? 0}
+          onAbrirSelectorCliente={() => setShowClienteSelector(true)}
           ncfTipo={tipoNCF.codigo}
           tipoNCF={tipoNCF.nombre}
           descuentoGlobal={descuentoGlobal}
@@ -316,6 +342,14 @@ export default function SaleScreen() {
           currentIndex={tipoNCFIndex}
           onSelect={setTipoNCFIndex}
           onClose={() => setShowNCFSelector(false)}
+        />
+      )}
+
+      {/* Modal: Selector de Cliente */}
+      {showClienteSelector && (
+        <ClienteSelectorModal
+          onSelect={handleClienteSelect}
+          onClose={() => setShowClienteSelector(false)}
         />
       )}
     </div>

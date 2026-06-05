@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+} from '@floating-ui/react-dom';
 import {
   Plus, X, Loader2, ShoppingCart, Search, ChevronDown, ChevronRight,
-  Send, Ban, CheckCircle2, CreditCard, PackageCheck, Trash2, AlertTriangle
+  Send, Ban, CheckCircle2, CreditCard, PackageCheck, Trash2,
+  MoreVertical, Eye, Pencil, FileText, AlertTriangle
 } from 'lucide-react';
 import { ordenesCompraApi, proveedoresApi, productosApi, OrdenCompra, Proveedor, Producto } from '../../imports/api';
 
@@ -24,6 +33,234 @@ const PAGO_BADGE: Record<string, string> = {
 
 type LineaOrden = { idProducto: number; nombre: string; cantidad: number; precioUnitario: number };
 
+/* ─── Dropdown menu por fila — Floating UI (portal + auto-posicionamiento) ─── */
+interface RowMenuProps {
+  orden: OrdenCompra;
+  onVerDetalles: () => void;
+  onEditar: () => void;
+  onEnviar: () => void;
+  onPago: () => void;
+  onForzarCierre: () => void;
+  onAnular: () => void;
+  onGenerarReporte: () => void;
+}
+
+function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onPago, onForzarCierre, onAnular, onGenerarReporte }: RowMenuProps) {
+  const [open, setOpen] = useState(false);
+
+  // useFloating: portal con strategy 'fixed' → coordenadas relativas al viewport
+  const { refs, floatingStyles, update } = useFloating({
+    open,
+    strategy: 'fixed',                 // CRÍTICO: portal en body requiere fixed
+    placement: 'bottom-end',
+    middleware: [
+      offset(6),
+      flip({ fallbackPlacements: ['top-end'] }),
+      shift({ padding: 8 }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+
+  // Cierra al hacer clic fuera
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const floating  = refs.floating.current;
+      const reference = refs.reference.current as Element | null;
+      if (
+        floating  && !floating.contains(e.target as Node) &&
+        reference && !reference.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open, refs]);
+
+  // Cierra en Escape
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const menuItem = (
+    icon: React.ReactNode,
+    label: string,
+    onClick: () => void,
+    variant: 'default' | 'danger' | 'warning' | 'success' | 'info' = 'default'
+  ) => {
+    const colors: Record<string, string> = {
+      default: 'text-foreground hover:bg-muted',
+      danger:  'text-rose-600 hover:bg-rose-500/10',
+      warning: 'text-amber-600 hover:bg-amber-500/10',
+      success: 'text-green-600 hover:bg-green-500/10',
+      info:    'text-blue-600 hover:bg-blue-500/10',
+    };
+    return (
+      <button
+        onClick={() => { onClick(); setOpen(false); }}
+        className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm rounded-lg transition-colors ${colors[variant]}`}
+      >
+        <span className="flex-shrink-0">{icon}</span>
+        {label}
+      </button>
+    );
+  };
+
+  const canEdit   = orden.estado === 'ENVIADA';
+  const canEnviar = orden.estado === 'BORRADOR';
+  const canPago   = ['ENVIADA', 'RECEPCION_PARCIAL'].includes(orden.estado) && orden.estadoPago !== 'SALDADO';
+  const canForzar = ['ENVIADA', 'RECEPCION_PARCIAL'].includes(orden.estado);
+  const canAnular = ['BORRADOR', 'ENVIADA'].includes(orden.estado);
+  const hasActions = canEnviar || canPago || canForzar || canAnular;
+
+  const dropdown = open && createPortal(
+    <div
+      ref={refs.setFloating}
+      style={{ ...floatingStyles, zIndex: 9999, width: 228 }}
+      className="bg-card border border-border rounded-xl shadow-2xl p-1.5 ring-1 ring-black/5"
+      onAnimationEnd={update}         // recalcula tras la animación
+    >
+      {/* Cabecera de contexto */}
+      <div className="px-3 py-2 mb-1 border-b border-border">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Orden de Compra</p>
+        <p className="text-xs font-mono font-bold text-foreground">
+          OC-{String(orden.idOrdenCompra).padStart(4, '0')}
+        </p>
+      </div>
+
+      {/* Acciones siempre disponibles */}
+      {menuItem(<Eye size={14} />,      'Ver detalles',    onVerDetalles)}
+      {menuItem(<FileText size={14} />, 'Generar reporte', onGenerarReporte)}
+      {canEdit && menuItem(<Pencil size={14} />, 'Editar orden', onEditar, 'info')}
+
+      {/* Acciones de estado (separadas) */}
+      {hasActions && <div className="my-1.5 border-t border-border" />}
+      {hasActions && (
+        <p className="px-3 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Acciones</p>
+      )}
+      {canEnviar && menuItem(<Send size={14} />,         'Enviar al proveedor', onEnviar,       'info')}
+      {canPago   && menuItem(<CreditCard size={14} />,   'Registrar pago',      onPago,         'success')}
+      {canForzar && menuItem(<PackageCheck size={14} />, 'Forzar cierre',       onForzarCierre, 'warning')}
+      {canAnular && menuItem(<Ban size={14} />,          'Anular orden',        onAnular,       'danger')}
+    </div>,
+    document.body
+  );
+
+  return (
+    <div className="flex justify-center">
+      <button
+        ref={refs.setReference}
+        id={`btn-menu-${orden.idOrdenCompra}`}
+        onClick={() => setOpen(v => !v)}
+        className={`p-1.5 rounded-lg transition-all duration-150 ${
+          open
+            ? 'bg-primary/10 text-primary'
+            : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+        }`}
+        title="Más opciones"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {dropdown}
+    </div>
+  );
+}
+
+/* ─── Modal Ver Detalles ──────────────────────────────────────────────── */
+function DetalleModal({ orden, onClose }: { orden: OrdenCompra; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-xl border border-border max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <div>
+            <h3 className="text-lg font-bold">Orden de Compra</h3>
+            <p className="text-xs text-muted-foreground font-mono mt-0.5">
+              OC-{String(orden.idOrdenCompra).padStart(4, '0')}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+        </div>
+        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Info general */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-0.5">Proveedor</p>
+              <p className="font-semibold text-sm">{orden.nombreProveedor}</p>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-0.5">Total</p>
+              <p className="font-bold text-sm">{fmt(orden.total)}</p>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-0.5">Estado</p>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ESTADO_BADGE[orden.estado] ?? 'bg-muted'}`}>
+                {orden.estado.replace('_', ' ')}
+              </span>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-0.5">Pago</p>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAGO_BADGE[orden.estadoPago] ?? 'bg-muted'}`}>
+                {orden.estadoPago}
+              </span>
+            </div>
+          </div>
+
+          {/* Productos */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Productos</p>
+            <div className="space-y-1.5">
+              {orden.detalles.map(d => (
+                <div key={d.idDetalleOrdenCompra} className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2.5 text-sm border border-border">
+                  <span className="font-medium">{d.nombreProducto}</span>
+                  <div className="flex items-center gap-4 text-muted-foreground text-xs">
+                    <span>{d.cantidadRecibida}/{d.cantidad} recibidos</span>
+                    <span className="font-semibold text-foreground">{fmt(d.subtotal)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Pagos */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pagos registrados</p>
+            {orden.pagos.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Sin pagos aún</p>
+            ) : (
+              <div className="space-y-1.5">
+                {orden.pagos.map(p => (
+                  <div key={p.idPagoProveedor} className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2.5 border border-border">
+                    <div>
+                      <span className="font-semibold text-sm">{fmt(p.montoPagado)}</span>
+                      <span className="text-xs text-muted-foreground ml-2">• {p.metodo}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(p.fecha).toLocaleDateString('es-DO')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="p-4 border-t border-border flex justify-end">
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-muted-foreground">Balance pendiente:</p>
+            <p className={`font-bold text-sm ${orden.balancePendiente > 0 ? 'text-destructive' : 'text-green-600'}`}>
+              {fmt(orden.balancePendiente)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Componente principal ────────────────────────────────────────────── */
 export default function OrdenesCompra() {
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,8 +269,8 @@ export default function OrdenesCompra() {
   const [totalPages, setTotalPages] = useState(0);
   const PAGE_SIZE = 15;
 
-  // Detalle expandido
-  const [expanded, setExpanded] = useState<number | null>(null);
+  // Modal detalle
+  const [detalleOrden, setDetalleOrden] = useState<OrdenCompra | null>(null);
 
   // Modal nueva orden
   const [showNueva, setShowNueva] = useState(false);
@@ -54,6 +291,9 @@ export default function OrdenesCompra() {
 
   // Confirm action
   const [confirmAction, setConfirmAction] = useState<{ id: number; accion: 'anular' | 'forzar-cierre' } | null>(null);
+
+  // Toast de reporte
+  const [reporteToast, setReporteToast] = useState<string | null>(null);
 
   const fetchOrdenes = useCallback(async () => {
     setLoading(true);
@@ -143,6 +383,12 @@ export default function OrdenesCompra() {
     setPagoOrdenId(id); setPagoMonto(''); setPagoMetodo('TRANSFERENCIA'); setPagoRef(''); setPagoError('');
   };
 
+  const handleGenerarReporte = (orden: OrdenCompra) => {
+    // Placeholder: muestra un toast elegante
+    setReporteToast(`Generando reporte para OC-${String(orden.idOrdenCompra).padStart(4, '0')}...`);
+    setTimeout(() => setReporteToast(null), 3000);
+  };
+
   const filtered = ordenes.filter(o =>
     o.nombreProveedor.toLowerCase().includes(search.toLowerCase()) ||
     String(o.idOrdenCompra).includes(search)
@@ -150,15 +396,33 @@ export default function OrdenesCompra() {
 
   return (
     <div className="p-6 space-y-6">
+
+      {/* Keyframe para el menú portal */}
+      <style>{`
+        @keyframes rowMenuIn {
+          from { opacity: 0; transform: scale(.95) translateY(-4px); }
+          to   { opacity: 1; transform: scale(1)  translateY(0); }
+        }
+      `}</style>
+
+      {/* Toast reporte */}
+      {reporteToast && (
+        <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-card border border-border shadow-2xl rounded-xl px-4 py-3 text-sm font-medium animate-in">
+          <Loader2 size={16} className="animate-spin text-primary" />
+          {reporteToast}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <ShoppingCart size={26} className="text-primary" /> Órdenes de Compra
           </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Gestión y seguimiento de órdenes con proveedores</p>
         </div>
         <button id="btn-nueva-orden" onClick={openNueva}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium">
+          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl hover:bg-primary/90 transition-colors font-medium shadow-sm">
           <Plus size={18} /> Nueva Orden
         </button>
       </div>
@@ -168,12 +432,12 @@ export default function OrdenesCompra() {
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input type="text" placeholder="Buscar por proveedor o #orden..."
           value={search} onChange={e => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
         {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"><X size={14} /></button>}
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-border overflow-hidden bg-card">
+      <div className="rounded-2xl border border-border overflow-hidden bg-card shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 size={32} className="animate-spin text-primary" /></div>
         ) : filtered.length === 0 ? (
@@ -192,7 +456,7 @@ export default function OrdenesCompra() {
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Pago</th>
                 <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Balance</th>
-                <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acciones</th>
+                <th className="px-4 py-3 text-center font-semibold text-muted-foreground w-16">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -200,9 +464,15 @@ export default function OrdenesCompra() {
                 <>
                   <tr key={o.idOrdenCompra} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
-                      <button onClick={() => setExpanded(expanded === o.idOrdenCompra ? null : o.idOrdenCompra)}
+                      <button
+                        onClick={() => {
+                          // Expandir fila: usamos el modal de detalles directamente al hacer clic en la flecha
+                          setDetalleOrden(detalleOrden?.idOrdenCompra === o.idOrdenCompra ? null : o);
+                        }}
                         className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground">
-                        {expanded === o.idOrdenCompra ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {detalleOrden?.idOrdenCompra === o.idOrdenCompra
+                          ? <ChevronDown size={14} />
+                          : <ChevronRight size={14} />}
                       </button>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">OC-{String(o.idOrdenCompra).padStart(4, '0')}</td>
@@ -222,43 +492,24 @@ export default function OrdenesCompra() {
                       {fmt(o.balancePendiente)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        {o.estado === 'BORRADOR' && (
-                          <button id={`btn-enviar-${o.idOrdenCompra}`} onClick={() => handleEstado(o.idOrdenCompra, 'enviar')}
-                            title="Enviar al proveedor"
-                            className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-600 transition-colors">
-                            <Send size={15} />
-                          </button>
-                        )}
-                        {['ENVIADA', 'RECEPCION_PARCIAL'].includes(o.estado) && o.estadoPago !== 'SALDADO' && (
-                          <button id={`btn-pago-${o.idOrdenCompra}`} onClick={() => openPago(o.idOrdenCompra)}
-                            title="Registrar pago"
-                            className="p-1.5 rounded-lg hover:bg-green-500/10 text-green-600 transition-colors">
-                            <CreditCard size={15} />
-                          </button>
-                        )}
-                        {['ENVIADA', 'RECEPCION_PARCIAL'].includes(o.estado) && (
-                          <button id={`btn-forzar-${o.idOrdenCompra}`} onClick={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'forzar-cierre' })}
-                            title="Forzar cierre"
-                            className="p-1.5 rounded-lg hover:bg-amber-500/10 text-amber-600 transition-colors">
-                            <PackageCheck size={15} />
-                          </button>
-                        )}
-                        {['BORRADOR', 'ENVIADA'].includes(o.estado) && (
-                          <button id={`btn-anular-${o.idOrdenCompra}`} onClick={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'anular' })}
-                            title="Anular"
-                            className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-600 transition-colors">
-                            <Ban size={15} />
-                          </button>
-                        )}
-                      </div>
+                      <RowMenu
+                        orden={o}
+                        onVerDetalles={() => setDetalleOrden(o)}
+                        onEditar={() => {/* TODO: abrir modal de edición */ }}
+                        onEnviar={() => handleEstado(o.idOrdenCompra, 'enviar')}
+                        onPago={() => openPago(o.idOrdenCompra)}
+                        onForzarCierre={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'forzar-cierre' })}
+                        onAnular={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'anular' })}
+                        onGenerarReporte={() => handleGenerarReporte(o)}
+                      />
                     </td>
                   </tr>
-                  {expanded === o.idOrdenCompra && (
+
+                  {/* Fila expandida inline (solo productos y pagos resumidos) */}
+                  {detalleOrden?.idOrdenCompra === o.idOrdenCompra && (
                     <tr key={`exp-${o.idOrdenCompra}`} className="bg-muted/20">
                       <td colSpan={8} className="px-6 py-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Productos */}
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Productos</p>
                             <div className="space-y-1">
@@ -273,7 +524,6 @@ export default function OrdenesCompra() {
                               ))}
                             </div>
                           </div>
-                          {/* Pagos */}
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Pagos registrados</p>
                             {o.pagos.length === 0 ? (
@@ -316,6 +566,11 @@ export default function OrdenesCompra() {
               className="px-3 py-1 rounded-lg border border-border disabled:opacity-40 hover:bg-muted transition-colors">Siguiente</button>
           </div>
         </div>
+      )}
+
+      {/* Modal Ver Detalles (popup completo) */}
+      {detalleOrden && (
+        <DetalleModal orden={detalleOrden} onClose={() => setDetalleOrden(null)} />
       )}
 
       {/* Modal Nueva Orden */}

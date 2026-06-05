@@ -15,6 +15,8 @@ import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.almacen.entity.Almacen;
+import com.maxli.almacen.repository.AlmacenRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +41,7 @@ public class NotaRecepcionService {
     private final OrdenCompraRepository ordenCompraRepository;
     private final DetalleOrdenCompraRepository detalleOrdenCompraRepository;
     private final ExistenciaRepository existenciaRepository;
+    private final AlmacenRepository almacenRepository;
     private final OrdenCompraService ordenCompraService;
     private final NotaRecepcionMapper notaRecepcionMapper;
 
@@ -83,7 +86,9 @@ public class NotaRecepcionService {
 
     /**
      * Confirma la nota de recepción:
-     * 1. Actualiza Existencia para cada ítem CONFORME.
+     * 1. Incrementa Existencia por cada ítem con cantidadRecibida > 0, sin importar
+     *    la observación (CONFORME, DAÑADO, INCOMPLETO). Toda mercancía físicamente
+     *    recibida entra al almacén; la condición se documenta pero no bloquea el stock.
      * 2. Acumula cantidadRecibida en DetalleOrdenCompra.
      * 3. Actualiza el estado de la OrdenCompra (RECEPCION_PARCIAL o COMPLETADA).
      */
@@ -96,35 +101,42 @@ public class NotaRecepcionService {
                     "Estado actual: " + nota.getEstado());
         }
 
-        // Procesar cada ítem de la nota
         for (DetalleNotaRecepcion detalle : nota.getDetalles()) {
-            if ("CONFORME".equals(detalle.getObservacion())) {
-                // 1. Actualizar stock en Existencia
+            int cantidadRecibida = detalle.getCantidadRecibida();
+
+            // Solo procesamos ítems que realmente llegaron (cantidad > 0)
+            if (cantidadRecibida > 0) {
                 Long idProducto = detalle.getDetalleOrdenCompra().getProducto().getIdProducto();
+
+                // 1. Incrementar stock en Existencia (independientemente de la condición física)
+                // Si la existencia no existe (ej. producto nuevo), se crea automáticamente.
                 Existencia existencia = existenciaRepository.findByProducto_IdProducto(idProducto)
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "No se encontró registro de Existencia para el producto con id: " + idProducto +
-                                ". Cree el registro de existencia antes de confirmar la recepción."));
+                        .orElseGet(() -> {
+                            Almacen almacenDefault = almacenRepository.findAll().stream().findFirst()
+                                    .orElseThrow(() -> new BusinessException("Debe existir al menos un almacén en el sistema."));
+                            Existencia nuevaExistencia = new Existencia();
+                            nuevaExistencia.setProducto(detalle.getDetalleOrdenCompra().getProducto());
+                            nuevaExistencia.setAlmacen(almacenDefault);
+                            nuevaExistencia.setCantidadActual(0);
+                            nuevaExistencia.setCantidadMinima(0);
+                            return existenciaRepository.save(nuevaExistencia);
+                        });
 
-                existencia.setCantidadActual(
-                        existencia.getCantidadActual() + detalle.getCantidadRecibida()
-                );
+                existencia.setCantidadActual(existencia.getCantidadActual() + cantidadRecibida);
                 existenciaRepository.save(existencia);
-            }
 
-            // 2. Acumular en DetalleOrdenCompra (independientemente del estado físico)
-            DetalleOrdenCompra detalleOrden = detalle.getDetalleOrdenCompra();
-            detalleOrden.setCantidadRecibida(
-                    detalleOrden.getCantidadRecibida() + detalle.getCantidadRecibida()
-            );
-            detalleOrdenCompraRepository.save(detalleOrden);
+                // 2. Acumular en DetalleOrdenCompra
+                DetalleOrdenCompra detalleOrden = detalle.getDetalleOrdenCompra();
+                detalleOrden.setCantidadRecibida(detalleOrden.getCantidadRecibida() + cantidadRecibida);
+                detalleOrdenCompraRepository.save(detalleOrden);
+            }
         }
 
-        // 3. Actualizar estado de la nota
+        // 3. Marcar la nota como confirmada
         nota.setEstado(CONFIRMADA);
         notaRecepcionRepository.save(nota);
 
-        // 4. Actualizar estado de la orden según recepción total vs parcial
+        // 4. Actualizar estado de la orden (COMPLETADA o RECEPCION_PARCIAL)
         actualizarEstadoOrden(nota.getOrdenCompra());
 
         return notaRecepcionMapper.toDto(nota);

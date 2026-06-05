@@ -575,3 +575,71 @@ export const notasRecepcionApi = {
   rechazar: (id: number) =>
     put<NotaRecepcion>(`/notas-recepcion/${id}/rechazar`, {}),
 };
+
+// ── Tipos: Módulo de Clientes ────────────────────────────
+
+export interface Cliente {
+  idCliente: number;
+  nombreCompleto: string;
+  rncCedula: string | null;
+  telefono: string | null;
+  email: string | null;
+  direccion: string | null;
+  tipoNcfPreferido: string;
+  descuentoPredeterminado: number;
+  totalCompras: number;
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+/** DTO ligero retornado por el endpoint de búsqueda del POS. */
+export interface ClienteResumen {
+  idCliente: number;
+  nombreCompleto: string;
+  rncCedula: string | null;
+  tipoNcfPreferido: string;
+  descuentoPredeterminado: number;
+}
+
+// ── API: Clientes ────────────────────────────────────────
+
+export const clientesApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Cliente>>('/clientes', { page, size }),
+
+  listarActivos: (page = 0, size = 20) =>
+    get<PageResponse<Cliente>>('/clientes/activos', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<Cliente>(`/clientes/${id}`),
+
+  /** Búsqueda rápida para el selector del POS. Retorna máx. 20 clientes activos. */
+  buscarParaPOS: (q: string) =>
+    get<ClienteResumen[]>(`/clientes/buscar`, { q }),
+
+  crear: (body: {
+    nombreCompleto: string;
+    rncCedula?: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+    tipoNcfPreferido?: string;
+    descuentoPredeterminado?: number;
+    estado?: string;
+  }) => post<Cliente>('/clientes', body),
+
+  actualizar: (id: number, body: Partial<{
+    nombreCompleto: string;
+    rncCedula: string;
+    telefono: string;
+    email: string;
+    direccion: string;
+    tipoNcfPreferido: string;
+    descuentoPredeterminado: number;
+    estado: string;
+  }>) => put<Cliente>(`/clientes/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/clientes/${id}`),
+};
