@@ -9,6 +9,7 @@ import TurnosCaja from './components/TurnosCaja';
 import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
+import MovimientosInventario from './components/MovimientosInventario';
 import Categorias from './components/Categorias';
 import Marcas from './components/Marcas';
 import Login from './components/Login';
@@ -89,6 +90,8 @@ export default function App() {
         return <Categorias />;
       case 'marcas':
         return <Marcas />;
+      case 'movimientos':
+        return <MovimientosInventario />;
       case 'turnos-caja':
         return <TurnosCaja />;
       case 'devoluciones':

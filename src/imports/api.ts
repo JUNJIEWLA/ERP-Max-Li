@@ -137,6 +137,8 @@ export interface Existencia {
   productoCodigo: string;
   productoNombre: string;
   productoEstado: string;
+  idAlmacen: number;
+  almacenNombre: string;
   cantidadActual: number;
   cantidadMinima: number;
   bajoPuntoReorden: boolean;
@@ -301,8 +303,14 @@ export const existenciasApi = {
   listar: (page = 0, size = 20) =>
     get<PageResponse<Existencia>>('/existencias', { page, size }),
 
+  listarPorAlmacen: (idAlmacen: number, page = 0, size = 20) =>
+    get<PageResponse<Existencia>>(`/existencias/almacen/${idAlmacen}`, { page, size }),
+
   bajoStock: (page = 0, size = 20) =>
     get<PageResponse<Existencia>>('/existencias/bajo-stock', { page, size }),
+
+  bajoStockPorAlmacen: (idAlmacen: number, page = 0, size = 20) =>
+    get<PageResponse<Existencia>>(`/existencias/almacen/${idAlmacen}/bajo-stock`, { page, size }),
 
   buscarPorProducto: (idProducto: number) =>
     get<Existencia>(`/existencias/producto/${idProducto}`),
@@ -312,6 +320,57 @@ export const existenciasApi = {
 
   actualizar: (id: number, body: { idProducto: number; idAlmacen: number; cantidadActual: number; cantidadMinima: number }) =>
     put<Existencia>(`/existencias/${id}`, body),
+};
+
+// ── Tipos: Movimientos de Inventario ─────────────────────
+
+export interface DetalleMovimientoInventario {
+  idDetalleMovimiento: number;
+  idProducto: number;
+  productoNombre: string;
+  productoSku: string;
+  cantidad: number;
+}
+
+export interface MovimientoInventario {
+  idMovimiento: number;
+  tipo: string;
+  idAlmacenOrigen: number | null;
+  almacenOrigenNombre: string | null;
+  idAlmacenDestino: number | null;
+  almacenDestinoNombre: string | null;
+  referencia: string | null;
+  observacion: string | null;
+  estado: string;
+  usuarioResponsable: string;
+  fechaMovimiento: string;
+  detalles: DetalleMovimientoInventario[];
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+// ── API: Movimientos de Inventario ───────────────────────
+
+export const movimientosApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<MovimientoInventario>>('/movimientos', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<MovimientoInventario>(`/movimientos/${id}`),
+
+  listarPorAlmacen: (idAlmacen: number, page = 0, size = 20) =>
+    get<PageResponse<MovimientoInventario>>(`/movimientos/almacen/${idAlmacen}`, { page, size }),
+
+  listarPorTipo: (tipo: string, page = 0, size = 20) =>
+    get<PageResponse<MovimientoInventario>>(`/movimientos/tipo/${tipo}`, { page, size }),
+
+  crearTransferencia: (body: {
+    idAlmacenOrigen: number;
+    idAlmacenDestino: number;
+    referencia?: string;
+    observacion?: string;
+    detalles: { idProducto: number; cantidad: number }[];
+  }) => post<MovimientoInventario>('/movimientos/transferencia', body),
 };
 
 // ── API: Roles ───────────────────────────────────────────
