@@ -9,8 +9,8 @@ import {
   ResponsiveContainer, Cell
 } from 'recharts';
 import {
-  existenciasApi, categoriasApi, productosApi,
-  type Existencia, type Categoria, type Producto
+  existenciasApi, categoriasApi, productosApi, almacenesApi,
+  type Existencia, type Categoria, type Producto, type Almacen
 } from '../../imports/api';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -67,7 +67,7 @@ function AjusteModal({ existencia, productoMap, onClose, onSaved }: AjusteModalP
         : existencia.cantidadActual - cantidad;
       await existenciasApi.actualizar(existencia.idExistencia, {
         idProducto: existencia.idProducto,
-        idAlmacen: 1, // default — en producción vendría del contexto de almacén
+        idAlmacen: existencia.idAlmacen,
         cantidadActual: nueva,
         cantidadMinima: existencia.cantidadMinima,
       });
@@ -273,6 +273,7 @@ export default function Inventario() {
   const [existencias, setExistencias] = useState<Existencia[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -280,6 +281,7 @@ export default function Inventario() {
   const [search, setSearch] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [stockFiltro, setStockFiltro] = useState<StockFilter>('todos');
+  const [almacenFiltro, setAlmacenFiltro] = useState<string>('');  // '' = General (todos)
 
   // Ordenamiento
   const [sortField, setSortField] = useState<SortField>('nombre');
@@ -303,24 +305,28 @@ export default function Inventario() {
     setLoading(true);
     setError(null);
     try {
-      const [pageExistencias, pageCategorias, pageProductos] = await Promise.all([
-        existenciasApi.listar(0, 500), // traemos todo para filtrar/ordenar en cliente
+      const [pageExistencias, pageCategorias, pageProductos, pageAlmacenes] = await Promise.all([
+        almacenFiltro
+          ? existenciasApi.listarPorAlmacen(Number(almacenFiltro), 0, 500)
+          : existenciasApi.listar(0, 500),
         categoriasApi.listarActivas(),
         productosApi.listarActivos(0, 500),
+        almacenesApi.listar(0, 100),
       ]);
       setExistencias(pageExistencias.content);
       setCategorias(pageCategorias.content);
       setProductos(pageProductos.content);
+      setAlmacenes(pageAlmacenes.content.filter(a => a.estado === 'ACTIVO'));
     } catch (e: any) {
       setError(e.message || 'Error al cargar el inventario.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [almacenFiltro]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
   // reset page when filters change
-  useEffect(() => { setPage(0); }, [search, categoriaFiltro, stockFiltro, sortField, sortDir]);
+  useEffect(() => { setPage(0); }, [search, categoriaFiltro, stockFiltro, almacenFiltro, sortField, sortDir]);
 
   // ── KPIs ──────────────────────────────────────────────
 
@@ -613,6 +619,20 @@ export default function Inventario() {
           </select>
         </div>
 
+        {/* Almacén */}
+        <div className="flex items-center gap-1.5">
+          <Warehouse size={14} className="text-muted-foreground" />
+          <select
+            id="filtro-almacen-inventario"
+            value={almacenFiltro}
+            onChange={e => setAlmacenFiltro(e.target.value)}
+            className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+          >
+            <option value="">📦 General (Todos los almacenes)</option>
+            {almacenes.map(a => <option key={a.idAlmacen} value={String(a.idAlmacen)}>{a.nombre}</option>)}
+          </select>
+        </div>
+
         {/* Estado Stock */}
         <select
           id="filtro-stock-inventario"
@@ -628,9 +648,9 @@ export default function Inventario() {
         </select>
 
         {/* Chips activos */}
-        {(search || categoriaFiltro || stockFiltro !== 'todos') && (
+        {(search || categoriaFiltro || stockFiltro !== 'todos' || almacenFiltro) && (
           <button
-            onClick={() => { setSearch(''); setCategoriaFiltro(''); setStockFiltro('todos'); }}
+            onClick={() => { setSearch(''); setCategoriaFiltro(''); setStockFiltro('todos'); setAlmacenFiltro(''); }}
             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <X size={12} /> Limpiar filtros
@@ -652,6 +672,12 @@ export default function Inventario() {
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Código SKU
                 </th>
+                {/* Almacén — solo si filtro es General */}
+                {!almacenFiltro && (
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Almacén
+                  </th>
+                )}
                 {/* Nombre */}
                 <th
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground select-none"
@@ -733,6 +759,15 @@ export default function Inventario() {
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                         {e.productoCodigo}
                       </td>
+
+                      {/* Almacén — solo si filtro es General */}
+                      {!almacenFiltro && (
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 border border-blue-200">
+                            {e.almacenNombre || '—'}
+                          </span>
+                        </td>
+                      )}
 
                       {/* Nombre */}
                       <td className="px-4 py-3">

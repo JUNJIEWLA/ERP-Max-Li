@@ -48,11 +48,21 @@ public class ExistenciaService {
         return existenciaRepository.findBajoStock(pageable).map(existenciaMapper::toDto);
     }
 
+    @Transactional(readOnly = true)
+    public Page<ExistenciaResponseDTO> listarPorAlmacen(Long idAlmacen, Pageable pageable) {
+        return existenciaRepository.findByAlmacen_IdAlmacen(idAlmacen, pageable).map(existenciaMapper::toDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ExistenciaResponseDTO> listarBajoStockPorAlmacen(Long idAlmacen, Pageable pageable) {
+        return existenciaRepository.findBajoStockByAlmacen(idAlmacen, pageable).map(existenciaMapper::toDto);
+    }
+
     @Transactional
     public ExistenciaResponseDTO crear(ExistenciaRequestDTO dto) {
         Producto producto = obtenerProductoActivo(dto.getIdProducto());
-        validarExistenciaUnica(dto.getIdProducto());
         var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
+        validarExistenciaUnica(dto.getIdProducto(), dto.getIdAlmacen());
         Existencia existencia = existenciaMapper.toEntity(dto, producto, almacen);
         return existenciaMapper.toDto(existenciaRepository.save(existencia));
     }
@@ -81,10 +91,10 @@ public class ExistenciaService {
                         "Producto no encontrado o inactivo con id: " + idProducto));
     }
 
-    private void validarExistenciaUnica(Long idProducto) {
-        if (existenciaRepository.existsByProducto_IdProducto(idProducto)) {
+    private void validarExistenciaUnica(Long idProducto, Long idAlmacen) {
+        if (existenciaRepository.existsByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacen)) {
             throw new DuplicateResourceException(
-                    "Ya existe un registro de existencia para el producto con id: " + idProducto);
+                    "Ya existe un registro de existencia para este producto en este almacén");
         }
     }
 }

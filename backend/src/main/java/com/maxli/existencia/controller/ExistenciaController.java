@@ -44,6 +44,18 @@ public class ExistenciaController {
         return ResponseEntity.ok(existenciaService.buscarPorProducto(idProducto));
     }
 
+    @GetMapping("/almacen/{idAlmacen}")
+    public ResponseEntity<Page<ExistenciaResponseDTO>> listarPorAlmacen(
+            @PathVariable Long idAlmacen, Pageable pageable) {
+        return ResponseEntity.ok(existenciaService.listarPorAlmacen(idAlmacen, pageable));
+    }
+
+    @GetMapping("/almacen/{idAlmacen}/bajo-stock")
+    public ResponseEntity<Page<ExistenciaResponseDTO>> listarBajoStockPorAlmacen(
+            @PathVariable Long idAlmacen, Pageable pageable) {
+        return ResponseEntity.ok(existenciaService.listarBajoStockPorAlmacen(idAlmacen, pageable));
+    }
+
     @PostMapping
     public ResponseEntity<ExistenciaResponseDTO> crear(@Valid @RequestBody ExistenciaRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(existenciaService.crear(dto));
