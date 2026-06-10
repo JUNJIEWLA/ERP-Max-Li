@@ -16,8 +16,8 @@ export default function Login({ onLogin }: LoginProps) {
     setError('');
     setLoading(true);
     try {
-      const data = await authApi.login(username, password);
-      onLogin(data.token, username);
+      const data = await authApi.login(username.trim(), password);
+      onLogin(data.token, data.username);
     } catch {
       setError('Usuario o contraseña incorrectos.');
     } finally {
