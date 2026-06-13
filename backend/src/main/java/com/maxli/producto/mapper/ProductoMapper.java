@@ -36,6 +36,7 @@ public class ProductoMapper {
         dto.setEstado(producto.getEstado());
         dto.setIdCategoria(producto.getCategoria().getIdCategoria());
         dto.setCategoriaNombre(producto.getCategoria().getNombre());
+        dto.setPorcentajeMargenCategoria(producto.getCategoria().getPorcentajeMargen());
         dto.setIdMarca(producto.getMarca().getIdMarca());
         dto.setMarcaNombre(producto.getMarca().getNombre());
         dto.setFechaCreacion(producto.getFechaCreacion());

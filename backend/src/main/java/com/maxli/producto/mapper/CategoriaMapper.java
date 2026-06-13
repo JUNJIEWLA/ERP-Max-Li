@@ -5,6 +5,8 @@ import com.maxli.producto.dto.CategoriaResponseDTO;
 import com.maxli.producto.entity.Categoria;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+
 @Component
 public class CategoriaMapper {
 
@@ -13,6 +15,7 @@ public class CategoriaMapper {
         categoria.setNombre(dto.getNombre());
         categoria.setDescripcion(dto.getDescripcion());
         categoria.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
+        categoria.setPorcentajeMargen(dto.getPorcentajeMargen() != null ? dto.getPorcentajeMargen() : BigDecimal.ZERO);
         return categoria;
     }
 
@@ -22,8 +25,10 @@ public class CategoriaMapper {
         dto.setNombre(categoria.getNombre());
         dto.setDescripcion(categoria.getDescripcion());
         dto.setEstado(categoria.getEstado());
+        dto.setPorcentajeMargen(categoria.getPorcentajeMargen());
         dto.setFechaCreacion(categoria.getFechaCreacion());
         dto.setFechaModificacion(categoria.getFechaModificacion());
         return dto;
     }
 }
+

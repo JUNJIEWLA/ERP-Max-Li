@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, ToggleRight, ToggleLeft, Tag, Search, X, Loader2 } from 'lucide-react';
+import { Plus, Pencil, ToggleRight, ToggleLeft, Tag, Search, X, Loader2, Percent } from 'lucide-react';
 import { categoriasApi, type Categoria } from '../../imports/api';
 
-const EMPTY_FORM = { nombre: '', descripcion: '', estado: 'ACTIVO' };
+const EMPTY_FORM = { nombre: '', descripcion: '', estado: 'ACTIVO', porcentajeMargen: '' };
 
 export default function Categorias() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -45,7 +45,7 @@ export default function Categorias() {
 
   const openEdit = (c: Categoria) => {
     setEditTarget(c);
-    setForm({ nombre: c.nombre, descripcion: c.descripcion ?? '', estado: c.estado });
+    setForm({ nombre: c.nombre, descripcion: c.descripcion ?? '', estado: c.estado, porcentajeMargen: String(c.porcentajeMargen ?? 0) });
     setFormError('');
     setShowModal(true);
   };
@@ -57,10 +57,11 @@ export default function Categorias() {
     setSaving(true);
     setFormError('');
     try {
+      const margenNum = form.porcentajeMargen ? Number(form.porcentajeMargen) : 0;
       if (editTarget) {
-        await categoriasApi.actualizar(editTarget.idCategoria, form);
+        await categoriasApi.actualizar(editTarget.idCategoria, { ...form, porcentajeMargen: margenNum });
       } else {
-        await categoriasApi.crear({ nombre: form.nombre, descripcion: form.descripcion });
+        await categoriasApi.crear({ nombre: form.nombre, descripcion: form.descripcion, porcentajeMargen: margenNum });
       }
       closeModal();
       fetchCategorias();
@@ -124,6 +125,7 @@ export default function Categorias() {
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">#</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Descripción</th>
+                <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Margen %</th>
                 <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Estado</th>
                 <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Acciones</th>
               </tr>
@@ -134,6 +136,12 @@ export default function Categorias() {
                   <td className="px-5 py-3 text-muted-foreground">{page * PAGE_SIZE + i + 1}</td>
                   <td className="px-5 py-3 font-medium text-foreground">{c.nombre}</td>
                   <td className="px-5 py-3 text-muted-foreground">{c.descripcion || <span className="italic opacity-50">Sin descripción</span>}</td>
+                  <td className="px-5 py-3 text-center">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${(c.porcentajeMargen ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-600' : 'bg-zinc-500/10 text-zinc-400'}`}>
+                      <Percent size={10} />
+                      {c.porcentajeMargen ?? 0}%
+                    </span>
+                  </td>
                   <td className="px-5 py-3 text-center">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.estado === 'ACTIVO' ? 'bg-green-500/15 text-green-600' : 'bg-rose-500/15 text-rose-600'}`}>
                       {c.estado}
@@ -194,6 +202,18 @@ export default function Categorias() {
                   onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
                   placeholder="Descripción opcional..." rows={3}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Margen de Ganancia Sugerido (%)</label>
+                <div className="relative">
+                  <input id="input-cat-margen" type="number" min="0" max="999.99" step="0.01"
+                    value={form.porcentajeMargen}
+                    onChange={e => setForm(f => ({ ...f, porcentajeMargen: e.target.value }))}
+                    placeholder="Ej: 40"
+                    className="w-full px-3 py-2 pr-10 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Los productos nuevos de esta categoría usarán este margen para sugerir precio de venta</p>
               </div>
               {editTarget && (
                 <div>
