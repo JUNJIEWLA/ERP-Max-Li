@@ -9,14 +9,57 @@ const BASE_URL = '/api';
 // ── Manejo del token JWT ─────────────────────────────────
 
 const TOKEN_KEY = 'maxli_token';
+export const AUTH_EXPIRED_EVENT = 'maxli-auth-expired';
 
 export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string): void => localStorage.setItem(TOKEN_KEY, token);
 export const clearToken = (): void => localStorage.removeItem(TOKEN_KEY);
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+export const isTokenExpired = (token: string | null = getToken()): boolean => {
+  if (!token) return true;
+  const payload = decodeJwtPayload(token);
+  const exp = payload?.exp;
+  if (typeof exp !== 'number') return true;
+  return Date.now() >= exp * 1000;
+};
+
+export const hasValidToken = (): boolean => {
+  const token = getToken();
+  if (!token) return false;
+  if (isTokenExpired(token)) {
+    clearToken();
+    return false;
+  }
+  return true;
+};
+
+function expireSession(): void {
+  clearToken();
+  localStorage.removeItem('maxli_user');
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+}
+
 function authHeaders(): HeadersInit {
   const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (!token) return {};
+  if (isTokenExpired(token)) {
+    expireSession();
+    return {};
+  }
+  return { Authorization: `Bearer ${token}` };
 }
 
 // ── Tipos genéricos ──────────────────────────────────────
@@ -31,13 +74,50 @@ export interface PageResponse<T> {
   last: boolean;
 }
 
+async function buildErrorMessage(res: Response): Promise<string> {
+  const fallback = `Error ${res.status}: ${res.statusText || 'Error'}`;
+
+  if (res.status === 401 || (res.status === 403 && isTokenExpired())) {
+    expireSession();
+    return 'Tu sesión expiró. Inicia sesión nuevamente.';
+  }
+
+  if (res.status === 403) {
+    return 'No tienes permisos para realizar esta acción.';
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+
+  try {
+    if (contentType.includes('application/json')) {
+      const body = await res.json();
+      if (typeof body?.error === 'string') return body.error;
+      if (typeof body?.message === 'string') return body.message;
+      if (body?.errors && typeof body.errors === 'object') {
+        return Object.values(body.errors).filter(Boolean).join('. ');
+      }
+    } else {
+      const text = await res.text();
+      const message = text.trim();
+      if (message === 'Internal Server Error') {
+        return 'El backend no está disponible. Verifica que Spring Boot esté corriendo en el puerto 8080.';
+      }
+      if (message) return message;
+    }
+  } catch {
+    // Mantener el fallback si el backend no devuelve un body parseable.
+  }
+
+  return fallback;
+}
+
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
   const url = new URL(BASE_URL + path, window.location.origin);
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   }
   const res = await fetch(url.toString(), { headers: authHeaders() });
-  if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+  if (!res.ok) throw new Error(await buildErrorMessage(res));
   return res.json();
 }
 
@@ -47,7 +127,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+  if (!res.ok) throw new Error(await buildErrorMessage(res));
   return res.json();
 }
 
@@ -57,13 +137,13 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+  if (!res.ok) throw new Error(await buildErrorMessage(res));
   return res.json();
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(BASE_URL + path, { method: 'DELETE', headers: authHeaders() });
-  if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+  if (!res.ok) throw new Error(await buildErrorMessage(res));
 }
 
 // ── API: Auth ────────────────────────────────────────────
@@ -84,7 +164,7 @@ export const authApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }).then(async res => {
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      if (!res.ok) throw new Error(await buildErrorMessage(res));
       return res.json() as Promise<AuthResponse>;
     }),
 };
@@ -207,6 +287,21 @@ export interface CajaChica {
   estado: string;
   fechaCreacion: string;
   fechaModificacion: string;
+}
+
+export type TipoMovimientoCaja = 'INGRESO' | 'EGRESO';
+
+export interface MovimientoCaja {
+  idMovimiento: number;
+  idCajaChica: number;
+  cajaChicaNombre: string;
+  tipoMovimiento: TipoMovimientoCaja;
+  fechaHora: string;
+  monto: number;
+  concepto: string;
+  idUsuario: number;
+  username: string;
+  saldoActualCajaChica: number;
 }
 
 export interface TurnoCaja {
@@ -489,6 +584,17 @@ export const cajasChicasApi = {
 
   desactivar: (id: number) =>
     del(`/cajas/chicas/${id}`),
+};
+
+export const movimientosCajaApi = {
+  listarPorCajaChica: (idCajaChica: number, page = 0, size = 20) =>
+    get<PageResponse<MovimientoCaja>>(`/cajas/chicas/${idCajaChica}/movimientos`, { page, size }),
+
+  buscarPorId: (idMovimiento: number) =>
+    get<MovimientoCaja>(`/cajas/chicas/movimientos/${idMovimiento}`),
+
+  registrar: (idCajaChica: number, body: { tipoMovimiento: TipoMovimientoCaja; monto: number; concepto: string }) =>
+    post<MovimientoCaja>(`/cajas/chicas/${idCajaChica}/movimientos`, body),
 };
 
 export const turnosCajaApi = {

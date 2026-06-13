@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -6,6 +6,7 @@ import Ventas from './components/Ventas';
 import Productos from './components/Productos';
 import Inventario from './components/Inventario';
 import TurnosCaja from './components/TurnosCaja';
+import CajaChica from './components/CajaChica';
 import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
@@ -17,7 +18,7 @@ import Proveedores from './components/Proveedores';
 import OrdenesCompra from './components/OrdenesCompra';
 import NotasRecepcion from './components/NotasRecepcion';
 import Clientes from './components/Clientes';
-import { setToken, clearToken, getToken } from '../imports/api';
+import { AUTH_EXPIRED_EVENT, setToken, clearToken, hasValidToken } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -49,8 +50,19 @@ const viewTitles: Record<string, string> = {
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   // Inicializar sesión desde localStorage si ya hay token guardado
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!getToken());
-  const [username, setUsername] = useState(() => localStorage.getItem('maxli_user') || '');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => hasValidToken());
+  const [username, setUsername] = useState(() => (hasValidToken() ? localStorage.getItem('maxli_user') || '' : ''));
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setIsAuthenticated(false);
+      setUsername('');
+      setActiveView('dashboard');
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+  }, []);
 
   const handleLogin = (token: string, user: string) => {
     setToken(token);
@@ -94,6 +106,8 @@ export default function App() {
         return <MovimientosInventario />;
       case 'turnos-caja':
         return <TurnosCaja />;
+      case 'caja-chica':
+        return <CajaChica />;
       case 'devoluciones':
         return <Devoluciones />;
       case 'proveedores':
