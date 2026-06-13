@@ -14,6 +14,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -37,6 +38,9 @@ public class Categoria {
 
     @Column(name = "estado", nullable = false, length = 20)
     private String estado;
+
+    @Column(name = "porcentaje_margen", nullable = false, precision = 5, scale = 2)
+    private BigDecimal porcentajeMargen = BigDecimal.ZERO;
 
     @CreatedDate
     @Column(name = "fecha_creacion", updatable = false)

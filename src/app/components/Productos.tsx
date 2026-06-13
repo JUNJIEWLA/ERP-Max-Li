@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Plus, Search, Pencil, Trash2, Package, RefreshCw,
-  X, Loader2, AlertTriangle, Filter
+  X, Loader2, AlertTriangle, Filter, History, TrendingUp, TrendingDown
 } from 'lucide-react';
 import {
-  productosApi, categoriasApi, marcasApi,
-  type Producto, type Categoria, type Marca
+  productosApi, categoriasApi, marcasApi, historialCostosApi,
+  type Producto, type Categoria, type Marca, type HistorialCosto
 } from '../../imports/api';
 
 interface ProductoForm {
@@ -48,6 +48,26 @@ export default function Productos() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [confirmId, setConfirmId] = useState<number | null>(null);
+
+  // Historial Modal
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<Producto | null>(null);
+  const [historialCostos, setHistorialCostos] = useState<HistorialCosto[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const openHistory = async (p: Producto) => {
+    setHistoryTarget(p);
+    setShowHistoryModal(true);
+    setLoadingHistory(true);
+    try {
+      const res = await historialCostosApi.listarPorProducto(p.idProducto, 0, 50);
+      setHistorialCostos(res.content);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const cargarDatos = useCallback(async () => {
     setLoading(true);
@@ -270,6 +290,10 @@ export default function Productos() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
+                        <button id={`btn-history-prod-${p.idProducto}`} onClick={() => openHistory(p)}
+                          className="p-1.5 rounded-lg hover:bg-violet-500/10 text-violet-500 transition-colors" title="Historial de Costos">
+                          <History size={15} />
+                        </button>
                         <button id={`btn-editar-prod-${p.idProducto}`} onClick={() => openEdit(p)}
                           className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors" title="Editar">
                           <Pencil size={15} />
@@ -367,6 +391,30 @@ export default function Productos() {
                     onChange={e => setForm(f => ({ ...f, precioVenta: e.target.value }))}
                     placeholder="0.00"
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                  
+                  {(() => {
+                    if (form.idCategoria && form.costo && Number(form.costo) > 0) {
+                      const cat = categorias.find(c => c.idCategoria === Number(form.idCategoria));
+                      if (cat && cat.porcentajeMargen > 0) {
+                        const suggested = Number(form.costo) * (1 + cat.porcentajeMargen / 100);
+                        return (
+                          <div className="mt-2 flex items-center justify-between bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
+                            <span className="text-xs text-primary font-medium flex items-center gap-1">
+                              💡 Sugerido: {fmt(suggested)} (Costo + {cat.porcentajeMargen}%)
+                            </span>
+                            <button type="button" onClick={() => setForm(f => ({ ...f, precioVenta: suggested.toFixed(2) }))}
+                              className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors">
+                              Aplicar
+                            </button>
+                          </div>
+                        );
+                      }
+                      if (cat && cat.porcentajeMargen === 0) {
+                         return <p className="text-xs text-muted-foreground mt-1 italic">Esta categoría no tiene margen configurado</p>;
+                      }
+                    }
+                    return null;
+                  })()}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Costo (RD$) <span className="text-rose-500">*</span></label>
@@ -437,6 +485,66 @@ export default function Productos() {
               <button onClick={() => setConfirmId(null)} className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm">Cancelar</button>
               <button id="btn-confirmar-desactivar-prod" onClick={() => handleDesactivar(confirmId!)}
                 className="px-4 py-2 rounded-lg bg-rose-500 text-white hover:bg-rose-600 transition-colors text-sm font-medium">Desactivar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistoryModal && historyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-4xl border border-border flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <History size={20} className="text-primary" /> Historial de Costos
+                </h3>
+                <p className="text-sm text-muted-foreground">{historyTarget.nombre}</p>
+              </div>
+              <button onClick={() => setShowHistoryModal(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              {loadingHistory ? (
+                <div className="flex items-center justify-center py-12"><Loader2 size={32} className="animate-spin text-primary" /></div>
+              ) : historialCostos.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <History size={48} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">No hay historial de cambios de costo para este producto.</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 border-b border-border">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Fecha</th>
+                      <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Proveedor</th>
+                      <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Costo Anterior</th>
+                      <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Costo Nuevo</th>
+                      <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Variación</th>
+                      <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Cant. Recibida</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {historialCostos.map(h => (
+                      <tr key={h.idHistorialCosto} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 text-foreground whitespace-nowrap">
+                          {new Date(h.fechaRegistro).toLocaleDateString()} {new Date(h.fechaRegistro).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </td>
+                        <td className="px-4 py-3 text-foreground">{h.nombreProveedor}</td>
+                        <td className="px-4 py-3 text-right text-muted-foreground">{fmt(h.costoAnterior)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-foreground">{fmt(h.costoNuevo)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`inline-flex items-center gap-1 font-semibold ${h.variacionPorcentaje > 0 ? 'text-rose-500' : h.variacionPorcentaje < 0 ? 'text-green-500' : 'text-muted-foreground'}`}>
+                            {h.variacionPorcentaje > 0 ? <TrendingUp size={14}/> : h.variacionPorcentaje < 0 ? <TrendingDown size={14}/> : null}
+                            {h.variacionPorcentaje > 0 ? '+' : ''}{h.variacionPorcentaje}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted-foreground">{h.cantidadRecibida}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>

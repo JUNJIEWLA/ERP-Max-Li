@@ -1,13 +1,35 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Bell, Search } from 'lucide-react';
+import { alertasCostoApi } from '../../imports/api';
+import AlertasCostoBuzon from './AlertasCostoBuzon';
 
 interface HeaderProps {
   title: string;
 }
 
 export default function Header({ title }: HeaderProps) {
+  const [alertCount, setAlertCount] = useState(0);
+  const [showBuzon, setShowBuzon] = useState(false);
+
+  const fetchAlertsCount = useCallback(async () => {
+    try {
+      const res = await alertasCostoApi.contarPendientes();
+      setAlertCount(res.count);
+    } catch (e) {
+      console.error('Error fetching alerts count', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAlertsCount();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchAlertsCount, 30000);
+    return () => clearInterval(interval);
+  }, [fetchAlertsCount]);
+
   return (
-    <header className="h-16 border-b border-border bg-background px-6 flex items-center justify-between">
-      <h2>{title}</h2>
+    <header className="h-16 border-b border-border bg-background px-6 flex items-center justify-between relative z-40">
+      <h2 className="text-xl font-semibold text-foreground">{title}</h2>
 
       <div className="flex items-center gap-4">
         <div className="relative">
@@ -15,15 +37,35 @@ export default function Header({ title }: HeaderProps) {
           <input
             type="text"
             placeholder="Buscar..."
-            className="w-80 pl-10 pr-4 py-2 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-80 pl-10 pr-4 py-2 bg-muted/30 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
 
-        <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
+        <button 
+          onClick={() => setShowBuzon(true)}
+          className="relative p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-colors"
+          title="Buzón de Alertas de Costo"
+        >
           <Bell size={20} />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full"></span>
+          {alertCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-sm border-2 border-background">
+              {alertCount > 99 ? '99+' : alertCount}
+            </span>
+          )}
         </button>
       </div>
+
+      {showBuzon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-3xl h-[80vh] flex flex-col">
+            <AlertasCostoBuzon 
+              onClose={() => setShowBuzon(false)} 
+              onUpdateCount={fetchAlertsCount}
+            />
+          </div>
+        </div>
+      )}
     </header>
   );
 }
+

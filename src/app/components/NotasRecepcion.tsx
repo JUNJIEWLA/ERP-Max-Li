@@ -9,9 +9,10 @@ import {
   ClipboardCheck, ClipboardX, Package, Calendar, Hash,
 } from 'lucide-react';
 import {
-  notasRecepcionApi, ordenesCompraApi,
+  notasRecepcionApi, ordenesCompraApi, alertasCostoApi,
   OrdenCompra, NotaRecepcion,
 } from '../../imports/api';
+import AlertasCostoBuzon from './AlertasCostoBuzon';
 
 // ─── Formateador de moneda ────────────────────────────────
 const fmt = (n: number) =>
@@ -423,6 +424,9 @@ export default function NotasRecepcion() {
   const [confirmNota,  setConfirmNota]  = useState<{ id: number; accion: 'confirmar' | 'rechazar' } | null>(null);
   const [reporteToast, setReporteToast] = useState<string | null>(null);
 
+  // Alertas Buzón (Modal)
+  const [showBuzonAlertas, setShowBuzonAlertas] = useState(false);
+
   // Modal nueva nota
   const [showModal,      setShowModal]     = useState(false);
   const [ordenes,        setOrdenes]       = useState<OrdenCompra[]>([]);
@@ -503,9 +507,22 @@ export default function NotasRecepcion() {
   const handleAccion = async () => {
     if (!confirmNota) return;
     try {
-      if (confirmNota.accion === 'confirmar') await notasRecepcionApi.confirmar(confirmNota.id);
-      else await notasRecepcionApi.rechazar(confirmNota.id);
+      if (confirmNota.accion === 'confirmar') {
+        await notasRecepcionApi.confirmar(confirmNota.id);
+        const { count } = await alertasCostoApi.contarPendientes();
+        if (count > 0) {
+          setShowBuzonAlertas(true);
+        } else {
+          setReporteToast('Recepción confirmada exitosamente');
+          setTimeout(() => setReporteToast(null), 3000);
+        }
+      }
+      else {
+        await notasRecepcionApi.rechazar(confirmNota.id);
+      }
       fetchNotas();
+    } catch (e: any) {
+      alert(e.message || 'Error en la acción');
     } finally { setConfirmNota(null); }
   };
 

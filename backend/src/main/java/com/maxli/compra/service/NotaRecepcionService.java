@@ -17,12 +17,21 @@ import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
 import com.maxli.almacen.entity.Almacen;
 import com.maxli.almacen.repository.AlmacenRepository;
+import com.maxli.producto.entity.AlertaCosto;
+import com.maxli.producto.entity.HistorialCosto;
+import com.maxli.producto.entity.Producto;
+import com.maxli.producto.repository.AlertaCostoRepository;
+import com.maxli.producto.repository.HistorialCostoRepository;
+import com.maxli.producto.repository.ProductoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -42,6 +51,9 @@ public class NotaRecepcionService {
     private final DetalleOrdenCompraRepository detalleOrdenCompraRepository;
     private final ExistenciaRepository existenciaRepository;
     private final AlmacenRepository almacenRepository;
+    private final ProductoRepository productoRepository;
+    private final HistorialCostoRepository historialCostoRepository;
+    private final AlertaCostoRepository alertaCostoRepository;
     private final OrdenCompraService ordenCompraService;
     private final NotaRecepcionMapper notaRecepcionMapper;
 
@@ -85,12 +97,15 @@ public class NotaRecepcionService {
     }
 
     /**
-     * Confirma la nota de recepción:
-     * 1. Incrementa Existencia por cada ítem con cantidadRecibida > 0, sin importar
-     *    la observación (CONFORME, DAÑADO, INCOMPLETO). Toda mercancía físicamente
-     *    recibida entra al almacén; la condición se documenta pero no bloquea el stock.
+     * Confirma la nota de recepción. Ejecuta las siguientes tareas en cadena
+     * dentro de una misma transacción:
+     *
+     * 1. Incrementa Existencia por cada ítem con cantidadRecibida > 0.
      * 2. Acumula cantidadRecibida en DetalleOrdenCompra.
-     * 3. Actualiza el estado de la OrdenCompra (RECEPCION_PARCIAL o COMPLETADA).
+     * 3. Registra el historial de costo (costo viejo → costo nuevo).
+     * 4. Actualiza producto.costo con el precioUnitario de la orden (última compra).
+     * 5. Si el costo cambió, genera una AlertaCosto en el buzón con precio sugerido.
+     * 6. Actualiza el estado de la OrdenCompra.
      */
     @Transactional
     public NotaRecepcionResponseDTO confirmar(Long id) {
@@ -101,21 +116,24 @@ public class NotaRecepcionService {
                     "Estado actual: " + nota.getEstado());
         }
 
+        OrdenCompra orden = nota.getOrdenCompra();
+
         for (DetalleNotaRecepcion detalle : nota.getDetalles()) {
             int cantidadRecibida = detalle.getCantidadRecibida();
 
             // Solo procesamos ítems que realmente llegaron (cantidad > 0)
             if (cantidadRecibida > 0) {
-                Long idProducto = detalle.getDetalleOrdenCompra().getProducto().getIdProducto();
+                DetalleOrdenCompra detalleOrden = detalle.getDetalleOrdenCompra();
+                Producto producto = detalleOrden.getProducto();
+                Long idProducto = producto.getIdProducto();
 
-                // 1. Incrementar stock en Existencia (independientemente de la condición física)
-                // Si la existencia no existe (ej. producto nuevo), se crea automáticamente.
+                // 1. Incrementar stock en Existencia
                 Existencia existencia = existenciaRepository.findByProducto_IdProducto(idProducto)
                         .orElseGet(() -> {
                             Almacen almacenDefault = almacenRepository.findAll().stream().findFirst()
                                     .orElseThrow(() -> new BusinessException("Debe existir al menos un almacén en el sistema."));
                             Existencia nuevaExistencia = new Existencia();
-                            nuevaExistencia.setProducto(detalle.getDetalleOrdenCompra().getProducto());
+                            nuevaExistencia.setProducto(producto);
                             nuevaExistencia.setAlmacen(almacenDefault);
                             nuevaExistencia.setCantidadActual(0);
                             nuevaExistencia.setCantidadMinima(0);
@@ -126,18 +144,40 @@ public class NotaRecepcionService {
                 existenciaRepository.save(existencia);
 
                 // 2. Acumular en DetalleOrdenCompra
-                DetalleOrdenCompra detalleOrden = detalle.getDetalleOrdenCompra();
                 detalleOrden.setCantidadRecibida(detalleOrden.getCantidadRecibida() + cantidadRecibida);
                 detalleOrdenCompraRepository.save(detalleOrden);
+
+                // 3. Registrar historial de costo
+                BigDecimal costoAnterior = producto.getCosto();
+                BigDecimal costoNuevo = detalleOrden.getPrecioUnitario();
+
+                HistorialCosto historial = new HistorialCosto();
+                historial.setProducto(producto);
+                historial.setNotaRecepcion(nota);
+                historial.setProveedor(orden.getProveedor());
+                historial.setCostoAnterior(costoAnterior);
+                historial.setCostoNuevo(costoNuevo);
+                historial.setCantidadRecibida(cantidadRecibida);
+                historial.setFechaRegistro(LocalDateTime.now());
+                historialCostoRepository.save(historial);
+
+                // 4. Actualizar costo del producto (lógica de última compra)
+                producto.setCosto(costoNuevo);
+                productoRepository.save(producto);
+
+                // 5. Si el costo cambió, generar alerta en el buzón
+                if (costoAnterior.compareTo(costoNuevo) != 0) {
+                    generarAlertaCosto(producto, nota, costoAnterior, costoNuevo);
+                }
             }
         }
 
-        // 3. Marcar la nota como confirmada
+        // 6. Marcar la nota como confirmada
         nota.setEstado(CONFIRMADA);
         notaRecepcionRepository.save(nota);
 
-        // 4. Actualizar estado de la orden (COMPLETADA o RECEPCION_PARCIAL)
-        actualizarEstadoOrden(nota.getOrdenCompra());
+        // 7. Actualizar estado de la orden (COMPLETADA o RECEPCION_PARCIAL)
+        actualizarEstadoOrden(orden);
 
         return notaRecepcionMapper.toDto(nota);
     }
@@ -187,6 +227,44 @@ public class NotaRecepcionService {
         detalle.setObservacion(dto.getObservacion());
         detalle.setNotas(dto.getNotas());
         return detalle;
+    }
+
+    /**
+     * Genera una alerta de costo persistente en el buzón.
+     * Calcula el precio sugerido usando el margen de la categoría del producto.
+     */
+    private void generarAlertaCosto(Producto producto, NotaRecepcion nota,
+                                     BigDecimal costoAnterior, BigDecimal costoNuevo) {
+        BigDecimal margen = producto.getCategoria().getPorcentajeMargen();
+
+        // Precio sugerido = costoNuevo × (1 + margen/100)
+        BigDecimal multiplicador = BigDecimal.ONE.add(
+                margen.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
+        BigDecimal precioSugerido = costoNuevo.multiply(multiplicador).setScale(2, RoundingMode.HALF_UP);
+
+        // Variación porcentual: ((costoNuevo - costoAnterior) / costoAnterior) × 100
+        BigDecimal variacion = BigDecimal.ZERO;
+        if (costoAnterior.compareTo(BigDecimal.ZERO) > 0) {
+            variacion = costoNuevo.subtract(costoAnterior)
+                    .divide(costoAnterior, 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
+        AlertaCosto alerta = new AlertaCosto();
+        alerta.setProducto(producto);
+        alerta.setNotaRecepcion(nota);
+        alerta.setNombreProducto(producto.getNombre());
+        alerta.setCostoAnterior(costoAnterior);
+        alerta.setCostoNuevo(costoNuevo);
+        alerta.setPrecioVentaActual(producto.getPrecioVenta());
+        alerta.setPrecioVentaSugerido(precioSugerido);
+        alerta.setPorcentajeVariacion(variacion);
+        alerta.setPorcentajeMargen(margen);
+        alerta.setEstado("PENDIENTE");
+        alerta.setFechaCreacion(LocalDateTime.now());
+
+        alertaCostoRepository.save(alerta);
     }
 
     /**

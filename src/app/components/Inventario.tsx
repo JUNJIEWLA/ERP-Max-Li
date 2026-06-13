@@ -628,7 +628,7 @@ export default function Inventario() {
             onChange={e => setAlmacenFiltro(e.target.value)}
             className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
           >
-            <option value="">📦 General (Todos los almacenes)</option>
+            <option value="">General (Todos los almacenes)</option>
             {almacenes.map(a => <option key={a.idAlmacen} value={String(a.idAlmacen)}>{a.nombre}</option>)}
           </select>
         </div>

@@ -20,6 +20,7 @@ public class ProductoResponseDTO {
     private String estado;
     private Long idCategoria;
     private String categoriaNombre;
+    private BigDecimal porcentajeMargenCategoria;
     private Long idMarca;
     private String marcaNombre;
     private LocalDateTime fechaCreacion;

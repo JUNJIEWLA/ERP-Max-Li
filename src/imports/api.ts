@@ -182,6 +182,7 @@ export interface Producto {
   estado: string;
   idCategoria: number;
   categoriaNombre: string;
+  porcentajeMargenCategoria: number;
   idMarca: number;
   marcaNombre: string;
   fechaCreacion: string;
@@ -193,6 +194,34 @@ export interface Categoria {
   nombre: string;
   descripcion: string;
   estado: string;
+  porcentajeMargen: number;
+}
+
+export interface HistorialCosto {
+  idHistorialCosto: number;
+  idProducto: number;
+  nombreProducto: string;
+  nombreProveedor: string;
+  costoAnterior: number;
+  costoNuevo: number;
+  variacionPorcentaje: number;
+  cantidadRecibida: number;
+  fechaRegistro: string;
+}
+
+export interface AlertaCosto {
+  idAlertaCosto: number;
+  idProducto: number;
+  nombreProducto: string;
+  costoAnterior: number;
+  costoNuevo: number;
+  precioVentaActual: number;
+  precioVentaSugerido: number;
+  porcentajeVariacion: number;
+  porcentajeMargen: number;
+  estado: string;
+  fechaCreacion: string;
+  fechaResolucion: string | null;
 }
 
 export interface Almacen {
@@ -347,10 +376,10 @@ export const categoriasApi = {
   listarActivas: () =>
     get<PageResponse<Categoria>>('/categorias/activas', { page: 0, size: 100 }),
 
-  crear: (body: { nombre: string; descripcion?: string }) =>
+  crear: (body: { nombre: string; descripcion?: string; porcentajeMargen?: number }) =>
     post<Categoria>('/categorias', body),
 
-  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado?: string }) =>
+  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado?: string; porcentajeMargen?: number }) =>
     put<Categoria>(`/categorias/${id}`, body),
 
   desactivar: (id: number) =>
@@ -807,4 +836,27 @@ export const clientesApi = {
 
   desactivar: (id: number) =>
     del(`/clientes/${id}`),
+};
+
+// ── API: Historial de Costos ─────────────────────────────
+
+export const historialCostosApi = {
+  listarPorProducto: (idProducto: number, page = 0, size = 20) =>
+    get<PageResponse<HistorialCosto>>(`/productos/${idProducto}/historial-costos`, { page, size }),
+};
+
+// ── API: Alertas de Costo (Buzón) ────────────────────────
+
+export const alertasCostoApi = {
+  listarPendientes: (page = 0, size = 50) =>
+    get<PageResponse<AlertaCosto>>('/alertas-costo', { page, size }),
+
+  contarPendientes: () =>
+    get<{ count: number }>('/alertas-costo/pendientes/count'),
+
+  aplicarMasivo: (ids: number[]) =>
+    put<AlertaCosto[]>('/alertas-costo/aplicar-masivo', { ids }),
+
+  descartarMasivo: (ids: number[]) =>
+    put<AlertaCosto[]>('/alertas-costo/descartar-masivo', { ids }),
 };
