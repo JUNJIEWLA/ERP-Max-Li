@@ -860,3 +860,79 @@ export const alertasCostoApi = {
   descartarMasivo: (ids: number[]) =>
     put<AlertaCosto[]>('/alertas-costo/descartar-masivo', { ids }),
 };
+
+// ── Tipos: Módulo de Conteo Físico ───────────────────────
+
+export interface ConteoDetalle {
+  idConteoDetalle: number;
+  idProducto: number;
+  productoNombre: string;
+  productoSku: string;
+  productoCodigoBarras: string | null;
+  cantidadFisica: number;
+  cantidadSistema: number | null;
+  diferencia: number | null;
+  fechaRegistro: string;
+}
+
+export interface ConteoCabecera {
+  idConteo: number;
+  idAlmacen: number;
+  almacenNombre: string;
+  zona: string | null;
+  estado: string;
+  idUsuarioAsignado: number;
+  usernameAsignado: string;
+  idUsuarioSupervisor: number | null;
+  usernameSupervisor: string | null;
+  observacion: string | null;
+  fechaAplicacion: string | null;
+  fechaCreacion: string;
+  fechaModificacion: string;
+  detalles: ConteoDetalle[];
+}
+
+export interface ConteoResumen {
+  idConteo: number;
+  almacenNombre: string;
+  zona: string | null;
+  estado: string;
+  usernameAsignado: string;
+  usernameSupervisor: string | null;
+  observacion: string | null;
+  totalItems: number;
+  totalDiscrepancias: number;
+  fechaCreacion: string;
+  fechaAplicacion: string | null;
+}
+
+// ── API: Conteo Físico ───────────────────────────────────
+
+export const conteosApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<ConteoResumen>>('/conteos', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<ConteoCabecera>(`/conteos/${id}`),
+
+  listarPorEstado: (estado: string, page = 0, size = 20) =>
+    get<PageResponse<ConteoResumen>>(`/conteos/estado/${estado}`, { page, size }),
+
+  listarPorUsuario: (idUsuario: number, page = 0, size = 20) =>
+    get<PageResponse<ConteoResumen>>(`/conteos/usuario/${idUsuario}`, { page, size }),
+
+  crear: (body: { idAlmacen: number; zona?: string; idUsuarioAsignado: number; observacion?: string }) =>
+    post<ConteoCabecera>('/conteos', body),
+
+  registrarLineas: (id: number, lineas: { idProducto: number; cantidadFisica: number }[]) =>
+    post<ConteoCabecera>(`/conteos/${id}/lineas`, { lineas }),
+
+  enviarARevision: (id: number) =>
+    put<ConteoCabecera>(`/conteos/${id}/revision`, {}),
+
+  aplicar: (id: number) =>
+    put<ConteoCabecera>(`/conteos/${id}/aplicar`, {}),
+
+  anular: (id: number) =>
+    put<ConteoCabecera>(`/conteos/${id}/anular`, {}),
+};

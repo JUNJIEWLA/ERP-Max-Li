@@ -11,6 +11,7 @@ import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
 import MovimientosInventario from './components/MovimientosInventario';
+import ConteoFisico from './components/ConteoFisico';
 import Categorias from './components/Categorias';
 import Marcas from './components/Marcas';
 import Login from './components/Login';
@@ -33,6 +34,7 @@ const viewTitles: Record<string, string> = {
   categorias: 'Categorías',
   marcas: 'Marcas',
   almacenes: 'Almacenes',
+  'conteo-fisico': 'Conteo Físico',
   'ordenes-compra': 'Órdenes de Compra',
   'notas-recepcion': 'Notas de Recepción',
   proveedores: 'Proveedores',
@@ -104,6 +106,8 @@ export default function App() {
         return <Marcas />;
       case 'movimientos':
         return <MovimientosInventario />;
+      case 'conteo-fisico':
+        return <ConteoFisico />;
       case 'turnos-caja':
         return <TurnosCaja />;
       case 'caja-chica':

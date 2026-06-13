@@ -19,6 +19,7 @@ import {
   ChevronRight,
   UserCircle,
   ClipboardList,
+  ClipboardCheck,
   Archive,
   TrendingUp,
   Receipt
@@ -72,6 +73,7 @@ const menuSections: MenuSection[] = [
       { id: 'productos', label: 'Productos', icon: Package },
       { id: 'existencias', label: 'Existencias', icon: BarChart3 },
       { id: 'movimientos', label: 'Movimientos', icon: TrendingUp },
+      { id: 'conteo-fisico', label: 'Conteo Físico', icon: ClipboardCheck },
       { id: 'categorias', label: 'Categorías', icon: Tag },
       { id: 'marcas', label: 'Marcas', icon: Tag },
       { id: 'almacenes', label: 'Almacenes', icon: Archive },
