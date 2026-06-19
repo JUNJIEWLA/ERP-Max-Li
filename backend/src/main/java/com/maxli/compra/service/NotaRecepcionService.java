@@ -127,18 +127,31 @@ public class NotaRecepcionService {
                 Producto producto = detalleOrden.getProducto();
                 Long idProducto = producto.getIdProducto();
 
-                // 1. Incrementar stock en Existencia
-                Existencia existencia = existenciaRepository.findByProducto_IdProducto(idProducto)
-                        .orElseGet(() -> {
-                            Almacen almacenDefault = almacenRepository.findAll().stream().findFirst()
-                                    .orElseThrow(() -> new BusinessException("Debe existir al menos un almacén en el sistema."));
-                            Existencia nuevaExistencia = new Existencia();
-                            nuevaExistencia.setProducto(producto);
-                            nuevaExistencia.setAlmacen(almacenDefault);
-                            nuevaExistencia.setCantidadActual(0);
-                            nuevaExistencia.setCantidadMinima(0);
-                            return existenciaRepository.save(nuevaExistencia);
-                        });
+                Almacen almacenDestino = detalle.getAlmacen();
+                if (almacenDestino == null) {
+                    throw new BusinessException("El almacén de destino no está definido en el detalle de la nota de recepción.");
+                }
+                if (!"ACTIVO".equals(almacenDestino.getEstado())) {
+                    throw new BusinessException("El almacén de destino '" + almacenDestino.getNombre() + "' está inactivo.");
+                }
+
+                // 1. Incrementar stock en Existencia (específica de producto y almacén) con protección de concurrencia
+                Existencia existencia;
+                try {
+                    existencia = existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, almacenDestino.getIdAlmacen())
+                            .orElseGet(() -> {
+                                Existencia nuevaExistencia = new Existencia();
+                                nuevaExistencia.setProducto(producto);
+                                nuevaExistencia.setAlmacen(almacenDestino);
+                                nuevaExistencia.setCantidadActual(0);
+                                nuevaExistencia.setCantidadMinima(0);
+                                return existenciaRepository.saveAndFlush(nuevaExistencia);
+                            });
+                } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                    // Si se lanzó por clave duplicada concurrente, lo buscamos nuevamente
+                    existencia = existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, almacenDestino.getIdAlmacen())
+                            .orElseThrow(() -> e);
+                }
 
                 existencia.setCantidadActual(existencia.getCantidadActual() + cantidadRecibida);
                 existenciaRepository.save(existencia);
@@ -220,12 +233,23 @@ public class NotaRecepcionService {
                     pendiente + ") para el producto: " + detalleOrden.getProducto().getNombre());
         }
 
+        if (dto.getIdAlmacen() == null) {
+            throw new BusinessException("El almacén es obligatorio.");
+        }
+        Almacen almacen = almacenRepository.findById(dto.getIdAlmacen())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Almacén no encontrado con id: " + dto.getIdAlmacen()));
+        if (!"ACTIVO".equals(almacen.getEstado())) {
+            throw new BusinessException("El almacén con id " + dto.getIdAlmacen() + " está inactivo");
+        }
+
         DetalleNotaRecepcion detalle = new DetalleNotaRecepcion();
         detalle.setNotaRecepcion(nota);
         detalle.setDetalleOrdenCompra(detalleOrden);
         detalle.setCantidadRecibida(dto.getCantidadRecibida());
         detalle.setObservacion(dto.getObservacion());
         detalle.setNotas(dto.getNotas());
+        detalle.setAlmacen(almacen);
         return detalle;
     }
 

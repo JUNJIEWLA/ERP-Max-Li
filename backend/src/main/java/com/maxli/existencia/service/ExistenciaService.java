@@ -3,6 +3,7 @@ package com.maxli.existencia.service;
 import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
+import java.util.List;
 import com.maxli.existencia.dto.ExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
@@ -36,11 +37,10 @@ public class ExistenciaService {
     }
 
     @Transactional(readOnly = true)
-    public ExistenciaResponseDTO buscarPorProducto(Long idProducto) {
-        Existencia existencia = existenciaRepository.findByProducto_IdProducto(idProducto)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No existe registro de existencia para el producto con id: " + idProducto));
-        return existenciaMapper.toDto(existencia);
+    public List<ExistenciaResponseDTO> buscarPorProducto(Long idProducto) {
+        return existenciaRepository.findByProducto_IdProducto(idProducto).stream()
+                .map(existenciaMapper::toDto)
+                .toList();
     }
 
     @Transactional(readOnly = true)

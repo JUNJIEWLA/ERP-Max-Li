@@ -9,6 +9,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,12 +30,14 @@ public class TurnoCajaController {
     private final TurnoCajaService turnoCajaService;
 
     @GetMapping
-    public ResponseEntity<Page<TurnoCajaResponseDTO>> listar(Pageable pageable) {
+    public ResponseEntity<Page<TurnoCajaResponseDTO>> listar(
+            @PageableDefault(sort = "idTurnoCaja", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(turnoCajaService.listar(pageable));
     }
 
     @GetMapping("/abiertos")
-    public ResponseEntity<Page<TurnoCajaResponseDTO>> listarAbiertos(Pageable pageable) {
+    public ResponseEntity<Page<TurnoCajaResponseDTO>> listarAbiertos(
+            @PageableDefault(sort = "idTurnoCaja", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(turnoCajaService.listarAbiertos(pageable));
     }
 

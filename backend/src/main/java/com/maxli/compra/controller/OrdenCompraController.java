@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,19 +28,22 @@ public class OrdenCompraController {
     private final OrdenCompraService ordenCompraService;
 
     @GetMapping
-    public ResponseEntity<Page<OrdenCompraResponseDTO>> listar(Pageable pageable) {
+    public ResponseEntity<Page<OrdenCompraResponseDTO>> listar(
+            @PageableDefault(sort = "idOrdenCompra", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(ordenCompraService.listar(pageable));
     }
 
     @GetMapping("/proveedor/{idProveedor}")
     public ResponseEntity<Page<OrdenCompraResponseDTO>> listarPorProveedor(
-            @PathVariable Long idProveedor, Pageable pageable) {
+            @PathVariable Long idProveedor,
+            @PageableDefault(sort = "idOrdenCompra", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(ordenCompraService.listarPorProveedor(idProveedor, pageable));
     }
 
     @GetMapping("/estado")
     public ResponseEntity<Page<OrdenCompraResponseDTO>> listarPorEstado(
-            @RequestParam String estado, Pageable pageable) {
+            @RequestParam String estado,
+            @PageableDefault(sort = "idOrdenCompra", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(ordenCompraService.listarPorEstado(estado, pageable));
     }
 

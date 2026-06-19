@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,13 +27,15 @@ public class NotaRecepcionController {
     private final NotaRecepcionService notaRecepcionService;
 
     @GetMapping
-    public ResponseEntity<Page<NotaRecepcionResponseDTO>> listar(Pageable pageable) {
+    public ResponseEntity<Page<NotaRecepcionResponseDTO>> listar(
+            @PageableDefault(sort = "idNotaRecepcion", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(notaRecepcionService.listar(pageable));
     }
 
     @GetMapping("/orden/{idOrdenCompra}")
     public ResponseEntity<Page<NotaRecepcionResponseDTO>> listarPorOrden(
-            @PathVariable Long idOrdenCompra, Pageable pageable) {
+            @PathVariable Long idOrdenCompra,
+            @PageableDefault(sort = "idNotaRecepcion", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(notaRecepcionService.listarPorOrden(idOrdenCompra, pageable));
     }
 

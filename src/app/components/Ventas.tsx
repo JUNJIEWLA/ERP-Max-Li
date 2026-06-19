@@ -3,31 +3,13 @@ import { useState } from 'react';
 
 const ventasData = [
   {
-    id: 'VT-2026-001',
-    cliente: 'Juan Pérez',
-    fecha: '01/05/2026 09:23',
-    comprobante: 'B01-00001234',
-    total: 'RD$ 2,450.00',
-    estado: 'Completada',
-    tipoPago: 'Efectivo'
-  },
-  {
-    id: 'VT-2026-002',
-    cliente: 'María González',
-    fecha: '01/05/2026 10:15',
-    comprobante: 'B01-00001235',
-    total: 'RD$ 1,230.50',
+    id: 'VT-2026-005',
+    cliente: 'Luis Fernández',
+    fecha: '01/05/2026 13:30',
+    comprobante: 'B01-00001238',
+    total: 'RD$ 5,120.00',
     estado: 'Completada',
     tipoPago: 'Tarjeta'
-  },
-  {
-    id: 'VT-2026-003',
-    cliente: 'Carlos Rodríguez',
-    fecha: '01/05/2026 11:42',
-    comprobante: 'B01-00001236',
-    total: 'RD$ 3,890.00',
-    estado: 'Pendiente',
-    tipoPago: 'Transferencia'
   },
   {
     id: 'VT-2026-004',
@@ -39,13 +21,31 @@ const ventasData = [
     tipoPago: 'Efectivo'
   },
   {
-    id: 'VT-2026-005',
-    cliente: 'Luis Fernández',
-    fecha: '01/05/2026 13:30',
-    comprobante: 'B01-00001238',
-    total: 'RD$ 5,120.00',
+    id: 'VT-2026-003',
+    cliente: 'Carlos Rodríguez',
+    fecha: '01/05/2026 11:42',
+    comprobante: 'B01-00001236',
+    total: 'RD$ 3,890.00',
+    estado: 'Pendiente',
+    tipoPago: 'Transferencia'
+  },
+  {
+    id: 'VT-2026-002',
+    cliente: 'María González',
+    fecha: '01/05/2026 10:15',
+    comprobante: 'B01-00001235',
+    total: 'RD$ 1,230.50',
     estado: 'Completada',
     tipoPago: 'Tarjeta'
+  },
+  {
+    id: 'VT-2026-001',
+    cliente: 'Juan Pérez',
+    fecha: '01/05/2026 09:23',
+    comprobante: 'B01-00001234',
+    total: 'RD$ 2,450.00',
+    estado: 'Completada',
+    tipoPago: 'Efectivo'
   },
 ];
 

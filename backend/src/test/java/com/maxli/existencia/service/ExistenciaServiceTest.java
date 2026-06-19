@@ -54,7 +54,7 @@ class ExistenciaServiceTest {
         almacen.setIdAlmacen(1L);
 
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
-        when(existenciaRepository.existsByProducto_IdProducto(10L)).thenReturn(false);
+        when(existenciaRepository.existsByProducto_IdProductoAndAlmacen_IdAlmacen(10L, 1L)).thenReturn(false);
         when(almacenService.obtenerEntidadPorId(any())).thenReturn(almacen);
         when(existenciaMapper.toEntity(eq(request), eq(producto), any(Almacen.class))).thenReturn(entity);
         when(existenciaRepository.save(entity)).thenReturn(saved);
@@ -96,11 +96,11 @@ class ExistenciaServiceTest {
         Producto producto = productoActivo();
 
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
-        when(existenciaRepository.existsByProducto_IdProducto(10L)).thenReturn(true);
+        when(existenciaRepository.existsByProducto_IdProductoAndAlmacen_IdAlmacen(10L, 1L)).thenReturn(true);
 
         assertThatThrownBy(() -> existenciaService.crear(request))
                 .isInstanceOf(DuplicateResourceException.class)
-                .hasMessageContaining("10");
+                .hasMessageContaining("este producto");
     }
 
     @Test
@@ -140,6 +140,7 @@ class ExistenciaServiceTest {
     private ExistenciaRequestDTO request() {
         ExistenciaRequestDTO dto = new ExistenciaRequestDTO();
         dto.setIdProducto(10L);
+        dto.setIdAlmacen(1L);
         dto.setCantidadActual(50);
         dto.setCantidadMinima(10);
         return dto;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   useFloating,
@@ -12,7 +12,7 @@ import {
   Send, Ban, CheckCircle2, CreditCard, PackageCheck, Trash2,
   MoreVertical, Eye, Pencil, FileText, AlertTriangle
 } from 'lucide-react';
-import { ordenesCompraApi, proveedoresApi, productosApi, OrdenCompra, Proveedor, Producto } from '../../imports/api';
+import { ordenesCompraApi, proveedoresApi, productosApi, almacenesApi, OrdenCompra, Proveedor, Producto, Almacen } from '../../imports/api';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(n ?? 0);
@@ -31,7 +31,7 @@ const PAGO_BADGE: Record<string, string> = {
   SALDADO:   'bg-green-500/15 text-green-600',
 };
 
-type LineaOrden = { idProducto: number; nombre: string; cantidad: number; precioUnitario: number };
+type LineaOrden = { idProducto: number; nombre: string; cantidad: number; precioUnitario: number; idAlmacen?: number | null };
 
 /* ─── Dropdown menu por fila — Floating UI (portal + auto-posicionamiento) ─── */
 interface RowMenuProps {
@@ -215,7 +215,10 @@ function DetalleModal({ orden, onClose }: { orden: OrdenCompra; onClose: () => v
             <div className="space-y-1.5">
               {orden.detalles.map(d => (
                 <div key={d.idDetalleOrdenCompra} className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2.5 text-sm border border-border">
-                  <span className="font-medium">{d.nombreProducto}</span>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{d.nombreProducto}</span>
+                    <span className="text-[10px] text-muted-foreground">{d.nombreAlmacen ? `Destino: ${d.nombreAlmacen}` : 'Almacén no asignado'}</span>
+                  </div>
                   <div className="flex items-center gap-4 text-muted-foreground text-xs">
                     <span>{d.cantidadRecibida}/{d.cantidad} recibidos</span>
                     <span className="font-semibold text-foreground">{fmt(d.subtotal)}</span>
@@ -276,6 +279,7 @@ export default function OrdenesCompra() {
   const [showNueva, setShowNueva] = useState(false);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
   const [idProveedorSel, setIdProveedorSel] = useState('');
   const [lineas, setLineas] = useState<LineaOrden[]>([]);
   const [saving, setSaving] = useState(false);
@@ -312,18 +316,20 @@ export default function OrdenesCompra() {
     setIdProveedorSel('');
     setFormError('');
     try {
-      const [pRes, prRes] = await Promise.all([
+      const [pRes, prRes, almRes] = await Promise.all([
         proveedoresApi.listarActivos(),
         productosApi.listarActivos(),
+        almacenesApi.listar(0, 100),
       ]);
       setProveedores(pRes.content);
       setProductos(prRes.content);
+      setAlmacenes(almRes.content.filter(a => a.estado === 'ACTIVO'));
     } catch { setFormError('Error cargando datos'); }
     setShowNueva(true);
   };
 
   const addLinea = () =>
-    setLineas(l => [...l, { idProducto: 0, nombre: '', cantidad: 1, precioUnitario: 0 }]);
+    setLineas(l => [...l, { idProducto: 0, nombre: '', cantidad: 1, precioUnitario: 0, idAlmacen: null }]);
 
   const removeLinea = (i: number) =>
     setLineas(l => l.filter((_, idx) => idx !== i));
@@ -346,7 +352,12 @@ export default function OrdenesCompra() {
     try {
       await ordenesCompraApi.crear({
         idProveedor: Number(idProveedorSel),
-        detalles: lineas.map(l => ({ idProducto: l.idProducto, cantidad: l.cantidad, precioUnitario: l.precioUnitario })),
+        detalles: lineas.map(l => ({
+          idProducto: l.idProducto,
+          cantidad: l.cantidad,
+          precioUnitario: l.precioUnitario,
+          idAlmacen: l.idAlmacen || null
+        })),
       });
       setShowNueva(false);
       fetchOrdenes();
@@ -461,8 +472,8 @@ export default function OrdenesCompra() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map(o => (
-                <>
-                  <tr key={o.idOrdenCompra} className="hover:bg-muted/30 transition-colors">
+                <React.Fragment key={o.idOrdenCompra}>
+                  <tr className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
                       <button
                         onClick={() => {
@@ -515,7 +526,10 @@ export default function OrdenesCompra() {
                             <div className="space-y-1">
                               {o.detalles.map(d => (
                                 <div key={d.idDetalleOrdenCompra} className="flex items-center justify-between text-sm bg-background rounded-lg px-3 py-2 border border-border">
-                                  <span className="font-medium">{d.nombreProducto}</span>
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{d.nombreProducto}</span>
+                                    <span className="text-[10px] text-muted-foreground">{d.nombreAlmacen ? `Destino: ${d.nombreAlmacen}` : 'Almacén no asignado'}</span>
+                                  </div>
                                   <div className="flex items-center gap-4 text-muted-foreground text-xs">
                                     <span>{d.cantidadRecibida}/{d.cantidad} recibidos</span>
                                     <span className="font-semibold text-foreground">{fmt(d.subtotal)}</span>
@@ -548,7 +562,7 @@ export default function OrdenesCompra() {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -612,11 +626,19 @@ export default function OrdenesCompra() {
                 <div className="space-y-2">
                   {lineas.map((ln, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-center bg-muted/30 rounded-lg p-3">
-                      <div className="col-span-5">
+                      <div className="col-span-4">
                         <select value={ln.idProducto} onChange={e => setLineaProducto(i, Number(e.target.value))}
                           className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none">
-                          <option value={0}>Seleccionar...</option>
+                          <option value={0}>Seleccionar producto...</option>
                           {productos.map(p => <option key={p.idProducto} value={p.idProducto}>{p.nombre}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-3">
+                        <select value={ln.idAlmacen || ''}
+                          onChange={e => setLineas(l => l.map((x, idx) => idx === i ? { ...x, idAlmacen: e.target.value ? Number(e.target.value) : null } : x))}
+                          className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none">
+                          <option value="">Almacén (opcional)</option>
+                          {almacenes.map(a => <option key={a.idAlmacen} value={a.idAlmacen}>{a.nombre}</option>)}
                         </select>
                       </div>
                       <div className="col-span-2">
@@ -624,13 +646,10 @@ export default function OrdenesCompra() {
                           onChange={e => setLineas(l => l.map((x, idx) => idx === i ? { ...x, cantidad: parseInt(e.target.value) || 1 } : x))}
                           className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm text-center focus:outline-none" placeholder="Cant." />
                       </div>
-                      <div className="col-span-3">
+                      <div className="col-span-2">
                         <input type="number" min={0} step={0.01} value={ln.precioUnitario}
                           onChange={e => setLineas(l => l.map((x, idx) => idx === i ? { ...x, precioUnitario: parseFloat(e.target.value) || 0 } : x))}
                           className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none" placeholder="Precio" />
-                      </div>
-                      <div className="col-span-1 text-right text-xs font-semibold text-muted-foreground">
-                        {fmt(ln.cantidad * ln.precioUnitario)}
                       </div>
                       <div className="col-span-1 flex justify-end">
                         <button onClick={() => removeLinea(i)} className="p-1 text-rose-500 hover:bg-rose-500/10 rounded">

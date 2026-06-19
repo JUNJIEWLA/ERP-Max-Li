@@ -7,11 +7,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface ExistenciaRepository extends JpaRepository<Existencia, Long> {
 
-    Optional<Existencia> findByProducto_IdProducto(Long idProducto);
+    List<Existencia> findByProducto_IdProducto(Long idProducto);
+
+    Optional<Existencia> findFirstByProducto_IdProducto(Long idProducto);
 
     Optional<Existencia> findByProducto_IdProductoAndAlmacen_IdAlmacen(Long idProducto, Long idAlmacen);
 

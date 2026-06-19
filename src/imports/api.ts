@@ -437,7 +437,7 @@ export const existenciasApi = {
     get<PageResponse<Existencia>>(`/existencias/almacen/${idAlmacen}/bajo-stock`, { page, size }),
 
   buscarPorProducto: (idProducto: number) =>
-    get<Existencia>(`/existencias/producto/${idProducto}`),
+    get<Existencia[]>(`/existencias/producto/${idProducto}`),
 
   crear: (body: { idProducto: number; idAlmacen: number; cantidadActual: number; cantidadMinima: number }) =>
     post<Existencia>('/existencias', body),
@@ -477,7 +477,7 @@ export interface MovimientoInventario {
 
 export const movimientosApi = {
   listar: (page = 0, size = 20) =>
-    get<PageResponse<MovimientoInventario>>('/movimientos', { page, size }),
+    get<PageResponse<MovimientoInventario>>('/movimientos', { page, size, sort: 'idMovimiento,desc' }),
 
   buscarPorId: (id: number) =>
     get<MovimientoInventario>(`/movimientos/${id}`),
@@ -588,7 +588,7 @@ export const cajasChicasApi = {
 
 export const movimientosCajaApi = {
   listarPorCajaChica: (idCajaChica: number, page = 0, size = 20) =>
-    get<PageResponse<MovimientoCaja>>(`/cajas/chicas/${idCajaChica}/movimientos`, { page, size }),
+    get<PageResponse<MovimientoCaja>>(`/cajas/chicas/${idCajaChica}/movimientos`, { page, size, sort: 'idMovimiento,desc' }),
 
   buscarPorId: (idMovimiento: number) =>
     get<MovimientoCaja>(`/cajas/chicas/movimientos/${idMovimiento}`),
@@ -599,7 +599,7 @@ export const movimientosCajaApi = {
 
 export const turnosCajaApi = {
   listar: (page = 0, size = 20) =>
-    get<PageResponse<TurnoCaja>>('/cajas/turnos', { page, size }),
+    get<PageResponse<TurnoCaja>>('/cajas/turnos', { page, size, sort: 'idTurnoCaja,desc' }),
 
   listarAbiertos: (page = 0, size = 20) =>
     get<PageResponse<TurnoCaja>>('/cajas/turnos/abiertos', { page, size }),
@@ -649,6 +649,8 @@ export interface DetalleOrdenCompra {
   subtotal: number;
   cantidadRecibida: number;
   cantidadPendiente: number;
+  idAlmacen: number | null;
+  nombreAlmacen: string | null;
 }
 
 export interface PagoProveedor {
@@ -684,6 +686,8 @@ export interface DetalleNotaRecepcion {
   cantidadRecibida: number;
   observacion: string;
   notas: string | null;
+  idAlmacen: number | null;
+  nombreAlmacen: string | null;
 }
 
 export interface NotaRecepcion {
@@ -721,7 +725,7 @@ export const proveedoresApi = {
 
 export const ordenesCompraApi = {
   listar: (page = 0, size = 20) =>
-    get<PageResponse<OrdenCompra>>('/ordenes-compra', { page, size }),
+    get<PageResponse<OrdenCompra>>('/ordenes-compra', { page, size, sort: 'idOrdenCompra,desc' }),
 
   listarPorProveedor: (idProveedor: number, page = 0, size = 20) =>
     get<PageResponse<OrdenCompra>>(`/ordenes-compra/proveedor/${idProveedor}`, { page, size }),
@@ -729,7 +733,7 @@ export const ordenesCompraApi = {
   buscarPorId: (id: number) =>
     get<OrdenCompra>(`/ordenes-compra/${id}`),
 
-  crear: (body: { idProveedor: number; detalles: { idProducto: number; cantidad: number; precioUnitario: number }[] }) =>
+  crear: (body: { idProveedor: number; detalles: { idProducto: number; cantidad: number; precioUnitario: number; idAlmacen?: number | null }[] }) =>
     post<OrdenCompra>('/ordenes-compra', body),
 
   enviar: (id: number) =>
@@ -752,7 +756,7 @@ export const ordenesCompraApi = {
 
 export const notasRecepcionApi = {
   listar: (page = 0, size = 20) =>
-    get<PageResponse<NotaRecepcion>>('/notas-recepcion', { page, size }),
+    get<PageResponse<NotaRecepcion>>('/notas-recepcion', { page, size, sort: 'idNotaRecepcion,desc' }),
 
   listarPorOrden: (idOrden: number, page = 0, size = 20) =>
     get<PageResponse<NotaRecepcion>>(`/notas-recepcion/orden/${idOrden}`, { page, size }),
@@ -760,7 +764,7 @@ export const notasRecepcionApi = {
   buscarPorId: (id: number) =>
     get<NotaRecepcion>(`/notas-recepcion/${id}`),
 
-  crear: (body: { idOrdenCompra: number; detalles: { idDetalleOrdenCompra: number; cantidadRecibida: number; observacion: string; notas?: string }[] }) =>
+  crear: (body: { idOrdenCompra: number; detalles: { idDetalleOrdenCompra: number; cantidadRecibida: number; observacion: string; notas?: string; idAlmacen: number }[] }) =>
     post<NotaRecepcion>('/notas-recepcion', body),
 
   confirmar: (id: number) =>

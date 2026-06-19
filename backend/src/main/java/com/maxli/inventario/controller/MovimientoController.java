@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +26,8 @@ public class MovimientoController {
     private final MovimientoService movimientoService;
 
     @GetMapping
-    public ResponseEntity<Page<MovimientoResponseDTO>> listar(Pageable pageable) {
+    public ResponseEntity<Page<MovimientoResponseDTO>> listar(
+            @PageableDefault(sort = "idMovimiento", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(movimientoService.listar(pageable));
     }
 
@@ -35,13 +38,15 @@ public class MovimientoController {
 
     @GetMapping("/almacen/{idAlmacen}")
     public ResponseEntity<Page<MovimientoResponseDTO>> listarPorAlmacen(
-            @PathVariable Long idAlmacen, Pageable pageable) {
+            @PathVariable Long idAlmacen,
+            @PageableDefault(sort = "idMovimiento", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(movimientoService.listarPorAlmacen(idAlmacen, pageable));
     }
 
     @GetMapping("/tipo/{tipo}")
     public ResponseEntity<Page<MovimientoResponseDTO>> listarPorTipo(
-            @PathVariable String tipo, Pageable pageable) {
+            @PathVariable String tipo,
+            @PageableDefault(sort = "idMovimiento", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(movimientoService.listarPorTipo(tipo, pageable));
     }
 

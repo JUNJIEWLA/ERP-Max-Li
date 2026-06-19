@@ -26,4 +26,7 @@ public class DetalleNotaRecepcionRequestDTO {
 
     @Size(max = 500, message = "Las notas no pueden superar 500 caracteres")
     private String notas;
+
+    @NotNull(message = "El almacén es obligatorio")
+    private Long idAlmacen;
 }
