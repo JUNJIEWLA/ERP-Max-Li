@@ -34,6 +34,10 @@ public class NotaRecepcionMapper {
         dto.setCantidadRecibida(detalle.getCantidadRecibida());
         dto.setObservacion(detalle.getObservacion());
         dto.setNotas(detalle.getNotas());
+        if (detalle.getAlmacen() != null) {
+            dto.setIdAlmacen(detalle.getAlmacen().getIdAlmacen());
+            dto.setNombreAlmacen(detalle.getAlmacen().getNombre());
+        }
         return dto;
     }
 }

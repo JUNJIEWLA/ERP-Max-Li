@@ -15,4 +15,6 @@ public class DetalleNotaRecepcionResponseDTO {
     private Integer cantidadRecibida;
     private String observacion;
     private String notas;
+    private Long idAlmacen;
+    private String nombreAlmacen;
 }

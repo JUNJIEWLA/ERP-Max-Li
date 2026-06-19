@@ -4,6 +4,7 @@ import com.maxli.existencia.dto.ExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.service.ExistenciaService;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -40,7 +41,7 @@ public class ExistenciaController {
     }
 
     @GetMapping("/producto/{idProducto}")
-    public ResponseEntity<ExistenciaResponseDTO> buscarPorProducto(@PathVariable Long idProducto) {
+    public ResponseEntity<List<ExistenciaResponseDTO>> buscarPorProducto(@PathVariable Long idProducto) {
         return ResponseEntity.ok(existenciaService.buscarPorProducto(idProducto));
     }
 

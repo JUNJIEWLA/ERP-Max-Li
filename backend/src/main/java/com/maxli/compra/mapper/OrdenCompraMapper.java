@@ -66,6 +66,10 @@ public class OrdenCompraMapper {
         dto.setSubtotal(detalle.getSubtotal());
         dto.setCantidadRecibida(detalle.getCantidadRecibida());
         dto.setCantidadPendiente(detalle.getCantidad() - detalle.getCantidadRecibida());
+        if (detalle.getAlmacen() != null) {
+            dto.setIdAlmacen(detalle.getAlmacen().getIdAlmacen());
+            dto.setNombreAlmacen(detalle.getAlmacen().getNombre());
+        }
         return dto;
     }
 

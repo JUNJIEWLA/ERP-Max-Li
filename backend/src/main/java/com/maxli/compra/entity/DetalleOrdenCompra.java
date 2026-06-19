@@ -1,5 +1,6 @@
 package com.maxli.compra.entity;
 
+import com.maxli.almacen.entity.Almacen;
 import com.maxli.producto.entity.Producto;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -35,6 +36,10 @@ public class DetalleOrdenCompra {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_producto", nullable = false)
     private Producto producto;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_almacen")
+    private Almacen almacen;
 
     @Column(name = "cantidad", nullable = false)
     private Integer cantidad;

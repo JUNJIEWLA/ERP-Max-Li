@@ -9,6 +9,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +29,8 @@ public class ConteoController {
     private final ConteoService conteoService;
 
     @GetMapping
-    public ResponseEntity<Page<ConteoResumenResponseDTO>> listar(Pageable pageable) {
+    public ResponseEntity<Page<ConteoResumenResponseDTO>> listar(
+            @PageableDefault(sort = "idConteo", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(conteoService.listar(pageable));
     }
 
@@ -38,13 +41,15 @@ public class ConteoController {
 
     @GetMapping("/estado/{estado}")
     public ResponseEntity<Page<ConteoResumenResponseDTO>> listarPorEstado(
-            @PathVariable String estado, Pageable pageable) {
+            @PathVariable String estado,
+            @PageableDefault(sort = "idConteo", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(conteoService.listarPorEstado(estado, pageable));
     }
 
     @GetMapping("/usuario/{idUsuario}")
     public ResponseEntity<Page<ConteoResumenResponseDTO>> listarPorUsuario(
-            @PathVariable Long idUsuario, Pageable pageable) {
+            @PathVariable Long idUsuario,
+            @PageableDefault(sort = "idConteo", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(conteoService.listarPorUsuario(idUsuario, pageable));
     }
 

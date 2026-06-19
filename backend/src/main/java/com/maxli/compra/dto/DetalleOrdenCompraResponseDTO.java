@@ -20,4 +20,7 @@ public class DetalleOrdenCompraResponseDTO {
 
     /** cantidad - cantidadRecibida */
     private Integer cantidadPendiente;
+
+    private Long idAlmacen;
+    private String nombreAlmacen;
 }

@@ -12,6 +12,8 @@ import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.producto.entity.Producto;
 import com.maxli.producto.repository.ProductoRepository;
+import com.maxli.almacen.entity.Almacen;
+import com.maxli.almacen.repository.AlmacenRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,6 +39,7 @@ public class OrdenCompraService {
     private final ProductoRepository productoRepository;
     private final ProveedorService proveedorService;
     private final OrdenCompraMapper ordenCompraMapper;
+    private final AlmacenRepository almacenRepository;
 
     @Transactional(readOnly = true)
     public Page<OrdenCompraResponseDTO> listar(Pageable pageable) {
@@ -132,6 +135,16 @@ public class OrdenCompraService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Producto no encontrado o inactivo con id: " + dto.getIdProducto()));
 
+        Almacen almacen = null;
+        if (dto.getIdAlmacen() != null) {
+            almacen = almacenRepository.findById(dto.getIdAlmacen())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Almacén no encontrado con id: " + dto.getIdAlmacen()));
+            if (!"ACTIVO".equals(almacen.getEstado())) {
+                throw new BusinessException("El almacén con id " + dto.getIdAlmacen() + " está inactivo");
+            }
+        }
+
         DetalleOrdenCompra detalle = new DetalleOrdenCompra();
         detalle.setOrdenCompra(orden);
         detalle.setProducto(producto);
@@ -139,6 +152,7 @@ public class OrdenCompraService {
         detalle.setPrecioUnitario(dto.getPrecioUnitario());
         detalle.setSubtotal(dto.getPrecioUnitario().multiply(BigDecimal.valueOf(dto.getCantidad())));
         detalle.setCantidadRecibida(0);
+        detalle.setAlmacen(almacen);
         return detalle;
     }
 

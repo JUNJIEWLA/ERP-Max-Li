@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  useFloating, autoUpdate, offset, shift, // flip eliminado
+  useFloating, autoUpdate, offset, flip, shift,
 } from '@floating-ui/react-dom';
 import {
   Plus, X, Loader2, PackageCheck, Search, CheckCircle2, XCircle,
@@ -9,8 +9,8 @@ import {
   ClipboardCheck, ClipboardX, Package, Calendar, Hash,
 } from 'lucide-react';
 import {
-  notasRecepcionApi, ordenesCompraApi, alertasCostoApi,
-  OrdenCompra, NotaRecepcion,
+  notasRecepcionApi, ordenesCompraApi, alertasCostoApi, almacenesApi,
+  OrdenCompra, NotaRecepcion, Almacen,
 } from '../../imports/api';
 import AlertasCostoBuzon from './AlertasCostoBuzon';
 
@@ -38,6 +38,7 @@ type LineaRecepcion = {
   cantidadRecibida: number;
   observacion: string;
   notas: string;
+  idAlmacen?: number | null;
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -55,14 +56,15 @@ interface RowMenuProps {
 function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onRegistrarPago, onGenerarReporte }: RowMenuProps) {
   const [open, setOpen] = useState(false);
 
-  // useFloating con strategy 'fixed' y SIN 'flip' para forzar apertura hacia abajo
+  // useFloating: portal con strategy 'fixed' → coordenadas relativas al viewport
   const { refs, floatingStyles, update } = useFloating({
     open,
     strategy: 'fixed', 
-    placement: 'bottom-end', // Forzado siempre hacia abajo
+    placement: 'bottom-end',
     middleware: [
       offset(6), 
-      shift({ padding: 8 }) // flip() fue removido de aquí
+      flip({ fallbackPlacements: ['top-end'] }),
+      shift({ padding: 8 })
     ],
     whileElementsMounted: autoUpdate,
   });
@@ -252,9 +254,14 @@ function DetalleModal({ nota, onClose }: { nota: NotaRecepcion; onClose: () => v
                     className="flex items-center justify-between bg-muted/30 border border-border rounded-xl px-4 py-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm truncate">{d.nombreProducto}</p>
-                      {d.notas && (
-                        <p className="text-xs text-muted-foreground mt-0.5 italic">"{d.notas}"</p>
-                      )}
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[10px] text-muted-foreground font-semibold bg-muted px-1.5 py-0.5 rounded">
+                          Almacén: {d.nombreAlmacen || 'No asignado'}
+                        </span>
+                        {d.notas && (
+                          <span className="text-xs text-muted-foreground italic truncate">"{d.notas}"</span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 ml-4 flex-shrink-0">
                       <div className="text-right">
@@ -430,6 +437,7 @@ export default function NotasRecepcion() {
   // Modal nueva nota
   const [showModal,      setShowModal]     = useState(false);
   const [ordenes,        setOrdenes]       = useState<OrdenCompra[]>([]);
+  const [almacenes,      setAlmacenes]     = useState<Almacen[]>([]);
   const [idOrdenSel,     setIdOrdenSel]    = useState('');
   const [ordenDetalle,   setOrdenDetalle]  = useState<OrdenCompra | null>(null);
   const [lineas,         setLineas]        = useState<LineaRecepcion[]>([]);
@@ -452,12 +460,16 @@ export default function NotasRecepcion() {
   const openModal = async () => {
     setIdOrdenSel(''); setOrdenDetalle(null); setLineas([]); setFormError('');
     try {
-      const res = await ordenesCompraApi.listar(0, 100);
+      const [res, almRes] = await Promise.all([
+        ordenesCompraApi.listar(0, 100),
+        almacenesApi.listar(0, 100),
+      ]);
       const aptas = res.content.filter(o =>
         o.estado === 'ENVIADA' || o.estado === 'RECEPCION_PARCIAL'
       );
       setOrdenes(aptas);
-    } catch { setFormError('Error cargando órdenes'); }
+      setAlmacenes(almRes.content.filter(a => a.estado === 'ACTIVO'));
+    } catch { setFormError('Error cargando datos'); }
     setShowModal(true);
   };
 
@@ -477,6 +489,7 @@ export default function NotasRecepcion() {
           cantidadRecibida: d.cantidadPendiente,
           observacion: 'CONFORME',
           notas: '',
+          idAlmacen: d.idAlmacen ?? null,
         }))
       );
     } catch { setFormError('Error cargando orden'); }
@@ -487,6 +500,7 @@ export default function NotasRecepcion() {
     if (!idOrdenSel)          { setFormError('Selecciona una orden'); return; }
     if (lineas.length === 0)  { setFormError('No hay ítems pendientes de recibir'); return; }
     if (lineas.some(l => l.cantidadRecibida < 1)) { setFormError('La cantidad recibida debe ser al menos 1'); return; }
+    if (lineas.some(l => !l.idAlmacen)) { setFormError('Selecciona un almacén de destino para cada producto'); return; }
     setSaving(true); setFormError('');
     try {
       await notasRecepcionApi.crear({
@@ -496,6 +510,7 @@ export default function NotasRecepcion() {
           cantidadRecibida: l.cantidadRecibida,
           observacion: l.observacion,
           notas: l.notas || undefined,
+          idAlmacen: Number(l.idAlmacen),
         })),
       });
       setShowModal(false);
@@ -619,8 +634,9 @@ export default function NotasRecepcion() {
                           const obs = OBS_BADGE[d.observacion] ?? { cls: 'bg-muted text-muted-foreground', label: d.observacion };
                           return (
                             <span key={d.idDetalleNotaRecepcion}
-                              className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${obs.cls}`}>
-                              {d.nombreProducto} ×{d.cantidadRecibida}
+                              className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${obs.cls}`}
+                              title={d.nombreAlmacen ? `Almacén: ${d.nombreAlmacen}` : undefined}>
+                              {d.nombreProducto} ({d.nombreAlmacen || 'Sin Almacén'}) ×{d.cantidadRecibida}
                             </span>
                           );
                         })}
@@ -732,13 +748,22 @@ export default function NotasRecepcion() {
                             Pendiente: <strong>{ln.cantidadPendiente}</strong>
                           </span>
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-4 gap-2">
                           <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Cantidad recibida</label>
                             <input type="number" min={1} max={ln.cantidadPendiente} value={ln.cantidadRecibida}
                               onChange={e => setLineas(l => l.map((x, idx) => idx === i
                                 ? { ...x, cantidadRecibida: Math.min(ln.cantidadPendiente, parseInt(e.target.value) || 1) } : x))}
                               className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Almacén Destino <span className="text-rose-500">*</span></label>
+                            <select value={ln.idAlmacen || ''}
+                              onChange={e => setLineas(l => l.map((x, idx) => idx === i ? { ...x, idAlmacen: e.target.value ? Number(e.target.value) : null } : x))}
+                              className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary/40">
+                              <option value="">Seleccionar...</option>
+                              {almacenes.map(a => <option key={a.idAlmacen} value={a.idAlmacen}>{a.nombre}</option>)}
+                            </select>
                           </div>
                           <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Estado físico</label>

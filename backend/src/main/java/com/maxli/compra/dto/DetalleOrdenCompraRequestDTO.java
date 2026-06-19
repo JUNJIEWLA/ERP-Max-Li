@@ -24,4 +24,6 @@ public class DetalleOrdenCompraRequestDTO {
     @DecimalMin(value = "0.01", message = "El precio unitario debe ser mayor a 0")
     @Digits(integer = 10, fraction = 2, message = "El precio unitario debe tener máximo 10 enteros y 2 decimales")
     private BigDecimal precioUnitario;
+
+    private Long idAlmacen;
 }
