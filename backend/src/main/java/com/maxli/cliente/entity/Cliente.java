@@ -60,6 +60,20 @@ public class Cliente {
     @Column(name = "estado", nullable = false, length = 20)
     private String estado = "ACTIVO";
 
+    /**
+     * Días de plazo de crédito otorgados al cliente.
+     * 0 = sin crédito. Se activa cuando AMBOS (diasCredito y montoLimiteCredito) son > 0.
+     */
+    @Column(name = "dias_credito", nullable = false)
+    private Integer diasCredito = 0;
+
+    /**
+     * Monto máximo de crédito autorizado en DOP.
+     * 0 = sin crédito. Se activa cuando AMBOS (diasCredito y montoLimiteCredito) son > 0.
+     */
+    @Column(name = "monto_limite_credito", nullable = false, precision = 14, scale = 2)
+    private BigDecimal montoLimiteCredito = BigDecimal.ZERO;
+
     @CreatedDate
     @Column(name = "fecha_creacion", updatable = false)
     private LocalDateTime fechaCreacion;

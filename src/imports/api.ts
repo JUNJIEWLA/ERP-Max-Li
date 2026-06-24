@@ -673,6 +673,14 @@ export interface OrdenCompra {
   balancePendiente: number;
   detalles: DetalleOrdenCompra[];
   pagos: PagoProveedor[];
+  /** Fecha acordada con el proveedor (ISO date string o null si no se configuró). */
+  fechaLlegadaAcordada: string | null;
+  /**
+   * Días de retraso calculados por el backend.
+   * null = no hay fecha acordada, o la OC ya está completada, o la fecha aún no venció.
+   * 0 = venció hoy. > 0 = hay retraso.
+   */
+  diasRetraso: number | null;
   fechaOrden: string;
   fechaModificacion: string;
 }
@@ -733,7 +741,11 @@ export const ordenesCompraApi = {
   buscarPorId: (id: number) =>
     get<OrdenCompra>(`/ordenes-compra/${id}`),
 
-  crear: (body: { idProveedor: number; detalles: { idProducto: number; cantidad: number; precioUnitario: number; idAlmacen?: number | null }[] }) =>
+  crear: (body: {
+    idProveedor: number;
+    fechaLlegadaAcordada?: string | null;
+    detalles: { idProducto: number; cantidad: number; precioUnitario: number; idAlmacen?: number | null }[]
+  }) =>
     post<OrdenCompra>('/ordenes-compra', body),
 
   enviar: (id: number) =>
@@ -787,6 +799,12 @@ export interface Cliente {
   descuentoPredeterminado: number;
   totalCompras: number;
   estado: string;
+  /** Días de plazo de crédito (0 = sin crédito). */
+  diasCredito: number;
+  /** Monto máximo de crédito en DOP (0 = sin crédito). */
+  montoLimiteCredito: number;
+  /** Estado calculado por el backend: SIN_CREDITO | AL_DIA | BLOQUEADO. */
+  estadoCredito: string;
   fechaCreacion: string;
   fechaModificacion: string;
 }
@@ -825,6 +843,8 @@ export const clientesApi = {
     tipoNcfPreferido?: string;
     descuentoPredeterminado?: number;
     estado?: string;
+    diasCredito?: number;
+    montoLimiteCredito?: number;
   }) => post<Cliente>('/clientes', body),
 
   actualizar: (id: number, body: Partial<{
@@ -836,13 +856,47 @@ export const clientesApi = {
     tipoNcfPreferido: string;
     descuentoPredeterminado: number;
     estado: string;
+    diasCredito: number;
+    montoLimiteCredito: number;
   }>) => put<Cliente>(`/clientes/${id}`, body),
 
   desactivar: (id: number) =>
     del(`/clientes/${id}`),
 };
 
-// ── API: Historial de Costos ─────────────────────────────
+// ── Tipos: Alertas de Retraso en Órdenes de Compra ───────────────
+
+export interface AlertaRetrasoOc {
+  idAlertaRetraso: number;
+  idOrdenCompra: number;
+  nombreProveedor: string;
+  fechaLlegadaAcordada: string;
+  /** Días transcurridos desde la fecha acordada (>= 0). */
+  diasRetraso: number;
+  /** PENDIENTE | LEIDA */
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string | null;
+}
+
+// ── API: Alertas de Retraso OC ───────────────────────────────────
+
+export const alertasRetrasoOcApi = {
+  listarPendientes: (page = 0, size = 50) =>
+    get<PageResponse<AlertaRetrasoOc>>('/alertas-retraso-oc', { page, size }),
+
+  contarPendientes: () =>
+    get<{ count: number }>('/alertas-retraso-oc/pendientes/count'),
+
+  marcarLeidasMasivo: (ids: number[]) =>
+    fetch('/api/alertas-retraso-oc/marcar-leidas', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ ids }),
+    }).then(res => { if (!res.ok && res.status !== 204) throw new Error('Error al marcar alertas'); }),
+};
+
+// ── API: Historial de Costos ─────────────────────────────────────
 
 export const historialCostosApi = {
   listarPorProducto: (idProducto: number, page = 0, size = 20) =>

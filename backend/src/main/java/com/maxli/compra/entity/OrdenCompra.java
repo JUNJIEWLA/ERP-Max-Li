@@ -20,6 +20,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +52,14 @@ public class OrdenCompra {
      */
     @Column(name = "estado", nullable = false, length = 30)
     private String estado;
+
+    /**
+     * Fecha en que el proveedor se comprometió a entregar la mercancía.
+     * NULL = no se acordó fecha. Cuando está definida y la OC sigue ENVIADA o RECEPCION_PARCIAL
+     * después de esta fecha, el scheduler genera una alerta de retraso en el buzón.
+     */
+    @Column(name = "fecha_llegada_acordada")
+    private LocalDate fechaLlegadaAcordada;
 
     @OneToMany(mappedBy = "ordenCompra", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DetalleOrdenCompra> detalles = new ArrayList<>();

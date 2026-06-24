@@ -9,10 +9,15 @@ import com.maxli.compra.entity.PagoProveedor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class OrdenCompraMapper {
+
+    private static final Set<String> ESTADOS_ACTIVOS = Set.of("ENVIADA", "RECEPCION_PARCIAL");
 
     public OrdenCompraResponseDTO toDto(OrdenCompra orden) {
         OrdenCompraResponseDTO dto = new OrdenCompraResponseDTO();
@@ -23,6 +28,13 @@ public class OrdenCompraMapper {
         dto.setEstado(orden.getEstado());
         dto.setFechaOrden(orden.getFechaOrden());
         dto.setFechaModificacion(orden.getFechaModificacion());
+        dto.setFechaLlegadaAcordada(orden.getFechaLlegadaAcordada());
+
+        // Calcular días de retraso solo si hay fecha acordada, la OC sigue activa y la fecha ya pasó
+        if (orden.getFechaLlegadaAcordada() != null && ESTADOS_ACTIVOS.contains(orden.getEstado())) {
+            long dias = ChronoUnit.DAYS.between(orden.getFechaLlegadaAcordada(), LocalDate.now());
+            dto.setDiasRetraso(dias >= 0 ? (int) dias : null); // null si fecha aún no ha llegado
+        }
 
         // Calcular totales de pago
         BigDecimal totalPagado = orden.getPagos().stream()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Search, Edit2, UserX, UserCheck,
-  Phone, Mail, MapPin, FileText, Percent, TrendingUp, X, Save, Loader2
+  Phone, Mail, MapPin, FileText, Percent, TrendingUp, X, Save, Loader2, CreditCard
 } from 'lucide-react';
 import { clientesApi, Cliente } from '../../imports/api';
 
@@ -35,9 +35,18 @@ const EMPTY_FORM = {
   tipoNcfPreferido: 'B02',
   descuentoPredeterminado: 0,
   estado: 'ACTIVO',
+  diasCredito: 0,
+  montoLimiteCredito: 0,
 };
 
 type FormData = typeof EMPTY_FORM;
+
+// Badges de estado de crédito
+const CREDITO_BADGE: Record<string, { label: string; cls: string }> = {
+  SIN_CREDITO: { label: 'Sin Crédito', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
+  AL_DIA:      { label: 'Al Día',    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  BLOQUEADO:   { label: 'Bloqueado', cls: 'bg-rose-100 text-rose-700 border-rose-200' },
+};
 
 // ── Modal de creación / edición ──────────────────────────
 function ClienteModal({
@@ -61,6 +70,8 @@ function ClienteModal({
           tipoNcfPreferido: cliente.tipoNcfPreferido,
           descuentoPredeterminado: cliente.descuentoPredeterminado,
           estado: cliente.estado,
+          diasCredito: cliente.diasCredito ?? 0,
+          montoLimiteCredito: cliente.montoLimiteCredito ?? 0,
         }
       : { ...EMPTY_FORM }
   );
@@ -89,6 +100,8 @@ function ClienteModal({
         tipoNcfPreferido: form.tipoNcfPreferido,
         descuentoPredeterminado: form.descuentoPredeterminado,
         estado: form.estado,
+        diasCredito: form.diasCredito,
+        montoLimiteCredito: form.montoLimiteCredito,
       };
       if (isEdit) {
         await clientesApi.actualizar(cliente.idCliente, body);
@@ -247,6 +260,41 @@ function ClienteModal({
             </div>
           )}
 
+          {/* Configuración de Crédito */}
+          <div className="border border-border rounded-xl p-4 space-y-3 bg-muted/20">
+            <div className="flex items-center gap-2">
+              <CreditCard size={15} className="text-primary" />
+              <p className="text-xs font-semibold uppercase tracking-wide">Configuración de Crédito</p>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Ambos campos deben ser mayores que 0 para activar el crédito. Dejar en 0 = sin crédito.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">Días de plazo</label>
+                <input
+                  id="input-dias-credito"
+                  type="number" min="0" step="1"
+                  value={form.diasCredito}
+                  onChange={(e) => set('diasCredito', parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none text-right"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">Límite de crédito (DOP)</label>
+                <input
+                  id="input-monto-credito"
+                  type="number" min="0" step="100"
+                  value={form.montoLimiteCredito}
+                  onChange={(e) => set('montoLimiteCredito', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none text-right"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Footer */}
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -396,6 +444,7 @@ export default function Clientes() {
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">Contacto</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">NCF Pref.</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide">Descuento</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide">Crédito</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">Total Compras</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide">Estado</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide">Acciones</th>
@@ -404,14 +453,14 @@ export default function Clientes() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-16 text-center text-muted-foreground">
                     <Loader2 size={24} className="animate-spin mx-auto mb-2" />
                     Cargando clientes…
                   </td>
                 </tr>
               ) : filteredClientes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-16 text-center text-muted-foreground">
                     <Users size={32} className="mx-auto mb-2 opacity-30" />
                     No se encontraron clientes
                   </td>
@@ -489,6 +538,24 @@ export default function Clientes() {
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground/50">—</span>
+                        )}
+                      </td>
+
+                      {/* Crédito */}
+                      <td className="px-4 py-3 text-center">
+                        {(() => {
+                          const badge = CREDITO_BADGE[c.estadoCredito] ?? CREDITO_BADGE['SIN_CREDITO'];
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${badge.cls}`}>
+                              <CreditCard size={10} />
+                              {badge.label}
+                            </span>
+                          );
+                        })()}
+                        {c.estadoCredito !== 'SIN_CREDITO' && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {formatCurrency(c.montoLimiteCredito)} / {c.diasCredito}d
+                          </p>
                         )}
                       </td>
 

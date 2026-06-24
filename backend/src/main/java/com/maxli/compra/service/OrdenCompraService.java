@@ -72,6 +72,7 @@ public class OrdenCompraService {
         OrdenCompra orden = new OrdenCompra();
         orden.setProveedor(proveedor);
         orden.setEstado(BORRADOR);
+        orden.setFechaLlegadaAcordada(dto.getFechaLlegadaAcordada());
 
         // Construir detalles y calcular total
         List<DetalleOrdenCompra> detalles = dto.getDetalles().stream()

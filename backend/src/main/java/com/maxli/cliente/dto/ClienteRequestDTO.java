@@ -3,6 +3,7 @@ package com.maxli.cliente.dto;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -48,4 +49,18 @@ public class ClienteRequestDTO {
 
     @Pattern(regexp = "^(ACTIVO|INACTIVO)$", message = "El estado debe ser ACTIVO o INACTIVO")
     private String estado = "ACTIVO";
+
+    /**
+     * Días de plazo de crédito. 0 por defecto (sin crédito).
+     * Junto con montoLimiteCredito deben ser > 0 para activar el crédito.
+     */
+    @Min(value = 0, message = "Los días de crédito no pueden ser negativos")
+    private Integer diasCredito = 0;
+
+    /**
+     * Monto máximo de crédito en DOP. 0 por defecto (sin crédito).
+     * Junto con diasCredito debe ser > 0 para activar el crédito.
+     */
+    @DecimalMin(value = "0.00", message = "El límite de crédito no puede ser negativo")
+    private BigDecimal montoLimiteCredito = BigDecimal.ZERO;
 }

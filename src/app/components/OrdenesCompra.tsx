@@ -10,7 +10,7 @@ import {
 import {
   Plus, X, Loader2, ShoppingCart, Search, ChevronDown, ChevronRight,
   Send, Ban, CheckCircle2, CreditCard, PackageCheck, Trash2,
-  MoreVertical, Eye, Pencil, FileText, AlertTriangle
+  MoreVertical, Eye, Pencil, FileText, AlertTriangle, Clock
 } from 'lucide-react';
 import { ordenesCompraApi, proveedoresApi, productosApi, almacenesApi, OrdenCompra, Proveedor, Producto, Almacen } from '../../imports/api';
 
@@ -32,6 +32,24 @@ const PAGO_BADGE: Record<string, string> = {
 };
 
 type LineaOrden = { idProducto: number; nombre: string; cantidad: number; precioUnitario: number; idAlmacen?: number | null };
+
+/** Helper: formatea una fecha ISO como dd/MM/yyyy */
+const fmtDate = (iso: string | null | undefined) =>
+  iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+
+/** Badge visual para días de retraso de la OC */
+function RetrasoOcBadge({ diasRetraso }: { diasRetraso: number | null }) {
+  if (diasRetraso === null || diasRetraso === undefined) return null;
+  const pulse = diasRetraso <= 3;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500/15 text-rose-600 ${
+      pulse ? 'animate-pulse' : ''
+    }`}>
+      <Clock size={11} />
+      {diasRetraso === 0 ? 'Vence hoy' : `${diasRetraso}d retraso`}
+    </span>
+  );
+}
 
 /* ─── Dropdown menu por fila — Floating UI (portal + auto-posicionamiento) ─── */
 interface RowMenuProps {
@@ -281,6 +299,7 @@ export default function OrdenesCompra() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
   const [idProveedorSel, setIdProveedorSel] = useState('');
+  const [fechaAcordada, setFechaAcordada] = useState('');
   const [lineas, setLineas] = useState<LineaOrden[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -314,6 +333,7 @@ export default function OrdenesCompra() {
   const openNueva = async () => {
     setLineas([]);
     setIdProveedorSel('');
+    setFechaAcordada('');
     setFormError('');
     try {
       const [pRes, prRes, almRes] = await Promise.all([
@@ -352,6 +372,7 @@ export default function OrdenesCompra() {
     try {
       await ordenesCompraApi.crear({
         idProveedor: Number(idProveedorSel),
+        fechaLlegadaAcordada: fechaAcordada || null,
         detalles: lineas.map(l => ({
           idProducto: l.idProducto,
           cantidad: l.cantidad,
@@ -466,6 +487,7 @@ export default function OrdenesCompra() {
                 <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Total</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Pago</th>
+                <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Llegada / Retraso</th>
                 <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Balance</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground w-16">Acciones</th>
               </tr>
@@ -499,6 +521,15 @@ export default function OrdenesCompra() {
                         {o.estadoPago}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      {o.diasRetraso !== null && o.diasRetraso !== undefined ? (
+                        <RetrasoOcBadge diasRetraso={o.diasRetraso} />
+                      ) : o.fechaLlegadaAcordada ? (
+                        <span className="text-xs text-emerald-600 font-medium">{fmtDate(o.fechaLlegadaAcordada)}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className={`px-4 py-3 text-right text-sm font-bold ${o.balancePendiente > 0 ? 'text-destructive' : 'text-green-600'}`}>
                       {fmt(o.balancePendiente)}
                     </td>
@@ -519,7 +550,7 @@ export default function OrdenesCompra() {
                   {/* Fila expandida inline (solo productos y pagos resumidos) */}
                   {detalleOrden?.idOrdenCompra === o.idOrdenCompra && (
                     <tr key={`exp-${o.idOrdenCompra}`} className="bg-muted/20">
-                      <td colSpan={8} className="px-6 py-4">
+                      <td colSpan={9} className="px-6 py-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Productos</p>
@@ -607,6 +638,20 @@ export default function OrdenesCompra() {
                     <option key={p.idProveedor} value={p.idProveedor}>{p.nombreEmpresa}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Fecha acordada */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Fecha de llegada acordada <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                <input
+                  id="input-fecha-acordada"
+                  type="date"
+                  value={fechaAcordada}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={e => setFechaAcordada(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <p className="text-xs text-muted-foreground mt-1">El sistema generará alertas en el buzón si la mercancía no llega antes de esta fecha.</p>
               </div>
 
               {/* Líneas */}

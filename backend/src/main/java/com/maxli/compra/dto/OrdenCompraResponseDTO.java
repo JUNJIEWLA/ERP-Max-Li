@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -28,6 +29,15 @@ public class OrdenCompraResponseDTO {
 
     private List<DetalleOrdenCompraResponseDTO> detalles;
     private List<PagoProveedorResponseDTO> pagos;
+
+    /** Fecha acordada con el proveedor para la entrega (puede ser null). */
+    private LocalDate fechaLlegadaAcordada;
+
+    /**
+     * Días de retraso calculados. Null si no hay fecha acordada o si la OC ya está completada.
+     * Positivo = hay retraso. 0 = venció hoy. Negativo no se expone (se usa null si la fecha no ha llegado).
+     */
+    private Integer diasRetraso;
 
     private LocalDateTime fechaOrden;
     private LocalDateTime fechaModificacion;

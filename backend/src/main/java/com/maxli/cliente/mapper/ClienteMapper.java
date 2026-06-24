@@ -21,6 +21,9 @@ public class ClienteMapper {
         dto.setDescuentoPredeterminado(cliente.getDescuentoPredeterminado());
         dto.setTotalCompras(cliente.getTotalCompras());
         dto.setEstado(cliente.getEstado());
+        dto.setDiasCredito(cliente.getDiasCredito());
+        dto.setMontoLimiteCredito(cliente.getMontoLimiteCredito());
+        // estadoCredito es calculado por ClienteService, no aquí.
         dto.setFechaCreacion(cliente.getFechaCreacion());
         dto.setFechaModificacion(cliente.getFechaModificacion());
         return dto;
@@ -48,6 +51,10 @@ public class ClienteMapper {
                 dto.getDescuentoPredeterminado() != null ? dto.getDescuentoPredeterminado() : java.math.BigDecimal.ZERO
         );
         cliente.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
+        cliente.setDiasCredito(dto.getDiasCredito() != null ? dto.getDiasCredito() : 0);
+        cliente.setMontoLimiteCredito(
+                dto.getMontoLimiteCredito() != null ? dto.getMontoLimiteCredito() : java.math.BigDecimal.ZERO
+        );
         return cliente;
     }
 }

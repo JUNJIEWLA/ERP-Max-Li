@@ -6,6 +6,7 @@ import com.maxli.cliente.dto.ClienteResponseDTO;
 import com.maxli.cliente.entity.Cliente;
 import com.maxli.cliente.mapper.ClienteMapper;
 import com.maxli.cliente.repository.ClienteRepository;
+import com.maxli.exception.BusinessException;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,11 @@ public class ClienteService {
     private static final String ACTIVO   = "ACTIVO";
     private static final String INACTIVO = "INACTIVO";
 
+    // Estados de crédito
+    private static final String CREDITO_SIN      = "SIN_CREDITO";
+    private static final String CREDITO_AL_DIA   = "AL_DIA";
+    private static final String CREDITO_BLOQUEADO = "BLOQUEADO";
+
     /** ID reservado para "Consumidor Final" (pre-insertado en V14). */
     public static final Long ID_CONSUMIDOR_FINAL = 1L;
 
@@ -35,18 +41,18 @@ public class ClienteService {
     @Transactional(readOnly = true)
     public Page<ClienteResponseDTO> listar(Pageable pageable) {
         return clienteRepository.findAll(pageable)
-                .map(clienteMapper::toDto);
+                .map(this::toDtoConCredito);
     }
 
     @Transactional(readOnly = true)
     public Page<ClienteResponseDTO> listarActivos(Pageable pageable) {
         return clienteRepository.findByEstado(ACTIVO, pageable)
-                .map(clienteMapper::toDto);
+                .map(this::toDtoConCredito);
     }
 
     @Transactional(readOnly = true)
     public ClienteResponseDTO buscarPorId(Long id) {
-        return clienteMapper.toDto(obtenerPorId(id));
+        return toDtoConCredito(obtenerPorId(id));
     }
 
     /**
@@ -80,7 +86,7 @@ public class ClienteService {
         }
 
         Cliente cliente = clienteMapper.toEntity(dto);
-        return clienteMapper.toDto(clienteRepository.save(cliente));
+        return toDtoConCredito(clienteRepository.save(cliente));
     }
 
     @Transactional
@@ -116,8 +122,15 @@ public class ClienteService {
         if (dto.getEstado() != null) {
             cliente.setEstado(dto.getEstado());
         }
+        // Actualizar campos de crédito (se permiten 0 para desactivar)
+        if (dto.getDiasCredito() != null) {
+            cliente.setDiasCredito(dto.getDiasCredito());
+        }
+        if (dto.getMontoLimiteCredito() != null) {
+            cliente.setMontoLimiteCredito(dto.getMontoLimiteCredito());
+        }
 
-        return clienteMapper.toDto(clienteRepository.save(cliente));
+        return toDtoConCredito(clienteRepository.save(cliente));
     }
 
     @Transactional
@@ -142,6 +155,39 @@ public class ClienteService {
         clienteRepository.save(cliente);
     }
 
+    // ── Crédito ──────────────────────────────────────────────────────────
+
+    /**
+     * Valida si el cliente puede realizar una venta a crédito por el monto indicado.
+     *
+     * Usa bloqueo pesimista (PESSIMISTIC_WRITE) para evitar condición de carrera
+     * cuando dos ventas al mismo cliente se procesan simultáneamente.
+     *
+     * Reglas:
+     * 1. Si diasCredito=0 o montoLimiteCredito=0 → crédito no habilitado, no bloquea.
+     * 2. Si ambos > 0 y totalCompras + montoVenta > montoLimiteCredito → BLOQUEADO.
+     *
+     * NOTA: El cálculo actual usa totalCompras como proxy del saldo. Cuando se implemente
+     * el módulo de cobranzas, reemplazar por el saldo real de facturas pendientes de cobro.
+     *
+     * @throws BusinessException si el cliente excede su límite de crédito.
+     */
+    @Transactional
+    public void validarCreditoParaVenta(Long idCliente, BigDecimal montoVenta) {
+        Cliente cliente = clienteRepository.findByIdWithLock(idCliente)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente no encontrado con id: " + idCliente));
+
+        if (!tieneCreditoActivo(cliente)) return; // Sin crédito → no bloquear
+
+        BigDecimal saldoProyectado = cliente.getTotalCompras().add(montoVenta);
+        if (saldoProyectado.compareTo(cliente.getMontoLimiteCredito()) > 0) {
+            throw new BusinessException(
+                    "El cliente '" + cliente.getNombreCompleto() + "' ha excedido su límite de crédito de " +
+                    cliente.getMontoLimiteCredito() + " DOP. Saldo proyectado: " + saldoProyectado + " DOP."
+            );
+        }
+    }
+
     // ── Acceso interno (para VentaService u otros módulos) ───────────────
 
     public Cliente obtenerEntidadPorId(Long id) {
@@ -154,6 +200,39 @@ public class ClienteService {
         return clienteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Cliente no encontrado con id: " + id));
+    }
+
+    /**
+     * Convierte la entidad a DTO y calcula estadoCredito.
+     * El cálculo está aquí (no en el mapper) para tener acceso a la lógica de negocio.
+     */
+    private ClienteResponseDTO toDtoConCredito(Cliente cliente) {
+        ClienteResponseDTO dto = clienteMapper.toDto(cliente);
+        dto.setEstadoCredito(calcularEstadoCredito(cliente));
+        return dto;
+    }
+
+    /**
+     * Calcula el estado de crédito del cliente.
+     * SIN_CREDITO: ninguno de los dos campos es mayor que 0.
+     * AL_DIA:      crédito activo y totalCompras dentro del límite.
+     * BLOQUEADO:   crédito activo y totalCompras supera el límite.
+     *
+     * Regla de activación: AMBOS diasCredito > 0 Y montoLimiteCredito > 0.
+     * Si uno solo es 0 (ej. diasCredito=5 pero montoLimiteCredito=0) = SIN_CREDITO.
+     */
+    private String calcularEstadoCredito(Cliente cliente) {
+        if (!tieneCreditoActivo(cliente)) return CREDITO_SIN;
+        return cliente.getTotalCompras().compareTo(cliente.getMontoLimiteCredito()) > 0
+                ? CREDITO_BLOQUEADO
+                : CREDITO_AL_DIA;
+    }
+
+    /** Retorna true solo si AMBOS campos de crédito son mayores que 0. */
+    private boolean tieneCreditoActivo(Cliente cliente) {
+        return cliente.getDiasCredito() != null && cliente.getDiasCredito() > 0
+                && cliente.getMontoLimiteCredito() != null
+                && cliente.getMontoLimiteCredito().compareTo(BigDecimal.ZERO) > 0;
     }
 
     /**

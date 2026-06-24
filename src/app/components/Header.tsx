@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bell, Search } from 'lucide-react';
-import { alertasCostoApi } from '../../imports/api';
-import AlertasCostoBuzon from './AlertasCostoBuzon';
+import { alertasCostoApi, alertasRetrasoOcApi } from '../../imports/api';
+import Buzon from './Buzon';
 
 interface HeaderProps {
   title: string;
@@ -13,8 +13,12 @@ export default function Header({ title }: HeaderProps) {
 
   const fetchAlertsCount = useCallback(async () => {
     try {
-      const res = await alertasCostoApi.contarPendientes();
-      setAlertCount(res.count);
+      // Promise.all para evitar parpadeo: actualizamos el badge solo cuando ambas resuelven
+      const [costosRes, retrasoRes] = await Promise.all([
+        alertasCostoApi.contarPendientes(),
+        alertasRetrasoOcApi.contarPendientes(),
+      ]);
+      setAlertCount((costosRes.count ?? 0) + (retrasoRes.count ?? 0));
     } catch (e) {
       console.error('Error fetching alerts count', e);
     }
@@ -22,7 +26,6 @@ export default function Header({ title }: HeaderProps) {
 
   useEffect(() => {
     fetchAlertsCount();
-    // Poll every 30 seconds
     const interval = setInterval(fetchAlertsCount, 30000);
     return () => clearInterval(interval);
   }, [fetchAlertsCount]);
@@ -41,10 +44,10 @@ export default function Header({ title }: HeaderProps) {
           />
         </div>
 
-        <button 
+        <button
           onClick={() => setShowBuzon(true)}
           className="relative p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-colors"
-          title="Buzón de Alertas de Costo"
+          title="Buzón de Alertas"
         >
           <Bell size={20} />
           {alertCount > 0 && (
@@ -58,8 +61,8 @@ export default function Header({ title }: HeaderProps) {
       {showBuzon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-3xl h-[80vh] flex flex-col">
-            <AlertasCostoBuzon 
-              onClose={() => setShowBuzon(false)} 
+            <Buzon
+              onClose={() => setShowBuzon(false)}
               onUpdateCount={fetchAlertsCount}
             />
           </div>
@@ -68,4 +71,3 @@ export default function Header({ title }: HeaderProps) {
     </header>
   );
 }
-
