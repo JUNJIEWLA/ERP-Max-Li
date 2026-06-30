@@ -59,6 +59,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/productos/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/categorias/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/marcas/**").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/ofertas/**").authenticated()
 
                 // ── Escritura en catálogo: ADMIN o SUPERVISOR ─────────────────
                 .requestMatchers(HttpMethod.POST,   "/api/productos/**").hasAnyRole("ADMIN", "SUPERVISOR")
@@ -70,6 +71,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST,   "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
                 .requestMatchers(HttpMethod.PUT,    "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
                 .requestMatchers(HttpMethod.DELETE, "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.POST,   "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.PUT,    "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
 
                 // ── Almacenes: ADMIN gestiona, todos los demás leen ───────────
                 .requestMatchers(HttpMethod.GET,    "/api/almacenes/**").authenticated()
