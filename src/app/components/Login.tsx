@@ -2,7 +2,7 @@ import { useState, FormEvent } from 'react';
 import { authApi } from '../../imports/api';
 
 interface LoginProps {
-  onLogin: (token: string, username: string) => void;
+  onLogin: (token: string, username: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
@@ -17,9 +17,13 @@ export default function Login({ onLogin }: LoginProps) {
     setLoading(true);
     try {
       const data = await authApi.login(username.trim(), password);
-      onLogin(data.token, data.username);
-    } catch {
-      setError('Usuario o contraseña incorrectos.');
+      onLogin(data.token, data.username, data.roles, data.permisos, data.requiereCambioPassword);
+    } catch (err: any) {
+      if (err.message === 'Failed to fetch') {
+        setError('No se pudo conectar con el servidor.');
+      } else {
+        setError(err.message || 'Usuario o contraseña incorrectos.');
+      }
     } finally {
       setLoading(false);
     }

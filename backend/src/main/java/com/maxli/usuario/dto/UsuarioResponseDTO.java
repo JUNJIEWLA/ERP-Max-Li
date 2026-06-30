@@ -14,7 +14,10 @@ public class UsuarioResponseDTO {
     private String username;
     private String email;
     private String estado;
+    private boolean requiereCambioPassword;
     private Set<String> roles;
+    private Set<Long> rolIds;
+    private Set<Long> permisoExtraIds;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaModificacion;
 }

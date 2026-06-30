@@ -47,8 +47,12 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
 
                 // ── Rutas públicas ────────────────────────────────────────────
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/error").permitAll()
+
+                // ── Cambio de contraseña y perfil: cualquier usuario autenticado ─
+                .requestMatchers("/api/auth/cambiar-password").authenticated()
+                .requestMatchers("/api/auth/me").authenticated()
 
                 // ── Gestión de usuarios y roles: solo ADMIN ───────────────────
                 .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
@@ -59,6 +63,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/productos/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/categorias/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/marcas/**").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/ofertas/**").authenticated()
 
                 // ── Escritura en catálogo: ADMIN o SUPERVISOR ─────────────────
                 .requestMatchers(HttpMethod.POST,   "/api/productos/**").hasAnyRole("ADMIN", "SUPERVISOR")
@@ -70,6 +75,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST,   "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
                 .requestMatchers(HttpMethod.PUT,    "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
                 .requestMatchers(HttpMethod.DELETE, "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.POST,   "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.PUT,    "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
 
                 // ── Almacenes: ADMIN gestiona, todos los demás leen ───────────
                 .requestMatchers(HttpMethod.GET,    "/api/almacenes/**").authenticated()
@@ -122,7 +130,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

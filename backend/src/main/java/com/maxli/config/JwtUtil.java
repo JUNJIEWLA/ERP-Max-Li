@@ -28,8 +28,8 @@ public class JwtUtil {
         this.expirationMs = expirationMs;
     }
 
-    /** Genera un token JWT con username y roles como claims. */
-    public String generarToken(UserDetails userDetails) {
+    /** Genera un token JWT con username, roles y tokenVersion como claims. */
+    public String generarToken(UserDetails userDetails, int tokenVersion) {
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toList());
@@ -37,6 +37,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(userDetails.getUsername())
                 .claim("roles", roles)
+                .claim("tv", tokenVersion)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(secretKey)
@@ -46,6 +47,19 @@ public class JwtUtil {
     /** Extrae el username del token. */
     public String extraerUsername(String token) {
         return parsearClaims(token).getSubject();
+    }
+
+    /** Extrae el tokenVersion del JWT. Retorna -1 si no existe (tokens legacy). */
+    public int extraerTokenVersion(String token) {
+        try {
+            Object tv = parsearClaims(token).get("tv");
+            if (tv instanceof Number) {
+                return ((Number) tv).intValue();
+            }
+            return -1;
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     /** Valida que el token sea válido y corresponda al usuario dado. */

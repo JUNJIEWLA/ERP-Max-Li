@@ -2,6 +2,8 @@ package com.maxli.rol.service;
 
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
+import com.maxli.permiso.entity.Permiso;
+import com.maxli.permiso.repository.PermisoRepository;
 import com.maxli.rol.dto.RolRequestDTO;
 import com.maxli.rol.dto.RolResponseDTO;
 import com.maxli.rol.entity.Rol;
@@ -13,16 +15,29 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class RolService {
 
     private final RolRepository rolRepository;
     private final RolMapper rolMapper;
+    private final PermisoRepository permisoRepository;
 
     @Transactional(readOnly = true)
     public Page<RolResponseDTO> listar(Pageable pageable) {
         return rolRepository.findAll(pageable).map(rolMapper::toDto);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RolResponseDTO> listarTodos() {
+        return rolRepository.findAll().stream()
+                .map(rolMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -37,6 +52,13 @@ public class RolService {
             throw new DuplicateResourceException("Ya existe un rol con nombre: " + nombre);
         }
         Rol rol = rolMapper.toEntity(dto);
+
+        // Asignar permisos si se enviaron
+        if (dto.getPermisoIds() != null && !dto.getPermisoIds().isEmpty()) {
+            Set<Permiso> permisos = permisoRepository.findByIdPermisoIn(dto.getPermisoIds());
+            rol.setPermisos(permisos);
+        }
+
         return rolMapper.toDto(rolRepository.save(rol));
     }
 
@@ -48,6 +70,16 @@ public class RolService {
             throw new DuplicateResourceException("Ya existe un rol con nombre: " + nombre);
         }
         rol.setNombre(nombre);
+        rol.setDescripcion(dto.getDescripcion());
+
+        // Reemplazar permisos si se enviaron
+        if (dto.getPermisoIds() != null) {
+            Set<Permiso> permisos = dto.getPermisoIds().isEmpty()
+                    ? new HashSet<>()
+                    : permisoRepository.findByIdPermisoIn(dto.getPermisoIds());
+            rol.setPermisos(permisos);
+        }
+
         return rolMapper.toDto(rolRepository.save(rol));
     }
 

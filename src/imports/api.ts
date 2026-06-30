@@ -121,24 +121,34 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
   return res.json();
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(BASE_URL + path, {
+async function post<T>(url: string, data: any): Promise<T> {
+  const res = await fetch(BASE_URL + url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(body),
+    body: JSON.stringify(data),
   });
+  if (res.status === 401) {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    throw new Error('Sesión expirada');
+  }
   if (!res.ok) throw new Error(await buildErrorMessage(res));
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
 }
 
-async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(BASE_URL + path, {
+async function put<T>(url: string, data: any): Promise<T> {
+  const res = await fetch(BASE_URL + url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(body),
+    body: JSON.stringify(data),
   });
+  if (res.status === 401) {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    throw new Error('Sesión expirada');
+  }
   if (!res.ok) throw new Error(await buildErrorMessage(res));
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
 }
 
 async function del(path: string): Promise<void> {
@@ -153,7 +163,15 @@ export interface AuthResponse {
   username: string;
   email: string;
   roles: string[];
+  permisos: string[];
   expiresIn: number;
+  requiereCambioPassword: boolean;
+}
+
+export interface MeResponse {
+  permisos: string[];
+  roles: string[];
+  tokenVersion: number;
 }
 
 export const authApi = {
@@ -167,6 +185,11 @@ export const authApi = {
       if (!res.ok) throw new Error(await buildErrorMessage(res));
       return res.json() as Promise<AuthResponse>;
     }),
+
+  cambiarPassword: (passwordActual: string, passwordNueva: string) =>
+    post<void>('/auth/cambiar-password', { passwordActual, passwordNueva }),
+
+  me: () => get<MeResponse>('/auth/me'),
 };
 
 // ── Tipos del dominio ────────────────────────────────────
@@ -187,6 +210,40 @@ export interface Producto {
   marcaNombre: string;
   fechaCreacion: string;
   fechaModificacion: string;
+}
+
+export type OfertaTipo = 'CANTIDAD' | 'DESCUENTO';
+
+export interface Oferta {
+  idOferta: number;
+  nombre: string;
+  descripcion: string | null;
+  tipo: OfertaTipo;
+  idProducto: number;
+  productoSku: string;
+  productoNombre: string;
+  fechaInicio: string;
+  fechaFin: string | null;
+  estado: string;
+  cantidadRequerida: number | null;
+  cantidadPagada: number | null;
+  porcentajeDescuento: number | null;
+  vigente: boolean;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+export interface OfertaPayload {
+  nombre: string;
+  descripcion?: string | null;
+  tipo: OfertaTipo;
+  idProducto: number;
+  fechaInicio: string;
+  fechaFin?: string | null;
+  estado?: string;
+  cantidadRequerida?: number | null;
+  cantidadPagada?: number | null;
+  porcentajeDescuento?: number | null;
 }
 
 export interface Categoria {
@@ -255,9 +312,18 @@ export interface Existencia {
   fechaModificacion: string;
 }
 
+export interface Permiso {
+  idPermiso: number;
+  nombreClave: string;
+  descripcion: string;
+  modulo: string;
+}
+
 export interface Rol {
   idRol: number;
   nombre: string;
+  descripcion: string;
+  permisos: Permiso[];
 }
 
 export interface Usuario {
@@ -265,7 +331,10 @@ export interface Usuario {
   username: string;
   email: string;
   estado: string;
+  requiereCambioPassword: boolean;
   roles: string[];
+  rolIds: number[];
+  permisoExtraIds: number[];
   fechaCreacion: string;
   fechaModificacion: string;
 }
@@ -365,6 +434,40 @@ export const productosApi = {
 
   desactivar: (id: number) =>
     del(`/productos/${id}`),
+};
+
+// ── API: Ofertas ─────────────────────────────────────────
+
+export const ofertasApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Oferta>>('/ofertas', { page, size, sort: 'idOferta,desc' }),
+
+  listarActivas: (page = 0, size = 20) =>
+    get<PageResponse<Oferta>>('/ofertas/activas', { page, size, sort: 'idOferta,desc' }),
+
+  listarVigentes: (page = 0, size = 20) =>
+    get<PageResponse<Oferta>>('/ofertas/vigentes', { page, size, sort: 'idOferta,desc' }),
+
+  listarPorTipo: (tipo: OfertaTipo, page = 0, size = 20) =>
+    get<PageResponse<Oferta>>(`/ofertas/tipo/${tipo}`, { page, size, sort: 'idOferta,desc' }),
+
+  listarPorProducto: (idProducto: number, page = 0, size = 20) =>
+    get<PageResponse<Oferta>>(`/ofertas/producto/${idProducto}`, { page, size, sort: 'idOferta,desc' }),
+
+  listarVigentesPorProducto: (idProducto: number) =>
+    get<Oferta[]>(`/ofertas/producto/${idProducto}/vigentes`),
+
+  buscarPorId: (id: number) =>
+    get<Oferta>(`/ofertas/${id}`),
+
+  crear: (body: OfertaPayload) =>
+    post<Oferta>('/ofertas', body),
+
+  actualizar: (id: number, body: OfertaPayload) =>
+    put<Oferta>(`/ofertas/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/ofertas/${id}`),
 };
 
 // ── API: Categorías ──────────────────────────────────────
@@ -497,20 +600,29 @@ export const movimientosApi = {
   }) => post<MovimientoInventario>('/movimientos/transferencia', body),
 };
 
+// ── API: Permisos ────────────────────────────────────────
+
+export const permisosApi = {
+  listar: () => get<Permiso[]>('/roles/permisos'),
+};
+
 // ── API: Roles ───────────────────────────────────────────
 
 export const rolesApi = {
   listar: (page = 0, size = 50) =>
     get<PageResponse<Rol>>('/roles', { page, size }),
 
+  listarTodos: () =>
+    get<Rol[]>('/roles/todos'),
+
   buscarPorId: (id: number) =>
     get<Rol>(`/roles/${id}`),
 
-  crear: (nombre: string) =>
-    post<Rol>('/roles', { nombre }),
+  crear: (body: { nombre: string; descripcion?: string; permisoIds?: number[] }) =>
+    post<Rol>('/roles', body),
 
-  actualizar: (id: number, nombre: string) =>
-    put<Rol>(`/roles/${id}`, { nombre }),
+  actualizar: (id: number, body: { nombre: string; descripcion?: string; permisoIds?: number[] }) =>
+    put<Rol>(`/roles/${id}`, body),
 
   eliminar: (id: number) =>
     del(`/roles/${id}`),
@@ -528,14 +640,17 @@ export const usuariosApi = {
   buscarPorId: (id: number) =>
     get<Usuario>(`/usuarios/${id}`),
 
-  crear: (body: { username: string; email: string; password: string; estado?: string }) =>
+  crear: (body: { username: string; email: string; password?: string; estado?: string; rolIds?: number[]; permisoExtraIds?: number[] }) =>
     post<Usuario>('/usuarios', body),
 
-  actualizar: (id: number, body: { username: string; email: string; password: string; estado?: string }) =>
+  actualizar: (id: number, body: { username: string; email: string; password?: string; estado?: string; rolIds?: number[]; permisoExtraIds?: number[] }) =>
     put<Usuario>(`/usuarios/${id}`, body),
 
   desactivar: (id: number) =>
     del(`/usuarios/${id}`),
+
+  resetearPassword: (id: number, passwordNueva: string) =>
+    put<void>(`/usuarios/${id}/reset-password`, { password: passwordNueva }),
 
   asignarRol: (idUsuario: number, idRol: number) =>
     post<Usuario>(`/usuarios/${idUsuario}/roles/${idRol}`, {}),

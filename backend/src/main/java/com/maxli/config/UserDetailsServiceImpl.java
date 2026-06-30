@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 /**
  * Implementación de UserDetailsService que carga el usuario desde la BD
  * y convierte sus Roles en GrantedAuthority con prefijo ROLE_ para Spring Security.
+ *
+ * Rechaza usuarios con estado INACTIVO o SUSPENDIDO.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,7 +33,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                         "Usuario no encontrado: " + username));
 
         if (!"ACTIVO".equals(usuario.getEstado())) {
-            throw new UsernameNotFoundException("Usuario inactivo: " + username);
+            throw new UsernameNotFoundException("Usuario inactivo o suspendido: " + username);
         }
 
         var authorities = usuario.getRoles().stream()
