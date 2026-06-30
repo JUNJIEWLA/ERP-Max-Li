@@ -13,5 +13,7 @@ public class LoginResponseDTO {
     private String username;
     private String email;
     private Set<String> roles;
+    private Set<String> permisos;
     private long expiresIn; // milisegundos
+    private boolean requiereCambioPassword;
 }

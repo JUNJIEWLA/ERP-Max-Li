@@ -16,6 +16,7 @@ public class UsuarioMapper {
         usuario.setEmail(dto.getEmail());
         usuario.setPasswordHash(passwordHash);
         usuario.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
+        usuario.setRequiereCambioPassword(true);
         return usuario;
     }
 
@@ -25,9 +26,20 @@ public class UsuarioMapper {
         dto.setUsername(usuario.getUsername());
         dto.setEmail(usuario.getEmail());
         dto.setEstado(usuario.getEstado());
+        dto.setRequiereCambioPassword(usuario.isRequiereCambioPassword());
         dto.setRoles(
                 usuario.getRoles().stream()
                         .map(rol -> rol.getNombre())
+                        .collect(Collectors.toSet())
+        );
+        dto.setRolIds(
+                usuario.getRoles().stream()
+                        .map(rol -> rol.getIdRol())
+                        .collect(Collectors.toSet())
+        );
+        dto.setPermisoExtraIds(
+                usuario.getPermisosExtra().stream()
+                        .map(p -> p.getIdPermiso())
                         .collect(Collectors.toSet())
         );
         dto.setFechaCreacion(usuario.getFechaCreacion());

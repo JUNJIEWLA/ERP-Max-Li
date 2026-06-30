@@ -29,6 +29,8 @@ interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
   username?: string;
+  userRoles?: string[];
+  userPermisos?: string[];
   onLogout?: () => void;
 }
 
@@ -36,6 +38,7 @@ interface MenuItem {
   id: string;
   label: string;
   icon: any;
+  requiredPermission?: string;
 }
 
 interface MenuSection {
@@ -45,16 +48,48 @@ interface MenuSection {
   items: MenuItem[];
 }
 
+/**
+ * Maps sidebar item IDs to their required permission (nombreClave).
+ * Exported so App.tsx can check if the active view requires a permission.
+ * Items not in this map (like 'dashboard') are always visible.
+ */
+export const PERMISSION_MAP: Record<string, string> = {
+  pos: 'VENTA_CREAR',
+  'ventas-historial': 'VENTA_VER',
+  devoluciones: 'DEVOLUCION_CREAR',
+  'notas-credito': 'DEVOLUCION_CREAR',
+  clientes: 'CLIENTE_GESTIONAR',
+  productos: 'PRODUCTO_VER',
+  existencias: 'INVENTARIO_VER',
+  movimientos: 'INVENTARIO_VER',
+  'conteo-fisico': 'INVENTARIO_GESTIONAR',
+  categorias: 'PRODUCTO_VER',
+  marcas: 'PRODUCTO_VER',
+  almacenes: 'INVENTARIO_VER',
+  'ordenes-compra': 'COMPRA_GESTIONAR',
+  'notas-recepcion': 'COMPRA_GESTIONAR',
+  proveedores: 'PROVEEDOR_GESTIONAR',
+  'pagos-proveedor': 'COMPRA_GESTIONAR',
+  'turnos-caja': 'CAJA_OPERAR',
+  'movimientos-caja': 'CAJA_GESTIONAR',
+  'caja-chica': 'CAJA_GESTIONAR',
+  usuarios: 'USUARIO_GESTIONAR',
+  roles: 'ROL_GESTIONAR',
+  ofertas: 'CONFIGURACION_VER',
+  ncf: 'CONFIGURACION_VER',
+  'cajas-registradoras': 'CAJA_GESTIONAR',
+};
+
 const menuSections: MenuSection[] = [
   {
     id: 'ventas',
     label: 'Ventas',
     icon: ShoppingCart,
     items: [
-      { id: 'pos', label: 'Punto de Venta', icon: Monitor },
-      { id: 'ventas-historial', label: 'Historial de Ventas', icon: FileText },
-      { id: 'devoluciones', label: 'Devoluciones', icon: RotateCcw },
-      { id: 'notas-credito', label: 'Notas de Crédito', icon: Receipt },
+      { id: 'pos', label: 'Punto de Venta', icon: Monitor, requiredPermission: 'VENTA_CREAR' },
+      { id: 'ventas-historial', label: 'Historial de Ventas', icon: FileText, requiredPermission: 'VENTA_VER' },
+      { id: 'devoluciones', label: 'Devoluciones', icon: RotateCcw, requiredPermission: 'DEVOLUCION_CREAR' },
+      { id: 'notas-credito', label: 'Notas de Crédito', icon: Receipt, requiredPermission: 'DEVOLUCION_CREAR' },
     ]
   },
   {
@@ -62,7 +97,7 @@ const menuSections: MenuSection[] = [
     label: 'Clientes',
     icon: Users,
     items: [
-      { id: 'clientes', label: 'Gestión de Clientes', icon: UserCircle },
+      { id: 'clientes', label: 'Gestión de Clientes', icon: UserCircle, requiredPermission: 'CLIENTE_GESTIONAR' },
     ]
   },
   {
@@ -70,13 +105,13 @@ const menuSections: MenuSection[] = [
     label: 'Inventario',
     icon: Package,
     items: [
-      { id: 'productos', label: 'Productos', icon: Package },
-      { id: 'existencias', label: 'Existencias', icon: BarChart3 },
-      { id: 'movimientos', label: 'Movimientos', icon: TrendingUp },
-      { id: 'conteo-fisico', label: 'Conteo Físico', icon: ClipboardCheck },
-      { id: 'categorias', label: 'Categorías', icon: Tag },
-      { id: 'marcas', label: 'Marcas', icon: Tag },
-      { id: 'almacenes', label: 'Almacenes', icon: Archive },
+      { id: 'productos', label: 'Productos', icon: Package, requiredPermission: 'PRODUCTO_VER' },
+      { id: 'existencias', label: 'Existencias', icon: BarChart3, requiredPermission: 'INVENTARIO_VER' },
+      { id: 'movimientos', label: 'Movimientos', icon: TrendingUp, requiredPermission: 'INVENTARIO_VER' },
+      { id: 'conteo-fisico', label: 'Conteo Físico', icon: ClipboardCheck, requiredPermission: 'INVENTARIO_GESTIONAR' },
+      { id: 'categorias', label: 'Categorías', icon: Tag, requiredPermission: 'PRODUCTO_VER' },
+      { id: 'marcas', label: 'Marcas', icon: Tag, requiredPermission: 'PRODUCTO_VER' },
+      { id: 'almacenes', label: 'Almacenes', icon: Archive, requiredPermission: 'INVENTARIO_VER' },
     ]
   },
   {
@@ -84,10 +119,10 @@ const menuSections: MenuSection[] = [
     label: 'Compras',
     icon: Truck,
     items: [
-      { id: 'ordenes-compra', label: 'Órdenes de Compra', icon: ClipboardList },
-      { id: 'notas-recepcion', label: 'Notas de Recepción', icon: FileText },
-      { id: 'proveedores', label: 'Proveedores', icon: Store },
-      { id: 'pagos-proveedor', label: 'Pagos a Proveedores', icon: Wallet },
+      { id: 'ordenes-compra', label: 'Órdenes de Compra', icon: ClipboardList, requiredPermission: 'COMPRA_GESTIONAR' },
+      { id: 'notas-recepcion', label: 'Notas de Recepción', icon: FileText, requiredPermission: 'COMPRA_GESTIONAR' },
+      { id: 'proveedores', label: 'Proveedores', icon: Store, requiredPermission: 'PROVEEDOR_GESTIONAR' },
+      { id: 'pagos-proveedor', label: 'Pagos a Proveedores', icon: Wallet, requiredPermission: 'COMPRA_GESTIONAR' },
     ]
   },
   {
@@ -95,9 +130,9 @@ const menuSections: MenuSection[] = [
     label: 'Caja',
     icon: CreditCard,
     items: [
-      { id: 'turnos-caja', label: 'Turnos de Caja', icon: CreditCard },
-      { id: 'movimientos-caja', label: 'Movimientos', icon: TrendingUp },
-      { id: 'caja-chica', label: 'Caja Chica', icon: Wallet },
+      { id: 'turnos-caja', label: 'Turnos de Caja', icon: CreditCard, requiredPermission: 'CAJA_OPERAR' },
+      { id: 'movimientos-caja', label: 'Movimientos', icon: TrendingUp, requiredPermission: 'CAJA_GESTIONAR' },
+      { id: 'caja-chica', label: 'Caja Chica', icon: Wallet, requiredPermission: 'CAJA_GESTIONAR' },
     ]
   },
   {
@@ -105,17 +140,31 @@ const menuSections: MenuSection[] = [
     label: 'Configuración',
     icon: Settings,
     items: [
-      { id: 'usuarios', label: 'Usuarios', icon: Users },
-      { id: 'roles', label: 'Roles', icon: UserCircle },
-      { id: 'ofertas', label: 'Ofertas', icon: Tag },
-      { id: 'ncf', label: 'Secuencias NCF', icon: Receipt },
-      { id: 'cajas-registradoras', label: 'Cajas Registradoras', icon: Monitor },
+      { id: 'usuarios', label: 'Usuarios', icon: Users, requiredPermission: 'USUARIO_GESTIONAR' },
+      { id: 'roles', label: 'Roles', icon: UserCircle, requiredPermission: 'ROL_GESTIONAR' },
+      { id: 'ofertas', label: 'Ofertas', icon: Tag, requiredPermission: 'CONFIGURACION_VER' },
+      { id: 'ncf', label: 'Secuencias NCF', icon: Receipt, requiredPermission: 'CONFIGURACION_VER' },
+      { id: 'cajas-registradoras', label: 'Cajas Registradoras', icon: Monitor, requiredPermission: 'CAJA_GESTIONAR' },
     ]
   },
 ];
 
-export default function Sidebar({ activeView, onViewChange, username, onLogout }: SidebarProps) {
+export default function Sidebar({ activeView, onViewChange, username, userRoles = [], userPermisos = [], onLogout }: SidebarProps) {
   const [expandedSections, setExpandedSections] = useState<string[]>(['ventas']);
+
+  // Filter sections and items based on user permissions
+  const visibleSections = menuSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        // If no permission required, always show
+        if (!item.requiredPermission) return true;
+        // Show if user has the required permission
+        return userPermisos.includes(item.requiredPermission);
+      }),
+    }))
+    // Hide sections with no visible items
+    .filter(section => section.items.length > 0);
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev =>
@@ -148,7 +197,7 @@ export default function Sidebar({ activeView, onViewChange, username, onLogout }
             </button>
           </li>
 
-          {menuSections.map((section) => {
+          {visibleSections.map((section) => {
             const SectionIcon = section.icon;
             const isExpanded = expandedSections.includes(section.id);
             const hasActiveItem = section.items.some(item => item.id === activeView);

@@ -4,7 +4,11 @@ import com.maxli.usuario.dto.UsuarioRequestDTO;
 import com.maxli.usuario.dto.UsuarioResponseDTO;
 import com.maxli.usuario.service.UsuarioService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -57,6 +61,14 @@ public class UsuarioController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Reseteo de contraseña por el administrador. */
+    @PutMapping("/{id}/reset-password")
+    public ResponseEntity<Void> resetearPassword(@PathVariable Long id,
+                                                  @Valid @RequestBody ResetPasswordDTO body) {
+        usuarioService.resetearPassword(id, body.getPassword());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/roles/{idRol}")
     public ResponseEntity<UsuarioResponseDTO> asignarRol(@PathVariable Long id,
                                                           @PathVariable Long idRol) {
@@ -67,5 +79,14 @@ public class UsuarioController {
     public ResponseEntity<UsuarioResponseDTO> quitarRol(@PathVariable Long id,
                                                          @PathVariable Long idRol) {
         return ResponseEntity.ok(usuarioService.quitarRol(id, idRol));
+    }
+
+    /** DTO interno para el reset de contraseña. */
+    @Getter
+    @Setter
+    static class ResetPasswordDTO {
+        @NotBlank(message = "La contraseña es obligatoria")
+        @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres")
+        private String password;
     }
 }
