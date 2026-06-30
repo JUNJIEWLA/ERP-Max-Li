@@ -19,6 +19,7 @@ import Proveedores from './components/Proveedores';
 import OrdenesCompra from './components/OrdenesCompra';
 import NotasRecepcion from './components/NotasRecepcion';
 import Clientes from './components/Clientes';
+import Ofertas from './components/Ofertas';
 import { AUTH_EXPIRED_EVENT, setToken, clearToken, hasValidToken } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
@@ -118,6 +119,8 @@ export default function App() {
         return <Proveedores />;
       case 'clientes':
         return <Clientes />;
+      case 'ofertas':
+        return <Ofertas />;
       case 'ordenes-compra':
         return <OrdenesCompra />;
       case 'notas-recepcion':
