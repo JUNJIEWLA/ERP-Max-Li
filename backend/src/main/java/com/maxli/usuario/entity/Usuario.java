@@ -1,5 +1,6 @@
 package com.maxli.usuario.entity;
 
+import com.maxli.permiso.entity.Permiso;
 import com.maxli.rol.entity.Rol;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -55,6 +56,18 @@ public class Usuario {
     @Column(name = "estado", nullable = false, length = 20)
     private String estado;
 
+    @Column(name = "requiere_cambio_password", nullable = false)
+    private boolean requiereCambioPassword = true;
+
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion = 0;
+
+    @Column(name = "creado_por")
+    private Long creadoPor;
+
+    @Column(name = "modificado_por")
+    private Long modificadoPor;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "usuario_rol",
@@ -62,6 +75,14 @@ public class Usuario {
             inverseJoinColumns = @JoinColumn(name = "id_rol")
     )
     private Set<Rol> roles = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "usuario_permiso",
+            joinColumns = @JoinColumn(name = "id_usuario"),
+            inverseJoinColumns = @JoinColumn(name = "id_permiso")
+    )
+    private Set<Permiso> permisosExtra = new HashSet<>();
 
     @CreatedDate
     @Column(name = "fecha_creacion", updatable = false)

@@ -350,22 +350,23 @@ export default function Productos() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Código de Barras (EAN/UPC)</label>
-                <input id="input-prod-barcode" type="text" value={form.codigoBarras}
-                  onChange={e => setForm(f => ({ ...f, codigoBarras: e.target.value }))}
-                  placeholder="Ej: 7501000000000 (opcional)"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                <p className="text-xs text-muted-foreground mt-1">Código del fabricante — no necesita ser único</p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <label className="block text-sm font-medium text-foreground">Estado</label>
-                <select id="input-prod-estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
-                  <option value="ACTIVO">ACTIVO</option>
-                  <option value="INACTIVO">INACTIVO</option>
-                </select>
+              <div className="grid grid-cols-10 gap-4">
+                <div className="col-span-7">
+                  <label className="block text-sm font-medium text-foreground mb-1">Código de Barras (EAN/UPC)</label>
+                  <input id="input-prod-barcode" type="text" value={form.codigoBarras}
+                    onChange={e => setForm(f => ({ ...f, codigoBarras: e.target.value }))}
+                    placeholder="Ej: 7501000000000 (opcional)"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                  <p className="text-xs text-muted-foreground mt-1">Código del fabricante — no necesita ser único</p>
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-foreground mb-1">Estado</label>
+                  <select id="input-prod-estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="ACTIVO">ACTIVO</option>
+                    <option value="INACTIVO">INACTIVO</option>
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -385,6 +386,34 @@ export default function Productos() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Categoría <span className="text-rose-500">*</span></label>
+                  <select id="input-prod-categoria" value={form.idCategoria}
+                    onChange={e => setForm(f => ({ ...f, idCategoria: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="">Seleccionar categoría...</option>
+                    {categorias.map(c => <option key={c.idCategoria} value={c.idCategoria}>{c.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Marca <span className="text-rose-500">*</span></label>
+                  <select id="input-prod-marca" value={form.idMarca}
+                    onChange={e => setForm(f => ({ ...f, idMarca: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="">Seleccionar marca...</option>
+                    {marcas.map(m => <option key={m.idMarca} value={m.idMarca}>{m.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Costo (RD$) <span className="text-rose-500">*</span></label>
+                  <input id="input-prod-costo" type="number" min="0" step="0.01" value={form.costo}
+                    onChange={e => setForm(f => ({ ...f, costo: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Precio de Venta (RD$) <span className="text-rose-500">*</span></label>
                   <input id="input-prod-precio" type="number" min="0" step="0.01" value={form.precioVenta}
@@ -415,34 +444,6 @@ export default function Productos() {
                     }
                     return null;
                   })()}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Costo (RD$) <span className="text-rose-500">*</span></label>
-                  <input id="input-prod-costo" type="number" min="0" step="0.01" value={form.costo}
-                    onChange={e => setForm(f => ({ ...f, costo: e.target.value }))}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Categoría <span className="text-rose-500">*</span></label>
-                  <select id="input-prod-categoria" value={form.idCategoria}
-                    onChange={e => setForm(f => ({ ...f, idCategoria: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
-                    <option value="">Seleccionar categoría...</option>
-                    {categorias.map(c => <option key={c.idCategoria} value={c.idCategoria}>{c.nombre}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Marca <span className="text-rose-500">*</span></label>
-                  <select id="input-prod-marca" value={form.idMarca}
-                    onChange={e => setForm(f => ({ ...f, idMarca: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
-                    <option value="">Seleccionar marca...</option>
-                    {marcas.map(m => <option key={m.idMarca} value={m.idMarca}>{m.nombre}</option>)}
-                  </select>
                 </div>
               </div>
 

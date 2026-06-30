@@ -47,8 +47,12 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
 
                 // ── Rutas públicas ────────────────────────────────────────────
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/error").permitAll()
+
+                // ── Cambio de contraseña y perfil: cualquier usuario autenticado ─
+                .requestMatchers("/api/auth/cambiar-password").authenticated()
+                .requestMatchers("/api/auth/me").authenticated()
 
                 // ── Gestión de usuarios y roles: solo ADMIN ───────────────────
                 .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
@@ -126,7 +130,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

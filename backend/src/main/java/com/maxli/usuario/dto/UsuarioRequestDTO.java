@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.Set;
+
 @Getter
 @Setter
 public class UsuarioRequestDTO {
@@ -20,10 +22,16 @@ public class UsuarioRequestDTO {
     @Size(max = 150, message = "El email no puede superar 150 caracteres")
     private String email;
 
-    @NotBlank(message = "La contrasena es obligatoria")
+    /** Obligatorio al crear. Opcional (null) al editar sin cambiar contraseña. */
     @Size(min = 8, message = "La contrasena debe tener al menos 8 caracteres")
     private String password;
 
-    @Pattern(regexp = "^(ACTIVO|INACTIVO)$", message = "El estado debe ser ACTIVO o INACTIVO")
+    @Pattern(regexp = "^(ACTIVO|INACTIVO|SUSPENDIDO)$", message = "El estado debe ser ACTIVO, INACTIVO o SUSPENDIDO")
     private String estado = "ACTIVO";
+
+    /** IDs de roles a asignar. Si es null, no se modifica la asignación. */
+    private Set<Long> rolIds;
+
+    /** IDs de permisos por excepción. Si es null, no se modifica. */
+    private Set<Long> permisoExtraIds;
 }
