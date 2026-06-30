@@ -212,6 +212,40 @@ export interface Producto {
   fechaModificacion: string;
 }
 
+export type OfertaTipo = 'CANTIDAD' | 'DESCUENTO';
+
+export interface Oferta {
+  idOferta: number;
+  nombre: string;
+  descripcion: string | null;
+  tipo: OfertaTipo;
+  idProducto: number;
+  productoSku: string;
+  productoNombre: string;
+  fechaInicio: string;
+  fechaFin: string | null;
+  estado: string;
+  cantidadRequerida: number | null;
+  cantidadPagada: number | null;
+  porcentajeDescuento: number | null;
+  vigente: boolean;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+export interface OfertaPayload {
+  nombre: string;
+  descripcion?: string | null;
+  tipo: OfertaTipo;
+  idProducto: number;
+  fechaInicio: string;
+  fechaFin?: string | null;
+  estado?: string;
+  cantidadRequerida?: number | null;
+  cantidadPagada?: number | null;
+  porcentajeDescuento?: number | null;
+}
+
 export interface Categoria {
   idCategoria: number;
   nombre: string;
@@ -400,6 +434,40 @@ export const productosApi = {
 
   desactivar: (id: number) =>
     del(`/productos/${id}`),
+};
+
+// ── API: Ofertas ─────────────────────────────────────────
+
+export const ofertasApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Oferta>>('/ofertas', { page, size, sort: 'idOferta,desc' }),
+
+  listarActivas: (page = 0, size = 20) =>
+    get<PageResponse<Oferta>>('/ofertas/activas', { page, size, sort: 'idOferta,desc' }),
+
+  listarVigentes: (page = 0, size = 20) =>
+    get<PageResponse<Oferta>>('/ofertas/vigentes', { page, size, sort: 'idOferta,desc' }),
+
+  listarPorTipo: (tipo: OfertaTipo, page = 0, size = 20) =>
+    get<PageResponse<Oferta>>(`/ofertas/tipo/${tipo}`, { page, size, sort: 'idOferta,desc' }),
+
+  listarPorProducto: (idProducto: number, page = 0, size = 20) =>
+    get<PageResponse<Oferta>>(`/ofertas/producto/${idProducto}`, { page, size, sort: 'idOferta,desc' }),
+
+  listarVigentesPorProducto: (idProducto: number) =>
+    get<Oferta[]>(`/ofertas/producto/${idProducto}/vigentes`),
+
+  buscarPorId: (id: number) =>
+    get<Oferta>(`/ofertas/${id}`),
+
+  crear: (body: OfertaPayload) =>
+    post<Oferta>('/ofertas', body),
+
+  actualizar: (id: number, body: OfertaPayload) =>
+    put<Oferta>(`/ofertas/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/ofertas/${id}`),
 };
 
 // ── API: Categorías ──────────────────────────────────────

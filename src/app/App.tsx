@@ -7,6 +7,7 @@ import Productos from './components/Productos';
 import Inventario from './components/Inventario';
 import TurnosCaja from './components/TurnosCaja';
 import CajaChica from './components/CajaChica';
+import Cajas from './components/Cajas';
 import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
@@ -19,6 +20,7 @@ import Proveedores from './components/Proveedores';
 import OrdenesCompra from './components/OrdenesCompra';
 import NotasRecepcion from './components/NotasRecepcion';
 import Clientes from './components/Clientes';
+import Ofertas from './components/Ofertas';
 import Usuarios from './components/Usuarios';
 import Roles from './components/Roles';
 import CambioPasswordObligatorio from './components/CambioPasswordObligatorio';
@@ -204,12 +206,16 @@ export default function App() {
         return <TurnosCaja />;
       case 'caja-chica':
         return <CajaChica />;
+      case 'cajas-registradoras':
+        return <Cajas />;
       case 'devoluciones':
         return <Devoluciones />;
       case 'proveedores':
         return <Proveedores />;
       case 'clientes':
         return <Clientes />;
+      case 'ofertas':
+        return <Ofertas />;
       case 'ordenes-compra':
         return <OrdenesCompra />;
       case 'notas-recepcion':

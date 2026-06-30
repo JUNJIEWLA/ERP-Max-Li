@@ -5,6 +5,7 @@ import com.maxli.caja.dto.CajaResponseDTO;
 import com.maxli.caja.entity.Caja;
 import com.maxli.caja.mapper.CajaMapper;
 import com.maxli.caja.repository.CajaRepository;
+import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,6 +58,7 @@ class CajaServiceTest {
         expectedDto.setNombre("Caja Principal");
         expectedDto.setEstado("ACTIVO");
 
+        when(cajaRepository.existsByNombreAndEstado("Caja Principal", "ACTIVO")).thenReturn(false);
         when(cajaMapper.toEntity(request)).thenReturn(entity);
         when(cajaRepository.save(entity)).thenReturn(saved);
         when(cajaMapper.toDto(saved)).thenReturn(expectedDto);
@@ -65,6 +68,39 @@ class CajaServiceTest {
         assertThat(result.getIdCaja()).isEqualTo(1L);
         assertThat(result.getNombre()).isEqualTo("Caja Principal");
         verify(cajaRepository).save(entity);
+    }
+
+    @Test
+    void crear_lanza_excepcion_si_existe_caja_activa_con_mismo_nombre() {
+        CajaRequestDTO request = new CajaRequestDTO();
+        request.setNombre("Caja Principal");
+        request.setEstado("ACTIVO");
+
+        when(cajaRepository.existsByNombreAndEstado("Caja Principal", "ACTIVO")).thenReturn(true);
+
+        assertThatThrownBy(() -> cajaService.crear(request))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("Caja Principal");
+        verifyNoInteractions(cajaMapper);
+    }
+
+    @Test
+    void actualizar_lanza_excepcion_si_otro_registro_activo_tiene_mismo_nombre() {
+        CajaRequestDTO request = new CajaRequestDTO();
+        request.setNombre("Caja Principal");
+        request.setEstado("ACTIVO");
+
+        Caja caja = new Caja();
+        caja.setIdCaja(1L);
+        caja.setNombre("Caja 1");
+        caja.setEstado("ACTIVO");
+
+        when(cajaRepository.findById(1L)).thenReturn(Optional.of(caja));
+        when(cajaRepository.existsByNombreAndEstadoAndIdCajaNot("Caja Principal", "ACTIVO", 1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> cajaService.actualizar(1L, request))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("Caja Principal");
     }
 
     @Test
