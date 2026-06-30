@@ -7,6 +7,7 @@ import Productos from './components/Productos';
 import Inventario from './components/Inventario';
 import TurnosCaja from './components/TurnosCaja';
 import CajaChica from './components/CajaChica';
+import Cajas from './components/Cajas';
 import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
@@ -113,6 +114,8 @@ export default function App() {
         return <TurnosCaja />;
       case 'caja-chica':
         return <CajaChica />;
+      case 'cajas-registradoras':
+        return <Cajas />;
       case 'devoluciones':
         return <Devoluciones />;
       case 'proveedores':

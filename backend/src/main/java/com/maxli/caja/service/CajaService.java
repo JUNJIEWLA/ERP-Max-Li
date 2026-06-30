@@ -5,6 +5,7 @@ import com.maxli.caja.dto.CajaResponseDTO;
 import com.maxli.caja.entity.Caja;
 import com.maxli.caja.mapper.CajaMapper;
 import com.maxli.caja.repository.CajaRepository;
+import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -16,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CajaService {
 
+    private static final String ACTIVO = "ACTIVO";
+    private static final String INACTIVO = "INACTIVO";
+
     private final CajaRepository cajaRepository;
     private final CajaMapper cajaMapper;
 
@@ -26,7 +30,7 @@ public class CajaService {
 
     @Transactional(readOnly = true)
     public Page<CajaResponseDTO> listarActivas(Pageable pageable) {
-        return cajaRepository.findByEstado("ACTIVO", pageable).map(cajaMapper::toDto);
+        return cajaRepository.findByEstado(ACTIVO, pageable).map(cajaMapper::toDto);
     }
 
     @Transactional(readOnly = true)
@@ -38,6 +42,8 @@ public class CajaService {
 
     @Transactional
     public CajaResponseDTO crear(CajaRequestDTO dto) {
+        dto.setNombre(dto.getNombre().trim());
+        validarNombreActivoDisponible(dto.getNombre(), dto.getEstado(), null);
         Caja caja = cajaMapper.toEntity(dto);
         return cajaMapper.toDto(cajaRepository.save(caja));
     }
@@ -46,6 +52,8 @@ public class CajaService {
     public CajaResponseDTO actualizar(Long id, CajaRequestDTO dto) {
         Caja caja = cajaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Caja no encontrada con id: " + id));
+        dto.setNombre(dto.getNombre().trim());
+        validarNombreActivoDisponible(dto.getNombre(), dto.getEstado(), id);
         caja.setNombre(dto.getNombre());
         if (dto.getEstado() != null) {
             caja.setEstado(dto.getEstado());
@@ -57,7 +65,22 @@ public class CajaService {
     public void desactivar(Long id) {
         Caja caja = cajaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Caja no encontrada con id: " + id));
-        caja.setEstado("INACTIVO");
+        caja.setEstado(INACTIVO);
         cajaRepository.save(caja);
+    }
+
+    private void validarNombreActivoDisponible(String nombre, String estado, Long idCajaActual) {
+        String estadoObjetivo = estado != null ? estado : ACTIVO;
+        if (!ACTIVO.equals(estadoObjetivo)) {
+            return;
+        }
+
+        boolean duplicada = idCajaActual == null
+                ? cajaRepository.existsByNombreAndEstado(nombre, ACTIVO)
+                : cajaRepository.existsByNombreAndEstadoAndIdCajaNot(nombre, ACTIVO, idCajaActual);
+
+        if (duplicada) {
+            throw new DuplicateResourceException("Ya existe una caja activa con nombre: " + nombre);
+        }
     }
 }

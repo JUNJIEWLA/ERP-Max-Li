@@ -10,4 +10,6 @@ public interface CajaRepository extends JpaRepository<Caja, Long> {
     Page<Caja> findByEstado(String estado, Pageable pageable);
 
     boolean existsByNombreAndEstado(String nombre, String estado);
+
+    boolean existsByNombreAndEstadoAndIdCajaNot(String nombre, String estado, Long idCaja);
 }
