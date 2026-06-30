@@ -1,224 +1,441 @@
-import { DollarSign, CreditCard, Wallet, TrendingUp } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  CalendarDays,
+  CreditCard,
+  Loader2,
+  Monitor,
+  Pencil,
+  Plus,
+  Search,
+  ToggleLeft,
+  ToggleRight,
+  X,
+} from 'lucide-react';
+import { cajasApi, type Caja } from '../../imports/api';
 
-const cajasActivas = [
-  {
-    id: 'CAJA-01',
-    nombre: 'Caja Principal',
-    cajero: 'María González',
-    turno: 'Turno 1 - Mañana',
-    apertura: '08:00 AM',
-    montoInicial: 'RD$ 5,000.00',
-    ventasEfectivo: 'RD$ 12,450.00',
-    ventasTarjeta: 'RD$ 8,230.00',
-    total: 'RD$ 20,680.00',
-    estado: 'Abierta'
-  },
-  {
-    id: 'CAJA-02',
-    nombre: 'Caja Sucursal 1',
-    cajero: 'Juan Pérez',
-    turno: 'Turno 1 - Mañana',
-    apertura: '08:00 AM',
-    montoInicial: 'RD$ 3,000.00',
-    ventasEfectivo: 'RD$ 8,920.00',
-    ventasTarjeta: 'RD$ 6,450.00',
-    total: 'RD$ 15,370.00',
-    estado: 'Abierta'
-  },
-  {
-    id: 'CAJA-03',
-    nombre: 'Caja Sucursal 2',
-    cajero: 'Carlos Rodríguez',
-    turno: 'Turno 1 - Mañana',
-    apertura: '08:00 AM',
-    montoInicial: 'RD$ 3,000.00',
-    ventasEfectivo: 'RD$ 5,680.00',
-    ventasTarjeta: 'RD$ 4,120.00',
-    total: 'RD$ 9,800.00',
-    estado: 'Abierta'
-  },
-];
+interface CajaForm {
+  nombre: string;
+  estado: 'ACTIVO' | 'INACTIVO';
+}
 
-const cajasChicas = [
-  { nombre: 'Caja Chica Admin', saldo: 'RD$ 8,500.00', responsable: 'Admin', limite: 'RD$ 10,000.00' },
-  { nombre: 'Caja Chica Compras', saldo: 'RD$ 4,200.00', responsable: 'Gerente Compras', limite: 'RD$ 5,000.00' },
-  { nombre: 'Caja Chica Limpieza', saldo: 'RD$ 1,800.00', responsable: 'Supervisor', limite: 'RD$ 3,000.00' },
-];
+const EMPTY_FORM: CajaForm = {
+  nombre: '',
+  estado: 'ACTIVO',
+};
 
-const movimientosCaja = [
-  { tipo: 'Venta', concepto: 'Venta VT-2026-001', monto: '+RD$ 2,450.00', fecha: '01/05/2026 09:23', caja: 'CAJA-01' },
-  { tipo: 'Retiro', concepto: 'Retiro para banco', monto: '-RD$ 10,000.00', fecha: '01/05/2026 10:00', caja: 'CAJA-01' },
-  { tipo: 'Venta', concepto: 'Venta VT-2026-002', monto: '+RD$ 1,230.50', fecha: '01/05/2026 10:15', caja: 'CAJA-01' },
-  { tipo: 'Gasto', concepto: 'Compra suministros', monto: '-RD$ 850.00', fecha: '01/05/2026 11:00', caja: 'Caja Chica Admin' },
-  { tipo: 'Venta', concepto: 'Venta VT-2026-003', monto: '+RD$ 3,890.00', fecha: '01/05/2026 11:42', caja: 'CAJA-01' },
-];
+const PAGE_SIZE = 10;
+
+const formatDateTime = (value: string | null | undefined) =>
+  value
+    ? new Intl.DateTimeFormat('es-DO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    : '-';
 
 export default function Cajas() {
+  const [cajas, setCajas] = useState<Caja[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+
+  const [showModal, setShowModal] = useState(false);
+  const [editTarget, setEditTarget] = useState<Caja | null>(null);
+  const [form, setForm] = useState<CajaForm>(EMPTY_FORM);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<Caja | null>(null);
+
+  const cargarCajas = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await cajasApi.listar(page, PAGE_SIZE);
+      setCajas(data.content);
+      setTotalPages(data.totalPages);
+      setTotalElements(data.totalElements);
+    } catch (err: any) {
+      setError(err.message || 'Error al cargar cajas registradoras');
+    } finally {
+      setLoading(false);
+    }
+  }, [page]);
+
+  useEffect(() => { cargarCajas(); }, [cargarCajas]);
+
+  const openCreate = () => {
+    setEditTarget(null);
+    setForm(EMPTY_FORM);
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const openEdit = (caja: Caja) => {
+    setEditTarget(caja);
+    setForm({
+      nombre: caja.nombre,
+      estado: caja.estado === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO',
+    });
+    setFormError('');
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditTarget(null);
+    setFormError('');
+    setSaving(false);
+  };
+
+  const validate = () => {
+    if (!form.nombre.trim()) return 'El nombre es obligatorio';
+    if (form.nombre.trim().length > 100) return 'El nombre no puede superar 100 caracteres';
+    return '';
+  };
+
+  const handleSave = async () => {
+    const validationError = validate();
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    setFormError('');
+    try {
+      const body = {
+        nombre: form.nombre.trim(),
+        estado: form.estado,
+      };
+
+      if (editTarget) {
+        await cajasApi.actualizar(editTarget.idCaja, body);
+      } else {
+        await cajasApi.crear(body);
+      }
+
+      closeModal();
+      await cargarCajas();
+    } catch (err: any) {
+      setFormError(err.message || 'Error al guardar la caja');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggle = async () => {
+    if (!confirmTarget) return;
+
+    try {
+      if (confirmTarget.estado === 'ACTIVO') {
+        await cajasApi.desactivar(confirmTarget.idCaja);
+      } else {
+        await cajasApi.actualizar(confirmTarget.idCaja, {
+          nombre: confirmTarget.nombre,
+          estado: 'ACTIVO',
+        });
+      }
+      setConfirmTarget(null);
+      await cargarCajas();
+    } catch (err: any) {
+      setError(err.message || 'Error al cambiar estado de caja');
+      setConfirmTarget(null);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return cajas;
+    return cajas.filter((caja) =>
+      caja.nombre.toLowerCase().includes(q) ||
+      String(caja.idCaja).includes(q) ||
+      caja.estado.toLowerCase().includes(q)
+    );
+  }, [cajas, search]);
+
+  const activas = cajas.filter((caja) => caja.estado === 'ACTIVO').length;
+  const inactivas = cajas.filter((caja) => caja.estado === 'INACTIVO').length;
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h2>Gestión de Cajas</h2>
-        <p className="text-muted-foreground mt-1">Control de cajas registradoras y cajas chicas</p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Monitor size={26} className="text-primary" />
+            Cajas Registradoras
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Administra las cajas físicas disponibles para apertura de turnos.
+          </p>
+        </div>
+        <button
+          id="btn-nueva-caja-registradora"
+          onClick={openCreate}
+          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium"
+        >
+          <Plus size={18} />
+          Nueva Caja
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Total en Cajas</p>
-              <p className="text-2xl mt-1">RD$ 45,850</p>
-            </div>
-            <div className="w-12 h-12 bg-chart-1 rounded-lg flex items-center justify-center text-white">
-              <DollarSign size={24} />
-            </div>
-          </div>
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg p-4 flex items-center gap-2">
+          <AlertTriangle size={18} />
+          {error}
         </div>
+      )}
 
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Ventas Efectivo</p>
-              <p className="text-2xl mt-1">RD$ 27,050</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: 'Total registradas', value: totalElements, cls: 'text-primary', icon: Monitor },
+          { label: 'Activas en página', value: activas, cls: 'text-emerald-600', icon: ToggleRight },
+          { label: 'Inactivas en página', value: inactivas, cls: 'text-rose-600', icon: ToggleLeft },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div key={stat.label} className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-muted-foreground text-sm">{stat.label}</p>
+                <Icon size={17} className={stat.cls} />
+              </div>
+              <p className={`text-2xl font-bold mt-1 ${stat.cls}`}>{loading ? '-' : stat.value}</p>
             </div>
-            <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-white">
-              <Wallet size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Ventas Tarjeta</p>
-              <p className="text-2xl mt-1">RD$ 18,800</p>
-            </div>
-            <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center text-white">
-              <CreditCard size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm">Cajas Activas</p>
-              <p className="text-2xl mt-1">3</p>
-            </div>
-            <div className="w-12 h-12 bg-chart-4 rounded-lg flex items-center justify-center text-white">
-              <TrendingUp size={24} />
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-6">
-        <h3 className="mb-4">Cajas Registradoras Activas</h3>
-        <div className="space-y-4">
-          {cajasActivas.map((caja) => (
-            <div key={caja.id} className="border border-border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h4>{caja.nombre}</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {caja.cajero} - {caja.turno}
-                  </p>
-                </div>
-                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
-                  {caja.estado}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Apertura</p>
-                  <p className="text-sm mt-1">{caja.apertura}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Monto Inicial</p>
-                  <p className="text-sm mt-1">{caja.montoInicial}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Efectivo</p>
-                  <p className="text-sm mt-1 text-green-600">{caja.ventasEfectivo}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Tarjeta</p>
-                  <p className="text-sm mt-1 text-blue-600">{caja.ventasTarjeta}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="text-sm mt-1">{caja.total}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-4">
-                <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm">
-                  Ver Detalles
-                </button>
-                <button className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm">
-                  Cerrar Caja
-                </button>
-              </div>
-            </div>
-          ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[240px] max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre, ID o estado..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="w-full pl-9 pr-9 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h3 className="mb-4">Cajas Chicas</h3>
-          <div className="space-y-3">
-            {cajasChicas.map((cajaChica, index) => (
-              <div key={index} className="border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm">{cajaChica.nombre}</h4>
-                  <p className="text-sm">{cajaChica.saldo}</p>
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Responsable: {cajaChica.responsable}</span>
-                  <span>Límite: {cajaChica.limite}</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2 mt-3">
-                  <div
-                    className="bg-chart-1 h-2 rounded-full"
-                    style={{ width: `${(parseFloat(cajaChica.saldo.replace(/[^\d.]/g, '')) / parseFloat(cajaChica.limite.replace(/[^\d.]/g, ''))) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            ))}
+      <div className="rounded-xl border border-border overflow-hidden bg-card">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-primary" />
           </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h3 className="mb-4">Últimos Movimientos</h3>
-          <div className="space-y-3">
-            {movimientosCaja.map((mov, index) => (
-              <div key={index} className="flex items-center justify-between border-b border-border pb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      mov.tipo === 'Venta'
-                        ? 'bg-green-100 text-green-700'
-                        : mov.tipo === 'Retiro'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {mov.tipo}
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <CreditCard size={48} className="mx-auto mb-3 opacity-30" />
+            <p className="font-medium">No se encontraron cajas registradoras</p>
+            {search && <p className="text-sm mt-1">Intenta con otro término de búsqueda</p>}
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr>
+                <th className="px-5 py-3 text-left font-semibold text-muted-foreground">ID</th>
+                <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
+                <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Creación</th>
+                <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Última modificación</th>
+                <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Estado</th>
+                <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((caja) => (
+                <tr key={caja.idCaja} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-5 py-3">
+                    <span className="font-mono text-xs bg-muted px-2 py-1 rounded text-foreground">
+                      CAJA-{String(caja.idCaja).padStart(3, '0')}
                     </span>
-                    <p className="text-sm">{mov.concepto}</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {mov.caja} - {mov.fecha}
-                  </p>
-                </div>
-                <p className={`text-sm ${mov.monto.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-                  {mov.monto}
-                </p>
-              </div>
-            ))}
+                  </td>
+                  <td className="px-5 py-3 font-medium text-foreground">{caja.nombre}</td>
+                  <td className="px-5 py-3 text-muted-foreground">
+                    <span className="inline-flex items-center gap-2">
+                      <CalendarDays size={14} />
+                      {formatDateTime(caja.fechaCreacion)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-muted-foreground">{formatDateTime(caja.fechaModificacion)}</td>
+                  <td className="px-5 py-3 text-center">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      caja.estado === 'ACTIVO'
+                        ? 'bg-green-500/15 text-green-600'
+                        : 'bg-rose-500/15 text-rose-600'
+                    }`}>
+                      {caja.estado}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        id={`btn-editar-caja-${caja.idCaja}`}
+                        onClick={() => openEdit(caja)}
+                        className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors"
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        id={`btn-toggle-caja-${caja.idCaja}`}
+                        onClick={() => setConfirmTarget(caja)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          caja.estado === 'ACTIVO'
+                            ? 'hover:bg-rose-500/10 text-rose-500'
+                            : 'hover:bg-green-500/10 text-green-500'
+                        }`}
+                        title={caja.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
+                      >
+                        {caja.estado === 'ACTIVO' ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>Página {page + 1} de {totalPages}</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={page === 0}
+              className="px-3 py-1 rounded-lg border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+            >
+              Anterior
+            </button>
+            <button
+              onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+              disabled={page >= totalPages - 1}
+              className="px-3 py-1 rounded-lg border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+            >
+              Siguiente
+            </button>
           </div>
         </div>
-      </div>
+      )}
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md border border-border">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Monitor size={18} className="text-primary" />
+                <h3 className="text-lg font-bold text-foreground">
+                  {editTarget ? 'Editar Caja Registradora' : 'Nueva Caja Registradora'}
+                </h3>
+              </div>
+              <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+                  Nombre <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="input-caja-nombre"
+                  value={form.nombre}
+                  onChange={(event) => setForm((current) => ({ ...current, nombre: event.target.value }))}
+                  placeholder="Ej: Caja Principal"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+
+              {editTarget && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">Estado</label>
+                  <select
+                    id="input-caja-estado"
+                    value={form.estado}
+                    onChange={(event) => setForm((current) => ({ ...current, estado: event.target.value as CajaForm['estado'] }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="ACTIVO">ACTIVO</option>
+                    <option value="INACTIVO">INACTIVO</option>
+                  </select>
+                </div>
+              )}
+
+              {formError && (
+                <div className="flex items-center gap-2 text-rose-500 text-sm bg-rose-500/10 px-3 py-2 rounded-lg">
+                  <X size={14} />
+                  {formError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-6 pt-0">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-guardar-caja"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-60"
+              >
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                {saving ? 'Guardando...' : editTarget ? 'Actualizar' : 'Crear Caja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Monitor size={18} className={confirmTarget.estado === 'ACTIVO' ? 'text-rose-500' : 'text-green-500'} />
+              <h3 className="text-lg font-bold text-foreground">
+                {confirmTarget.estado === 'ACTIVO' ? '¿Desactivar caja?' : '¿Activar caja?'}
+              </h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {confirmTarget.estado === 'ACTIVO'
+                ? 'La caja quedará inactiva y no debería usarse para abrir nuevos turnos.'
+                : 'La caja volverá a estar disponible para operación.'}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmTarget(null)}
+                className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-confirmar-toggle-caja"
+                onClick={handleToggle}
+                className={`px-4 py-2 rounded-lg text-white transition-colors text-sm font-medium ${
+                  confirmTarget.estado === 'ACTIVO'
+                    ? 'bg-rose-500 hover:bg-rose-600'
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {confirmTarget.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
