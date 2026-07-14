@@ -1109,3 +1109,116 @@ export const conteosApi = {
   anular: (id: number) =>
     put<ConteoCabecera>(`/conteos/${id}/anular`, {}),
 };
+
+// ── Tipos: NCF ───────────────────────────────────────────
+
+export interface ResolucionNcf {
+  idResolucion: number;
+  tipoNcf: string;
+  descripcion: string;
+  numeroResolucion: string;
+  prefijo: string;
+  secuenciaInicio: number;
+  secuenciaFinal: number;
+  secuenciaActual: number;
+  fechaVencimiento: string;
+  estado: string;
+  fechaCreacion: string;
+}
+
+export interface ResolucionNcfPayload {
+  tipoNcf: string;
+  descripcion: string;
+  numeroResolucion: string;
+  prefijo: string;
+  secuenciaInicio: number;
+  secuenciaFinal: number;
+  fechaVencimiento: string;
+}
+
+// ── API: NCF ─────────────────────────────────────────────
+
+export const ncfApi = {
+  listar: () =>
+    get<ResolucionNcf[]>('/ncf'),
+
+  crear: (body: ResolucionNcfPayload) =>
+    post<ResolucionNcf>('/ncf', body),
+
+  actualizar: (id: number, body: Omit<ResolucionNcfPayload, 'tipoNcf' | 'prefijo' | 'secuenciaInicio'> & Pick<ResolucionNcfPayload, 'tipoNcf' | 'prefijo' | 'secuenciaInicio'>) =>
+    put<ResolucionNcf>(`/ncf/${id}`, body),
+};
+
+// ── Tipos: Cupones ───────────────────────────────────────
+
+export type TipoDescuentoCupon = 'MONTO_FIJO' | 'PORCENTAJE';
+
+export interface CategoriaSimple {
+  idCategoria: number;
+  nombre: string;
+}
+
+export interface Cupon {
+  idCupon: number;
+  codigoInterno: string;
+  codigoSecreto: string;
+  tipoDescuento: TipoDescuentoCupon;
+  valorDescuento: number;
+  aplicaTodasCategorias: boolean;
+  categorias: CategoriaSimple[];
+  montoMinimoCompra: number;
+  fechaInicio: string;
+  fechaFin: string | null;
+  limiteUsos: number;
+  usosActuales: number;
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+export interface CuponPayload {
+  codigoSecreto: string;
+  tipoDescuento: TipoDescuentoCupon;
+  valorDescuento: number;
+  aplicaTodasCategorias: boolean;
+  categoriaIds: number[];
+  montoMinimoCompra: number;
+  fechaInicio: string;
+  fechaFin?: string | null;
+  limiteUsos: number;
+  estado: string;
+}
+
+export interface CuponAplicado {
+  idCupon: number;
+  codigoInterno: string;
+  codigoSecreto: string;
+  tipoDescuento: string;
+  valorDescuento: number;
+  montoDescontado: number;
+}
+
+// ── API: Cupones ─────────────────────────────────────────
+
+export const cuponesApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Cupon>>('/cupones', { page, size, sort: 'idCupon,desc' }),
+
+  listarVigentes: (page = 0, size = 20) =>
+    get<PageResponse<Cupon>>('/cupones/vigentes', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<Cupon>(`/cupones/${id}`),
+
+  crear: (body: CuponPayload) =>
+    post<Cupon>('/cupones', body),
+
+  actualizar: (id: number, body: CuponPayload) =>
+    put<Cupon>(`/cupones/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/cupones/${id}`),
+
+  aplicar: (codigoSecreto: string, idsCategorias: number[], subtotal: number) =>
+    post<CuponAplicado>(`/cupones/aplicar?codigoSecreto=${encodeURIComponent(codigoSecreto)}&subtotal=${subtotal}&idsCategorias=${idsCategorias.join(',')}`, {}),
+};
