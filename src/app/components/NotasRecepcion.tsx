@@ -5,7 +5,7 @@ import {
 } from '@floating-ui/react-dom';
 import {
   Plus, X, Loader2, PackageCheck, Search, CheckCircle2, XCircle,
-  AlertTriangle, MoreVertical, Eye, CreditCard, FileText,
+  AlertTriangle, MoreVertical, Eye, FileText,
   ClipboardCheck, ClipboardX, Package, Calendar, Hash,
 } from 'lucide-react';
 import {
@@ -49,11 +49,10 @@ interface RowMenuProps {
   onVerDetalles: () => void;
   onConfirmar: () => void;
   onRechazar: () => void;
-  onRegistrarPago: () => void;
   onGenerarReporte: () => void;
 }
 
-function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onRegistrarPago, onGenerarReporte }: RowMenuProps) {
+function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onGenerarReporte }: RowMenuProps) {
   const [open, setOpen] = useState(false);
 
   // useFloating: portal con strategy 'fixed' → coordenadas relativas al viewport
@@ -88,7 +87,6 @@ function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onRegistrarPago
   }, [open, refs]);
 
   const isPendiente  = nota.estado === 'PENDIENTE';
-  const isConfirmada = nota.estado === 'CONFIRMADA';
 
   const mi = (
     icon: React.ReactNode,
@@ -135,13 +133,12 @@ function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onRegistrarPago
       {mi(<FileText size={14} />, 'Generar reporte', onGenerarReporte)}
 
       {/* Acciones contextuales */}
-      {(isPendiente || isConfirmada) && <div className="my-1.5 border-t border-border" />}
-      {(isPendiente || isConfirmada) && (
+      {isPendiente && <div className="my-1.5 border-t border-border" />}
+      {isPendiente && (
         <p className="px-3 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Acciones</p>
       )}
       {isPendiente  && mi(<ClipboardCheck size={14} />, 'Confirmar recepción', onConfirmar,       'success')}
       {isPendiente  && mi(<ClipboardX size={14} />,    'Rechazar recepción',  onRechazar,        'danger')}
-      {isConfirmada && mi(<CreditCard size={14} />,    'Registrar pago',      onRegistrarPago,   'info')}
     </div>,
     document.body
   );
@@ -295,126 +292,6 @@ function DetalleModal({ nota, onClose }: { nota: NotaRecepcion; onClose: () => v
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MODAL REGISTRAR PAGO  (sobre la OC asociada)
-═══════════════════════════════════════════════════════════ */
-interface PagoModalProps {
-  idOrdenCompra: number;
-  idNotaRecepcion: number;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-function PagoModal({ idOrdenCompra, idNotaRecepcion, onClose, onSuccess }: PagoModalProps) {
-  const [monto,  setMonto]  = useState('');
-  const [metodo, setMetodo] = useState('TRANSFERENCIA');
-  const [ref,    setRef]    = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
-
-  const handlePago = async () => {
-    const m = parseFloat(monto);
-    if (isNaN(m) || m <= 0) { setError('Ingresa un monto válido'); return; }
-    setSaving(true); setError('');
-    try {
-      await ordenesCompraApi.registrarPago(idOrdenCompra, {
-        montoPagado: m,
-        metodo,
-        numeroReferencia: ref || undefined,
-      });
-      onSuccess();
-      onClose();
-    } catch (err: any) { setError(err.message || 'Error al registrar el pago'); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border">
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <div className="flex items-center gap-2">
-            <CreditCard size={18} className="text-primary" />
-            <div>
-              <h3 className="text-base font-bold">Registrar Pago</h3>
-              <p className="text-xs text-muted-foreground font-mono">
-                NR-{String(idNotaRecepcion).padStart(4, '0')} → OC-{String(idOrdenCompra).padStart(4, '0')}
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {/* Aviso de contexto */}
-          <div className="flex items-start gap-2.5 bg-blue-500/8 border border-blue-500/20 rounded-xl px-3 py-2.5">
-            <CreditCard size={14} className="text-blue-600 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-blue-700 leading-relaxed">
-              Este pago se aplicará a la <strong>Orden de Compra OC-{String(idOrdenCompra).padStart(4, '0')}</strong> asociada a esta recepción.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Monto <span className="text-rose-500">*</span></label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">RD$</span>
-              <input
-                id="input-pago-monto-nota"
-                type="number" step={0.01} min={0.01} value={monto}
-                onChange={e => setMonto(e.target.value)} placeholder="0.00"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Método de pago</label>
-            <select
-              id="input-pago-metodo-nota"
-              value={metodo} onChange={e => setMetodo(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="TRANSFERENCIA">Transferencia bancaria</option>
-              <option value="EFECTIVO">Efectivo</option>
-              <option value="CHEQUE">Cheque</option>
-              <option value="TARJETA">Tarjeta</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Referencia <span className="text-muted-foreground text-xs">(opcional)</span></label>
-            <input
-              id="input-pago-referencia-nota"
-              type="text" value={ref} onChange={e => setRef(e.target.value)}
-              placeholder="Número de transacción"
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 text-rose-500 text-sm bg-rose-500/10 px-3 py-2 rounded-xl">
-              <AlertTriangle size={14} className="flex-shrink-0" />{error}
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-3 p-6 pt-0">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-border hover:bg-muted transition-colors text-sm">
-            Cancelar
-          </button>
-          <button
-            id="btn-confirmar-pago-nota"
-            onClick={handlePago} disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-60"
-          >
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {saving ? 'Procesando...' : 'Confirmar Pago'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL
 ═══════════════════════════════════════════════════════════ */
 export default function NotasRecepcion() {
@@ -427,7 +304,6 @@ export default function NotasRecepcion() {
 
   // Modals
   const [detalleNota,  setDetalleNota]  = useState<NotaRecepcion | null>(null);
-  const [pagoNota,     setPagoNota]     = useState<NotaRecepcion | null>(null);
   const [confirmNota,  setConfirmNota]  = useState<{ id: number; accion: 'confirmar' | 'rechazar' } | null>(null);
   const [reporteToast, setReporteToast] = useState<string | null>(null);
 
@@ -670,7 +546,6 @@ export default function NotasRecepcion() {
                         onVerDetalles={() => setDetalleNota(n)}
                         onConfirmar={() => setConfirmNota({ id: n.idNotaRecepcion, accion: 'confirmar' })}
                         onRechazar={() => setConfirmNota({ id: n.idNotaRecepcion, accion: 'rechazar' })}
-                        onRegistrarPago={() => setPagoNota(n)}
                         onGenerarReporte={() => handleGenerarReporte(n)}
                       />
                     </td>
@@ -697,16 +572,6 @@ export default function NotasRecepcion() {
 
       {/* ── Modal Ver Detalles ── */}
       {detalleNota && <DetalleModal nota={detalleNota} onClose={() => setDetalleNota(null)} />}
-
-      {/* ── Modal Registrar Pago ── */}
-      {pagoNota && (
-        <PagoModal
-          idOrdenCompra={pagoNota.idOrdenCompra}
-          idNotaRecepcion={pagoNota.idNotaRecepcion}
-          onClose={() => setPagoNota(null)}
-          onSuccess={fetchNotas}
-        />
-      )}
 
       {/* ── Modal Nueva Nota ── */}
       {showModal && (

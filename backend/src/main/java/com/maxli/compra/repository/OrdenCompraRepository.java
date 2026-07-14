@@ -5,9 +5,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 public interface OrdenCompraRepository extends JpaRepository<OrdenCompra, Long> {
 
     Page<OrdenCompra> findByProveedor_IdProveedor(Long idProveedor, Pageable pageable);
 
     Page<OrdenCompra> findByEstado(String estado, Pageable pageable);
+
+    List<OrdenCompra> findByEstado(String estado);
 }

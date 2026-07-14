@@ -22,9 +22,9 @@ public interface ProveedorRepository extends JpaRepository<Proveedor, Long> {
            "WHERE oc.proveedor.idProveedor = :idProveedor AND oc.estado != 'ANULADA'")
     BigDecimal sumTotalOrdenesActivas(@Param("idProveedor") Long idProveedor);
 
-    /** Suma de todos los pagos realizados en órdenes no anuladas del proveedor */
-    @Query("SELECT COALESCE(SUM(p.montoPagado), 0) FROM PagoProveedor p " +
-           "WHERE p.ordenCompra.proveedor.idProveedor = :idProveedor " +
-           "AND p.ordenCompra.estado != 'ANULADA'")
-    BigDecimal sumPagosRealizados(@Param("idProveedor") Long idProveedor);
+    /** Suma de gastos de proveedor marcados como realizados. */
+    @Query("SELECT COALESCE(SUM(g.monto), 0) FROM Gasto g " +
+           "WHERE g.ordenCompra.proveedor.idProveedor = :idProveedor " +
+           "AND g.estado = 'REALIZADO'")
+    BigDecimal sumGastosRealizados(@Param("idProveedor") Long idProveedor);
 }

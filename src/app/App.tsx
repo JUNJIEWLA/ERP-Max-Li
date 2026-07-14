@@ -19,6 +19,7 @@ import Login from './components/Login';
 import Proveedores from './components/Proveedores';
 import OrdenesCompra from './components/OrdenesCompra';
 import NotasRecepcion from './components/NotasRecepcion';
+import Gastos from './components/Gastos';
 import Clientes from './components/Clientes';
 import Ofertas from './components/Ofertas';
 import Usuarios from './components/Usuarios';
@@ -43,7 +44,7 @@ const viewTitles: Record<string, string> = {
   'ordenes-compra': 'Órdenes de Compra',
   'notas-recepcion': 'Notas de Recepción',
   proveedores: 'Proveedores',
-  'pagos-proveedor': 'Pagos a Proveedores',
+  'gastos-pagos-proveedor': 'Gastos / Pagos a Proveedores',
   'turnos-caja': 'Turnos de Caja',
   'movimientos-caja': 'Movimientos de Caja',
   'caja-chica': 'Caja Chica',
@@ -220,6 +221,8 @@ export default function App() {
         return <OrdenesCompra />;
       case 'notas-recepcion':
         return <NotasRecepcion />;
+      case 'gastos-pagos-proveedor':
+        return <Gastos />;
       case 'usuarios':
         return <Usuarios />;
       case 'roles':
