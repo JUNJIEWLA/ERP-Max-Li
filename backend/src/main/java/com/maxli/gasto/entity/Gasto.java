@@ -1,5 +1,6 @@
-package com.maxli.compra.entity;
+package com.maxli.gasto.entity;
 
+import com.maxli.compra.entity.OrdenCompra;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -20,35 +21,33 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "pago_proveedor")
+@Table(name = "gasto")
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
-public class PagoProveedor {
+public class Gasto {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_pago_proveedor")
-    private Long idPagoProveedor;
+    @Column(name = "id_gasto")
+    private Long idGasto;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_orden_compra", nullable = false)
+    @JoinColumn(name = "id_orden_compra", nullable = false, unique = true)
     private OrdenCompra ordenCompra;
 
-    @Column(name = "monto_pagado", nullable = false, precision = 12, scale = 2)
-    private BigDecimal montoPagado;
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal monto;
 
-    /**
-     * Métodos válidos: EFECTIVO, TRANSFERENCIA, CHEQUE, TARJETA
-     */
-    @Column(name = "metodo", nullable = false, length = 50)
-    private String metodo;
-
-    @Column(name = "numero_referencia", length = 100)
-    private String numeroReferencia;
+    /** Estados válidos: PENDIENTE, REALIZADO. */
+    @Column(nullable = false, length = 20)
+    private String estado;
 
     @CreatedDate
-    @Column(name = "fecha", updatable = false)
-    private LocalDateTime fecha;
+    @Column(name = "fecha_registro", nullable = false, updatable = false)
+    private LocalDateTime fechaRegistro;
+
+    @Column(name = "fecha_realizado")
+    private LocalDateTime fechaRealizado;
 }

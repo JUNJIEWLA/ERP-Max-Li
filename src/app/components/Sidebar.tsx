@@ -69,7 +69,7 @@ export const PERMISSION_MAP: Record<string, string> = {
   'ordenes-compra': 'COMPRA_GESTIONAR',
   'notas-recepcion': 'COMPRA_GESTIONAR',
   proveedores: 'PROVEEDOR_GESTIONAR',
-  'pagos-proveedor': 'COMPRA_GESTIONAR',
+  'gastos-pagos-proveedor': 'COMPRA_GESTIONAR',
   'turnos-caja': 'CAJA_OPERAR',
   'movimientos-caja': 'CAJA_GESTIONAR',
   'caja-chica': 'CAJA_GESTIONAR',
@@ -122,7 +122,14 @@ const menuSections: MenuSection[] = [
       { id: 'ordenes-compra', label: 'Órdenes de Compra', icon: ClipboardList, requiredPermission: 'COMPRA_GESTIONAR' },
       { id: 'notas-recepcion', label: 'Notas de Recepción', icon: FileText, requiredPermission: 'COMPRA_GESTIONAR' },
       { id: 'proveedores', label: 'Proveedores', icon: Store, requiredPermission: 'PROVEEDOR_GESTIONAR' },
-      { id: 'pagos-proveedor', label: 'Pagos a Proveedores', icon: Wallet, requiredPermission: 'COMPRA_GESTIONAR' },
+    ]
+  },
+  {
+    id: 'gastos',
+    label: 'Gastos',
+    icon: Wallet,
+    items: [
+      { id: 'gastos-pagos-proveedor', label: 'Pagos a Proveedores', icon: Receipt, requiredPermission: 'COMPRA_GESTIONAR' },
     ]
   },
   {

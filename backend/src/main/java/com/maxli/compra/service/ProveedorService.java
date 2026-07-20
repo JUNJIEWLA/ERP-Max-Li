@@ -94,8 +94,8 @@ public class ProveedorService {
 
     private BigDecimal calcularBalance(Long idProveedor) {
         BigDecimal totalOrdenes = proveedorRepository.sumTotalOrdenesActivas(idProveedor);
-        BigDecimal totalPagado  = proveedorRepository.sumPagosRealizados(idProveedor);
-        BigDecimal balance = totalOrdenes.subtract(totalPagado);
+        BigDecimal totalGastosRealizados = proveedorRepository.sumGastosRealizados(idProveedor);
+        BigDecimal balance = totalOrdenes.subtract(totalGastosRealizados);
         return balance.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : balance;
     }
 }

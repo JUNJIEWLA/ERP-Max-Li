@@ -18,17 +18,7 @@ public class OrdenCompraResponseDTO {
     private BigDecimal total;
     private String estado;
 
-    // Calculados dinámicamente
-    private BigDecimal totalPagado;
-    private BigDecimal balancePendiente;
-
-    /**
-     * PENDIENTE | PARCIAL | SALDADO — calculado a partir de totalPagado vs total
-     */
-    private String estadoPago;
-
     private List<DetalleOrdenCompraResponseDTO> detalles;
-    private List<PagoProveedorResponseDTO> pagos;
 
     /** Fecha acordada con el proveedor para la entrega (puede ser null). */
     private LocalDate fechaLlegadaAcordada;

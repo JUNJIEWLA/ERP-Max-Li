@@ -22,7 +22,7 @@ public class ProveedorResponseDTO {
     private LocalDateTime fechaModificacion;
 
     /**
-     * Calculado automáticamente: SUM(orden.total) - SUM(pagos.montoPagado)
+     * Calculado automáticamente: SUM(orden.total) - SUM(gastos realizados)
      * para todas las órdenes no anuladas de este proveedor.
      */
     private BigDecimal balancePendiente;

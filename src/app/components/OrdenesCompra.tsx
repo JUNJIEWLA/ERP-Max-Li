@@ -9,7 +9,7 @@ import {
 } from '@floating-ui/react-dom';
 import {
   Plus, X, Loader2, ShoppingCart, Search, ChevronDown, ChevronRight,
-  Send, Ban, CheckCircle2, CreditCard, PackageCheck, Trash2,
+  Send, Ban, CheckCircle2, PackageCheck, Trash2,
   MoreVertical, Eye, Pencil, FileText, AlertTriangle, Clock
 } from 'lucide-react';
 import { ordenesCompraApi, proveedoresApi, productosApi, almacenesApi, OrdenCompra, Proveedor, Producto, Almacen } from '../../imports/api';
@@ -23,12 +23,6 @@ const ESTADO_BADGE: Record<string, string> = {
   RECEPCION_PARCIAL: 'bg-amber-500/15 text-amber-700',
   COMPLETADA:        'bg-green-500/15 text-green-600',
   ANULADA:           'bg-rose-500/15 text-rose-600',
-};
-
-const PAGO_BADGE: Record<string, string> = {
-  PENDIENTE: 'bg-rose-500/15 text-rose-600',
-  PARCIAL:   'bg-amber-500/15 text-amber-700',
-  SALDADO:   'bg-green-500/15 text-green-600',
 };
 
 type LineaOrden = { idProducto: number; nombre: string; cantidad: number; precioUnitario: number; idAlmacen?: number | null };
@@ -57,13 +51,12 @@ interface RowMenuProps {
   onVerDetalles: () => void;
   onEditar: () => void;
   onEnviar: () => void;
-  onPago: () => void;
   onForzarCierre: () => void;
   onAnular: () => void;
   onGenerarReporte: () => void;
 }
 
-function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onPago, onForzarCierre, onAnular, onGenerarReporte }: RowMenuProps) {
+function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onAnular, onGenerarReporte }: RowMenuProps) {
   const [open, setOpen] = useState(false);
 
   // useFloating: portal con strategy 'fixed' → coordenadas relativas al viewport
@@ -128,10 +121,9 @@ function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onPago, onForzarCie
 
   const canEdit   = orden.estado === 'ENVIADA';
   const canEnviar = orden.estado === 'BORRADOR';
-  const canPago   = ['ENVIADA', 'RECEPCION_PARCIAL'].includes(orden.estado) && orden.estadoPago !== 'SALDADO';
   const canForzar = ['ENVIADA', 'RECEPCION_PARCIAL'].includes(orden.estado);
   const canAnular = ['BORRADOR', 'ENVIADA'].includes(orden.estado);
-  const hasActions = canEnviar || canPago || canForzar || canAnular;
+  const hasActions = canEnviar || canForzar || canAnular;
 
   const dropdown = open && createPortal(
     <div
@@ -159,7 +151,6 @@ function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onPago, onForzarCie
         <p className="px-3 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Acciones</p>
       )}
       {canEnviar && menuItem(<Send size={14} />,         'Enviar al proveedor', onEnviar,       'info')}
-      {canPago   && menuItem(<CreditCard size={14} />,   'Registrar pago',      onPago,         'success')}
       {canForzar && menuItem(<PackageCheck size={14} />, 'Forzar cierre',       onForzarCierre, 'warning')}
       {canAnular && menuItem(<Ban size={14} />,          'Anular orden',        onAnular,       'danger')}
     </div>,
@@ -219,12 +210,6 @@ function DetalleModal({ orden, onClose }: { orden: OrdenCompra; onClose: () => v
                 {orden.estado.replace('_', ' ')}
               </span>
             </div>
-            <div className="bg-muted/40 rounded-xl p-3">
-              <p className="text-xs text-muted-foreground mb-0.5">Pago</p>
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAGO_BADGE[orden.estadoPago] ?? 'bg-muted'}`}>
-                {orden.estadoPago}
-              </span>
-            </div>
           </div>
 
           {/* Productos */}
@@ -246,35 +231,6 @@ function DetalleModal({ orden, onClose }: { orden: OrdenCompra; onClose: () => v
             </div>
           </div>
 
-          {/* Pagos */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pagos registrados</p>
-            {orden.pagos.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">Sin pagos aún</p>
-            ) : (
-              <div className="space-y-1.5">
-                {orden.pagos.map(p => (
-                  <div key={p.idPagoProveedor} className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2.5 border border-border">
-                    <div>
-                      <span className="font-semibold text-sm">{fmt(p.montoPagado)}</span>
-                      <span className="text-xs text-muted-foreground ml-2">• {p.metodo}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(p.fecha).toLocaleDateString('es-DO')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="p-4 border-t border-border flex justify-end">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-muted-foreground">Balance pendiente:</p>
-            <p className={`font-bold text-sm ${orden.balancePendiente > 0 ? 'text-destructive' : 'text-green-600'}`}>
-              {fmt(orden.balancePendiente)}
-            </p>
-          </div>
         </div>
       </div>
     </div>
@@ -303,14 +259,6 @@ export default function OrdenesCompra() {
   const [lineas, setLineas] = useState<LineaOrden[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-
-  // Modal pago
-  const [pagoOrdenId, setPagoOrdenId] = useState<number | null>(null);
-  const [pagoMonto, setPagoMonto] = useState('');
-  const [pagoMetodo, setPagoMetodo] = useState('TRANSFERENCIA');
-  const [pagoRef, setPagoRef] = useState('');
-  const [savingPago, setSavingPago] = useState(false);
-  const [pagoError, setPagoError] = useState('');
 
   // Confirm action
   const [confirmAction, setConfirmAction] = useState<{ id: number; accion: 'anular' | 'forzar-cierre' } | null>(null);
@@ -395,26 +343,6 @@ export default function OrdenesCompra() {
     } finally { setConfirmAction(null); }
   };
 
-  const handlePago = async () => {
-    const monto = parseFloat(pagoMonto);
-    if (!pagoOrdenId || isNaN(monto) || monto <= 0) { setPagoError('Ingresa un monto válido'); return; }
-    setSavingPago(true); setPagoError('');
-    try {
-      await ordenesCompraApi.registrarPago(pagoOrdenId, {
-        montoPagado: monto,
-        metodo: pagoMetodo,
-        numeroReferencia: pagoRef || undefined,
-      });
-      setPagoOrdenId(null);
-      fetchOrdenes();
-    } catch (err: any) { setPagoError(err.message || 'Error al registrar pago'); }
-    finally { setSavingPago(false); }
-  };
-
-  const openPago = (id: number) => {
-    setPagoOrdenId(id); setPagoMonto(''); setPagoMetodo('TRANSFERENCIA'); setPagoRef(''); setPagoError('');
-  };
-
   const handleGenerarReporte = (orden: OrdenCompra) => {
     // Placeholder: muestra un toast elegante
     setReporteToast(`Generando reporte para OC-${String(orden.idOrdenCompra).padStart(4, '0')}...`);
@@ -486,9 +414,7 @@ export default function OrdenesCompra() {
                 <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Proveedor</th>
                 <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Total</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
-                <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Pago</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Llegada / Retraso</th>
-                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Balance</th>
                 <th className="px-4 py-3 text-center font-semibold text-muted-foreground w-16">Acciones</th>
               </tr>
             </thead>
@@ -517,11 +443,6 @@ export default function OrdenesCompra() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAGO_BADGE[o.estadoPago] ?? 'bg-muted text-muted-foreground'}`}>
-                        {o.estadoPago}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
                       {o.diasRetraso !== null && o.diasRetraso !== undefined ? (
                         <RetrasoOcBadge diasRetraso={o.diasRetraso} />
                       ) : o.fechaLlegadaAcordada ? (
@@ -530,16 +451,12 @@ export default function OrdenesCompra() {
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className={`px-4 py-3 text-right text-sm font-bold ${o.balancePendiente > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                      {fmt(o.balancePendiente)}
-                    </td>
                     <td className="px-4 py-3">
                       <RowMenu
                         orden={o}
                         onVerDetalles={() => setDetalleOrden(o)}
                         onEditar={() => {/* TODO: abrir modal de edición */ }}
                         onEnviar={() => handleEstado(o.idOrdenCompra, 'enviar')}
-                        onPago={() => openPago(o.idOrdenCompra)}
                         onForzarCierre={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'forzar-cierre' })}
                         onAnular={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'anular' })}
                         onGenerarReporte={() => handleGenerarReporte(o)}
@@ -550,8 +467,8 @@ export default function OrdenesCompra() {
                   {/* Fila expandida inline (solo productos y pagos resumidos) */}
                   {detalleOrden?.idOrdenCompra === o.idOrdenCompra && (
                     <tr key={`exp-${o.idOrdenCompra}`} className="bg-muted/20">
-                      <td colSpan={9} className="px-6 py-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <td colSpan={7} className="px-6 py-4">
+                        <div>
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Productos</p>
                             <div className="space-y-1">
@@ -568,26 +485,6 @@ export default function OrdenesCompra() {
                                 </div>
                               ))}
                             </div>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Pagos registrados</p>
-                            {o.pagos.length === 0 ? (
-                              <p className="text-sm text-muted-foreground italic">Sin pagos aún</p>
-                            ) : (
-                              <div className="space-y-1">
-                                {o.pagos.map(p => (
-                                  <div key={p.idPagoProveedor} className="flex items-center justify-between text-sm bg-background rounded-lg px-3 py-2 border border-border">
-                                    <div>
-                                      <span className="font-medium">{fmt(p.montoPagado)}</span>
-                                      <span className="text-xs text-muted-foreground ml-2">• {p.metodo}</span>
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">
-                                      {new Date(p.fecha).toLocaleDateString('es-DO')}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -724,55 +621,6 @@ export default function OrdenesCompra() {
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-60">
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 {saving ? 'Creando...' : 'Crear Orden'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Pago */}
-      {pagoOrdenId !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border">
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <h3 className="text-lg font-bold flex items-center gap-2"><CreditCard size={18} className="text-primary" /> Registrar Pago</h3>
-              <button onClick={() => setPagoOrdenId(null)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Monto <span className="text-rose-500">*</span></label>
-                <input id="input-pago-monto" type="number" step={0.01} min={0.01} value={pagoMonto}
-                  onChange={e => setPagoMonto(e.target.value)} placeholder="0.00"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Método</label>
-                <select id="input-pago-metodo" value={pagoMetodo} onChange={e => setPagoMetodo(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="CHEQUE">Cheque</option>
-                  <option value="TARJETA">Tarjeta</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Referencia</label>
-                <input id="input-pago-referencia" type="text" value={pagoRef} onChange={e => setPagoRef(e.target.value)}
-                  placeholder="Número de transacción (opcional)"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-              </div>
-              {pagoError && (
-                <div className="flex items-center gap-2 text-rose-500 text-sm bg-rose-500/10 px-3 py-2 rounded-lg">
-                  <X size={14} />{pagoError}
-                </div>
-              )}
-            </div>
-            <div className="flex gap-3 p-6 pt-0">
-              <button onClick={() => setPagoOrdenId(null)} className="flex-1 px-4 py-2 rounded-lg border border-border hover:bg-muted transition-colors text-sm">Cancelar</button>
-              <button id="btn-confirmar-pago" onClick={handlePago} disabled={savingPago}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-60">
-                {savingPago && <Loader2 size={14} className="animate-spin" />}
-                {savingPago ? 'Procesando...' : 'Confirmar Pago'}
               </button>
             </div>
           </div>

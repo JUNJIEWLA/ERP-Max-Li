@@ -15,7 +15,7 @@ Este archivo orienta a Claude Code (y a cualquier asistente IA) al trabajar en e
 No es un ERP genérico. Tiene reglas duras que el sistema **debe** hacer cumplir, no sugerir:
 
 1. **No se vende sin stock.** `Existencia.cantidadActual >= cantidad` antes de confirmar venta. Cero stock negativo.
-2. **Validación de 3 vías** para pagar a proveedores: `OrdenCompra` → `NotaRecepcion` (estado `RECEPCIONADO`) → recién entonces `PagoProveedor`. Sin recepción, no hay pago.
+2. **Validación de 3 vías** para registrar gastos de proveedores: `OrdenCompra` → `NotaRecepcion` confirmada → recién entonces `Gasto`. Sin recepción completa, no hay gasto.
 3. **Stock Alarma:** cuando `cantidadActual < cantidadMinima`, se dispara un evento de reposición. No es manual.
 4. **Eliminación lógica** en maestros (Producto, Proveedor, Usuario): cambiar `estado` a `INACTIVO`. Jamás `DELETE` físico.
 5. **NCF secuenciales y thread-safe**: la asignación de comprobantes fiscales debe ser atómica. Cero duplicados en concurrencia.
@@ -173,7 +173,7 @@ Las épicas vienen del tablero (V1 = MVP funcional, V2 = fiscal y compras, V3 = 
    - Servicio thread-safe que entrega siguiente NCF dado un `nombre_tipo` (B01, B04, etc.).
    - Validación de vencimiento y `secuencia_fin`.
 6. **V2-Gestión de Compras y Proveedores**
-   - Entidades: `Proveedor`, `OrdenCompra`, `DetalleOrdenCompra`, `NotaRecepcion`, `DetalleNotaRecepcion`, `PagoProveedor`.
+   - Entidades: `Proveedor`, `OrdenCompra`, `DetalleOrdenCompra`, `NotaRecepcion`, `DetalleNotaRecepcion`, `Gasto`.
    - Reglas: 3 vías estricta.
 
 ### V3 — Extras comerciales
@@ -196,7 +196,7 @@ Resumen (32 entidades / 32 tablas). Detalle completo en el PDF, sección 4 y 5.
 | Catálogo | `Producto`, `Categoria`, `Marca` | `producto`, `categoria`, `marca` |
 | Inventario | `Almacen`, `Existencia`, `Movimiento`, `DetalleMovimiento` | `almacen`, `existencia`, `movimiento`, `detalle_movimiento` |
 | Ventas | `Venta`, `DetalleVenta`, `Cliente`, `Ingreso` | `venta`, `detalle_venta`, `cliente`, `ingreso` |
-| Compras | `Proveedor`, `OrdenCompra`, `DetalleOrdenCompra`, `NotaRecepcion`, `DetalleNotaRecepcion`, `PagoProveedor` | `proveedor`, `orden_compra`, `detalle_orden_compra`, `nota_recepcion`, `detalle_nota_recepcion`, `pago_proveedor` |
+| Compras y gastos | `Proveedor`, `OrdenCompra`, `DetalleOrdenCompra`, `NotaRecepcion`, `DetalleNotaRecepcion`, `Gasto` | `proveedor`, `orden_compra`, `detalle_orden_compra`, `nota_recepcion`, `detalle_nota_recepcion`, `gasto` |
 | Devoluciones | `Devolucion`, `DetalleDevolucion`, `NotaCredito` | `devolucion`, `detalle_devolucion`, `nota_credito` |
 | Ofertas | `Oferta`, `OfertaCantidad`, `OfertaDescuento` | `oferta`, `oferta_cantidad`, `oferta_descuento` |
 | Fiscal | `SecuenciaNCF` | `secuencia_ncf` |
