@@ -91,7 +91,7 @@ function TabCostos({ onUpdateCount }: { onUpdateCount?: () => void }) {
                       {a.porcentajeVariacion > 0 ? '+' : ''}{a.porcentajeVariacion}% Costo
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${a.precioVentaMayorSugerido ? 'grid-cols-3' : 'grid-cols-2'}`}>
                     <div className="bg-muted/30 rounded-lg p-3">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground mb-1">Costo Anterior → Nuevo</p>
                       <div className="flex items-center gap-2 font-mono text-sm">
@@ -100,12 +100,21 @@ function TabCostos({ onUpdateCount }: { onUpdateCount?: () => void }) {
                       </div>
                     </div>
                     <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
-                      <p className="text-[10px] uppercase font-semibold text-primary mb-1">Precio Venta (Margen: {a.porcentajeMargen}%)</p>
+                      <p className="text-[10px] uppercase font-semibold text-primary mb-1">Detalle (Margen: {a.porcentajeMargen}%)</p>
                       <div className="flex items-center gap-2 font-mono text-sm">
                         <span className="text-muted-foreground">Actual: {fmt(a.precioVentaActual)}</span>
                         <span className="text-primary font-bold">Sug: {fmt(a.precioVentaSugerido)}</span>
                       </div>
                     </div>
+                    {a.precioVentaMayorSugerido != null && (
+                      <div className="bg-violet-500/5 rounded-lg p-3 border border-violet-500/10">
+                        <p className="text-[10px] uppercase font-semibold text-violet-600 mb-1">Mayor (Margen: {a.porcentajeMargenMayor}%)</p>
+                        <div className="flex items-center gap-2 font-mono text-sm">
+                          <span className="text-muted-foreground">Actual: {fmt(a.precioVentaMayorActual ?? 0)}</span>
+                          <span className="text-violet-600 font-bold">Sug: {fmt(a.precioVentaMayorSugerido)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -52,22 +52,28 @@ public class TurnoCaja {
     private BigDecimal montoFinalDeclarado;
 
     @Column(name = "total_ventas_efectivo", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalVentasEfectivo;
+    private BigDecimal totalVentasEfectivo = BigDecimal.ZERO;
 
     @Column(name = "total_ventas_tarjeta", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalVentasTarjeta;
+    private BigDecimal totalVentasTarjeta = BigDecimal.ZERO;
 
     @Column(name = "total_ventas_transferencia", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalVentasTransferencia;
+    private BigDecimal totalVentasTransferencia = BigDecimal.ZERO;
+
+    @Column(name = "total_ventas_cheque", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalVentasCheque = BigDecimal.ZERO;
+
+    @Column(name = "total_ventas_cupon", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalVentasCupon = BigDecimal.ZERO;
 
     @Column(name = "total_otros_ingresos", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalOtrosIngresos;
+    private BigDecimal totalOtrosIngresos = BigDecimal.ZERO;
 
     @Column(name = "total_egresos", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalEgresos;
+    private BigDecimal totalEgresos = BigDecimal.ZERO;
 
     @Column(name = "monto_esperado", nullable = false, precision = 12, scale = 2)
-    private BigDecimal montoEsperado;
+    private BigDecimal montoEsperado = BigDecimal.ZERO;
 
     @Column(name = "diferencia", precision = 12, scale = 2)
     private BigDecimal diferencia;

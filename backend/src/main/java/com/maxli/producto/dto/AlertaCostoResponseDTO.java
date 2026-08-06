@@ -17,8 +17,11 @@ public class AlertaCostoResponseDTO {
     private BigDecimal costoNuevo;
     private BigDecimal precioVentaActual;
     private BigDecimal precioVentaSugerido;
+    private BigDecimal precioVentaMayorActual;
+    private BigDecimal precioVentaMayorSugerido;
     private BigDecimal porcentajeVariacion;
     private BigDecimal porcentajeMargen;
+    private BigDecimal porcentajeMargenMayor;
     private String estado;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaResolucion;

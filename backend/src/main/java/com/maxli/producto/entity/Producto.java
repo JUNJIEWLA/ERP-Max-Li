@@ -52,8 +52,19 @@ public class Producto {
     @Column(name = "precio_venta", nullable = false, precision = 12, scale = 2)
     private BigDecimal precioVenta;
 
+    @Column(name = "precio_venta_mayor", nullable = false, precision = 12, scale = 2)
+    private BigDecimal precioVentaMayor = BigDecimal.ZERO;
+
     @Column(name = "costo", nullable = false, precision = 12, scale = 2)
     private BigDecimal costo;
+
+    /** Tasa de ITBIS del producto: 18.00 (gravado) o 0.00 (exento). */
+    @Column(name = "tasa_itbis", nullable = false, precision = 5, scale = 2)
+    private BigDecimal tasaItbis = new BigDecimal("18.00");
+
+    /** Cantidad mínima para activar precio al por mayor. */
+    @Column(name = "cantidad_minima_mayor", nullable = false)
+    private Integer cantidadMinimaMayor = 1;
 
     @Column(name = "estado", nullable = false, length = 20)
     private String estado;

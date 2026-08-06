@@ -261,10 +261,19 @@ public class NotaRecepcionService {
                                      BigDecimal costoAnterior, BigDecimal costoNuevo) {
         BigDecimal margen = producto.getCategoria().getPorcentajeMargen();
 
-        // Precio sugerido = costoNuevo × (1 + margen/100)
+        // Precio sugerido detalle = costoNuevo × (1 + margen/100)
         BigDecimal multiplicador = BigDecimal.ONE.add(
                 margen.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
         BigDecimal precioSugerido = costoNuevo.multiply(multiplicador).setScale(2, RoundingMode.HALF_UP);
+
+        // Precio sugerido mayorista
+        BigDecimal margenMayor = producto.getCategoria().getPorcentajeMargenMayor();
+        BigDecimal precioMayorSugerido = null;
+        if (margenMayor != null && margenMayor.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal multiplicadorMayor = BigDecimal.ONE.add(
+                    margenMayor.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
+            precioMayorSugerido = costoNuevo.multiply(multiplicadorMayor).setScale(2, RoundingMode.HALF_UP);
+        }
 
         // Variación porcentual: ((costoNuevo - costoAnterior) / costoAnterior) × 100
         BigDecimal variacion = BigDecimal.ZERO;
@@ -283,8 +292,11 @@ public class NotaRecepcionService {
         alerta.setCostoNuevo(costoNuevo);
         alerta.setPrecioVentaActual(producto.getPrecioVenta());
         alerta.setPrecioVentaSugerido(precioSugerido);
+        alerta.setPrecioVentaMayorActual(producto.getPrecioVentaMayor());
+        alerta.setPrecioVentaMayorSugerido(precioMayorSugerido);
         alerta.setPorcentajeVariacion(variacion);
         alerta.setPorcentajeMargen(margen);
+        alerta.setPorcentajeMargenMayor(margenMayor);
         alerta.setEstado("PENDIENTE");
         alerta.setFechaCreacion(LocalDateTime.now());
 

@@ -41,6 +41,12 @@ public class ClienteController {
         return ResponseEntity.ok(clienteService.listarActivos(pageable));
     }
 
+    /** Lista todos los clientes activos en orden alfabético para el selector del POS (sin paginación). */
+    @GetMapping("/pos")
+    public ResponseEntity<List<ClienteResumenDTO>> listarTodosParaPOS() {
+        return ResponseEntity.ok(clienteService.listarTodosParaPOS());
+    }
+
     /** Búsqueda rápida para el selector del POS — retorna máx. 20 resultados. */
     @GetMapping("/buscar")
     public ResponseEntity<List<ClienteResumenDTO>> buscarParaPOS(@RequestParam String q) {

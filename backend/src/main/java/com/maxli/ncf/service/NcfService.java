@@ -110,6 +110,33 @@ public class NcfService {
         return new NcfGeneradoDTO(ncfCompleto, resolucion.getIdResolucion(), resolucion.getFechaVencimiento());
     }
 
+    /**
+     * Previsualiza el próximo NCF sin consumirlo ni bloquearlo.
+     * Solo lectura, usado para mostrar en el encabezado del POS.
+     */
+    @Transactional(readOnly = true)
+    public NcfGeneradoDTO previsualizarSiguienteNcf(String tipoNcf) {
+        ResolucionNcf resolucion = resolucionNcfRepository.findAll().stream()
+                .filter(r -> r.getTipoNcf().equals(tipoNcf) && "ACTIVO".equals(r.getEstado()))
+                .findFirst()
+                .orElse(null);
+
+        if (resolucion == null) {
+            return new NcfGeneradoDTO("Sin resolución activa", null, null);
+        }
+
+        if (resolucion.getFechaVencimiento().isBefore(LocalDate.now())) {
+            return new NcfGeneradoDTO("Resolución vencida", null, null);
+        }
+
+        if (resolucion.getSecuenciaActual() > resolucion.getSecuenciaFinal()) {
+            return new NcfGeneradoDTO("Resolución agotada", null, null);
+        }
+
+        String ncfCompleto = String.format("%s%08d", resolucion.getPrefijo(), resolucion.getSecuenciaActual());
+        return new NcfGeneradoDTO(ncfCompleto, resolucion.getIdResolucion(), resolucion.getFechaVencimiento());
+    }
+
     private ResolucionNcfResponseDTO mapToDTO(ResolucionNcf resolucion) {
         ResolucionNcfResponseDTO dto = new ResolucionNcfResponseDTO();
         dto.setIdResolucion(resolucion.getIdResolucion());

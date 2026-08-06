@@ -48,4 +48,11 @@ public class NcfController {
     public ResponseEntity<NcfGeneradoDTO> generarSiguienteNcf(@PathVariable String tipoNcf) {
         return ResponseEntity.ok(ncfService.generarSiguienteNcf(tipoNcf));
     }
+
+    /** Previsualiza el próximo NCF sin consumirlo. Usado por el POS para mostrar en el header. */
+    @GetMapping("/preview/{tipoNcf}")
+    public ResponseEntity<NcfGeneradoDTO> previsualizarSiguienteNcf(@PathVariable String tipoNcf) {
+        return ResponseEntity.ok(ncfService.previsualizarSiguienteNcf(tipoNcf));
+    }
 }
+

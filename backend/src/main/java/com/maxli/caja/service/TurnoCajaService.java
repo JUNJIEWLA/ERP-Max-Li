@@ -79,14 +79,18 @@ public class TurnoCajaService {
     @Transactional
     public TurnoCajaResponseDTO abrir(AbrirTurnoCajaRequestDTO dto, String username) {
         Caja caja = obtenerCajaActiva(dto.getIdCaja());
-        Usuario usuario = obtenerUsuarioActivo(username);
+        Usuario usuario = (dto.getIdUsuario() != null)
+                ? usuarioRepository.findById(dto.getIdUsuario())
+                        .filter(u -> ACTIVO.equals(u.getEstado()))
+                        .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado o inactivo con id: " + dto.getIdUsuario()))
+                : obtenerUsuarioActivo(username);
 
         if (turnoCajaRepository.existsByCaja_IdCajaAndEstado(dto.getIdCaja(), ABIERTO)) {
-            throw new BusinessException("La caja con id " + dto.getIdCaja() + " ya tiene un turno abierto");
+            throw new BusinessException("La caja " + caja.getNombre() + " ya tiene un turno abierto");
         }
 
-        if (turnoCajaRepository.existsByUsuarioApertura_UsernameAndEstado(username, ABIERTO)) {
-            throw new BusinessException("El usuario " + username + " ya tiene un turno abierto");
+        if (turnoCajaRepository.existsByUsuarioApertura_UsernameAndEstado(usuario.getUsername(), ABIERTO)) {
+            throw new BusinessException("El usuario " + usuario.getUsername() + " ya tiene un turno abierto");
         }
 
         TurnoCaja turno = new TurnoCaja();
@@ -96,6 +100,14 @@ public class TurnoCajaService {
         turno.setObservacionApertura(dto.getObservacionApertura());
         turno.setEstado(ABIERTO);
         turno.setFechaApertura(LocalDateTime.now());
+        turno.setTotalVentasEfectivo(CERO);
+        turno.setTotalVentasTarjeta(CERO);
+        turno.setTotalVentasTransferencia(CERO);
+        turno.setTotalVentasCheque(CERO);
+        turno.setTotalVentasCupon(CERO);
+        turno.setTotalOtrosIngresos(CERO);
+        turno.setTotalEgresos(CERO);
+        turno.setMontoEsperado(dto.getMontoInicial());
         aplicarCuadre(turno, calcularCuadreActual(turno));
 
         return turnoCajaMapper.toDto(turnoCajaRepository.save(turno));

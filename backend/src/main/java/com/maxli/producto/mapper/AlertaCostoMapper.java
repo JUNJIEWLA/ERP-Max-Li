@@ -16,8 +16,11 @@ public class AlertaCostoMapper {
         dto.setCostoNuevo(entity.getCostoNuevo());
         dto.setPrecioVentaActual(entity.getPrecioVentaActual());
         dto.setPrecioVentaSugerido(entity.getPrecioVentaSugerido());
+        dto.setPrecioVentaMayorActual(entity.getPrecioVentaMayorActual());
+        dto.setPrecioVentaMayorSugerido(entity.getPrecioVentaMayorSugerido());
         dto.setPorcentajeVariacion(entity.getPorcentajeVariacion());
         dto.setPorcentajeMargen(entity.getPorcentajeMargen());
+        dto.setPorcentajeMargenMayor(entity.getPorcentajeMargenMayor());
         dto.setEstado(entity.getEstado());
         dto.setFechaCreacion(entity.getFechaCreacion());
         dto.setFechaResolucion(entity.getFechaResolucion());

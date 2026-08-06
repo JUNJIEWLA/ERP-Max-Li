@@ -1,4 +1,4 @@
-import { Percent, Tag, Receipt, UserCircle, CheckCircle2 } from 'lucide-react';
+import { Percent, Tag, UserCircle, CheckCircle2 } from 'lucide-react';
 
 interface SaleSummaryPanelProps {
   totalItems: number;
@@ -9,7 +9,10 @@ interface SaleSummaryPanelProps {
   ncfTipo: string;
   tipoNCF: string;
   descuentoGlobal: number;
+  tipoDescuentoGlobal: '%' | 'RD$';
   onDescuentoGlobalChange: (value: number) => void;
+  onTipoDescuentoGlobalChange: (tipo: '%' | 'RD$') => void;
+  descuentoGlobalMonto: number;
   descuentoAutomatico: number;
   descuentoLinea: number;
   totalAhorrado: number;
@@ -27,7 +30,10 @@ export default function SaleSummaryPanel({
   ncfTipo,
   tipoNCF,
   descuentoGlobal,
+  tipoDescuentoGlobal,
   onDescuentoGlobalChange,
+  onTipoDescuentoGlobalChange,
+  descuentoGlobalMonto,
   descuentoAutomatico,
   descuentoLinea,
   totalAhorrado,
@@ -74,21 +80,32 @@ export default function SaleSummaryPanel({
           Descuento global
         </h4>
         <div className="flex items-center gap-1.5">
-          <select className="flex-1 px-2 py-1.5 border border-border rounded bg-background text-xs">
-            <option>%</option>
-            <option>RD$</option>
+          <select
+            value={tipoDescuentoGlobal}
+            onChange={(e) => onTipoDescuentoGlobalChange(e.target.value as '%' | 'RD$')}
+            className="flex-1 px-2 py-1.5 border border-border rounded bg-background text-xs font-semibold cursor-pointer focus:ring-2 focus:ring-primary focus:outline-none"
+          >
+            <option value="%">%</option>
+            <option value="RD$">RD$</option>
           </select>
           <input
             type="number"
             min="0"
             step="0.01"
-            value={descuentoGlobal}
+            value={descuentoGlobal || ''}
             onChange={(e) => onDescuentoGlobalChange(parseFloat(e.target.value) || 0)}
-            className="w-20 px-2 py-1.5 border border-border rounded bg-background text-xs text-right"
+            className="w-20 px-2 py-1.5 border border-border rounded bg-background text-xs text-right font-mono font-bold focus:ring-2 focus:ring-primary focus:outline-none"
             placeholder="0"
           />
         </div>
-        <p className="text-xs text-muted-foreground mt-1.5">Aplica sobre el subtotal de la venta</p>
+        <div className="text-xs text-muted-foreground mt-1.5 flex justify-between items-center">
+          <span>Aplica sobre subtotal</span>
+          {tipoDescuentoGlobal === '%' && descuentoGlobal > 0 && (
+            <span className="font-semibold text-emerald-600 font-mono">
+              = -RD${descuentoGlobalMonto.toFixed(2)}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Resumen de descuentos */}
@@ -100,58 +117,43 @@ export default function SaleSummaryPanel({
         <div className="space-y-1 text-xs">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Ofertas automáticas</span>
-            <span className="text-green-600">-RD${descuentoAutomatico.toFixed(2)}</span>
+            <span className="text-green-600 font-mono">-RD${descuentoAutomatico.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Desc. por línea</span>
-            <span className="text-green-600">-RD${descuentoLinea.toFixed(2)}</span>
+            <span className="text-green-600 font-mono">-RD${descuentoLinea.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Desc. global</span>
-            <span className="text-green-600">-RD${descuentoGlobal.toFixed(2)}</span>
+            <span className="text-muted-foreground">
+              Desc. global {tipoDescuentoGlobal === '%' ? `(${descuentoGlobal}%)` : '(fijo)'}
+            </span>
+            <span className="text-green-600 font-mono">-RD${descuentoGlobalMonto.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between pt-1.5 border-t border-border">
-            <span className="font-medium">Total ahorrado</span>
-            <span className="text-green-600 font-medium">RD${totalAhorrado.toFixed(2)}</span>
+          <div className="flex justify-between pt-1.5 border-t border-border font-medium">
+            <span>Total ahorrado</span>
+            <span className="text-green-600 font-mono">RD${totalAhorrado.toFixed(2)}</span>
           </div>
         </div>
       </div>
 
+
       {/* Totales — ocupa el espacio restante y pega los valores al fondo */}
       <div className="flex-1 flex flex-col justify-end px-3 py-3">
-        <div className="space-y-1 text-xs">
+        <div className="space-y-1.5 text-xs">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal sin ITBIS</span>
-            <span>RD${subtotal.toFixed(2)}</span>
+            <span className="font-mono text-foreground font-medium">RD${subtotal.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">ITBIS (18%)</span>
-            <span>RD${itbis.toFixed(2)}</span>
+            <span className="font-mono text-foreground font-medium">RD${itbis.toFixed(2)}</span>
           </div>
-          {descuentoLinea > 0 && (
-            <div className="flex justify-between">
-              <span className="text-cyan-500">Desc. por línea</span>
-              <span className="text-cyan-500">-RD${descuentoLinea.toFixed(2)}</span>
-            </div>
-          )}
-          {descuentoAutomatico > 0 && (
-            <div className="flex justify-between">
-              <span className="text-cyan-500">Ofertas aplicadas</span>
-              <span className="text-cyan-500">-RD${descuentoAutomatico.toFixed(2)}</span>
-            </div>
-          )}
-          {descuentoGlobal > 0 && (
-            <div className="flex justify-between">
-              <span className="text-cyan-500">Desc. global</span>
-              <span className="text-cyan-500">-RD${descuentoGlobal.toFixed(2)}</span>
-            </div>
-          )}
         </div>
 
         {/* Total grande */}
         <div className="flex justify-between items-baseline pt-3 mt-2 border-t-2 border-border">
-          <span className="text-base font-medium">Total</span>
-          <span className="text-2xl text-red-600 font-semibold">RD${total.toFixed(2)}</span>
+          <span className="text-base font-semibold">Total a Pagar</span>
+          <span className="text-2xl text-red-600 font-bold font-mono">RD${total.toFixed(2)}</span>
         </div>
 
         {/* Artículos */}
@@ -162,6 +164,7 @@ export default function SaleSummaryPanel({
           </span>
         </div>
       </div>
+
     </div>
   );
 }

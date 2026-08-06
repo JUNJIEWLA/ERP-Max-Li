@@ -70,6 +70,21 @@ public class ClienteService {
                 .toList();
     }
 
+    /**
+     * Lista todos los clientes activos en orden alfabético para pre-cargar en el selector del POS.
+     * El filtrado se hace en el frontend. Excluye al "Consumidor Final" genérico (id=1).
+     */
+    @Transactional(readOnly = true)
+    public List<ClienteResumenDTO> listarTodosParaPOS() {
+        return clienteRepository
+                .findByEstadoOrderByNombreCompletoAsc(ACTIVO)
+                .stream()
+                .filter(c -> !c.getIdCliente().equals(ID_CONSUMIDOR_FINAL))
+                .map(clienteMapper::toResumenDto)
+                .toList();
+    }
+
+
     // ── Mutaciones ───────────────────────────────────────────────────────
 
     @Transactional

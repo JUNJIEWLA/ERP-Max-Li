@@ -43,4 +43,12 @@ public class ProductoRequestDTO {
 
     @NotNull(message = "La marca es obligatoria")
     private Long idMarca;
+
+    /** Tasa ITBIS: 18.00 (gravado) o 0.00 (exento). Si es null, se usa 18.00 por defecto. */
+    @DecimalMin(value = "0.00", message = "La tasa de ITBIS no puede ser negativa")
+    @Digits(integer = 3, fraction = 2, message = "La tasa ITBIS debe tener maximo 3 enteros y 2 decimales")
+    private BigDecimal tasaItbis;
+
+    /** Cantidad mínima para activar precio al por mayor. Si es null, se usa 1 por defecto. */
+    private Integer cantidadMinimaMayor;
 }

@@ -58,6 +58,9 @@ public class CategoriaService {
         if (dto.getPorcentajeMargen() != null) {
             categoria.setPorcentajeMargen(dto.getPorcentajeMargen());
         }
+        if (dto.getPorcentajeMargenMayor() != null) {
+            categoria.setPorcentajeMargenMayor(dto.getPorcentajeMargenMayor());
+        }
         return categoriaMapper.toDto(categoriaRepository.save(categoria));
     }
 

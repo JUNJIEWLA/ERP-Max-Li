@@ -27,4 +27,8 @@ public class CategoriaRequestDTO {
     @DecimalMin(value = "0.00", message = "El margen no puede ser negativo")
     @DecimalMax(value = "999.99", message = "El margen no puede superar 999.99%")
     private BigDecimal porcentajeMargen = BigDecimal.ZERO;
+
+    @DecimalMin(value = "0.00", message = "El margen mayorista no puede ser negativo")
+    @DecimalMax(value = "999.99", message = "El margen mayorista no puede superar 999.99%")
+    private BigDecimal porcentajeMargenMayor = BigDecimal.ZERO;
 }
