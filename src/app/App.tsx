@@ -25,6 +25,8 @@ import Ofertas from './components/Ofertas';
 import Usuarios from './components/Usuarios';
 import Roles from './components/Roles';
 import CambioPasswordObligatorio from './components/CambioPasswordObligatorio';
+import NcfDashboard from './components/NcfDashboard';
+import Cupones from './components/Cupones';
 import { AUTH_EXPIRED_EVENT, authApi, setToken, clearToken, hasValidToken } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
@@ -52,6 +54,7 @@ const viewTitles: Record<string, string> = {
   roles: 'Roles',
   ofertas: 'Ofertas y Promociones',
   ncf: 'Secuencias NCF',
+  cupones: 'Gestión de Cupones',
   'cajas-registradoras': 'Cajas Registradoras',
 };
 
@@ -227,6 +230,10 @@ export default function App() {
         return <Usuarios />;
       case 'roles':
         return <Roles />;
+      case 'ncf':
+        return <NcfDashboard />;
+      case 'cupones':
+        return <Cupones />;
       default:
         return (
           <div className="p-6">

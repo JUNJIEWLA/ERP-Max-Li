@@ -19,4 +19,16 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     boolean existsBySkuAndIdProductoNot(String sku, Long idProducto);
 
     List<Producto> findByCodigoBarras(String codigoBarras);
+
+    /**
+     * Búsqueda para el POS: filtra por nombre, SKU o código de barras (solo productos ACTIVOS).
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM Producto p WHERE p.estado = 'ACTIVO' AND (" +
+           "LOWER(p.codigoBarras) = LOWER(:q) OR " +
+           "LOWER(p.sku) = LOWER(:q) OR " +
+           "LOWER(p.nombre) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(p.codigoBarras) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(p.sku) LIKE LOWER(CONCAT('%', :q, '%')))")
+    List<Producto> buscarParaPOS(@org.springframework.data.repository.query.Param("q") String q, Pageable pageable);
 }
+

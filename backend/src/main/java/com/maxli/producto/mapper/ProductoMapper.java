@@ -32,11 +32,15 @@ public class ProductoMapper {
         dto.setNombre(producto.getNombre());
         dto.setDescripcion(producto.getDescripcion());
         dto.setPrecioVenta(producto.getPrecioVenta());
+        dto.setPrecioVentaMayor(producto.getPrecioVentaMayor());
         dto.setCosto(producto.getCosto());
+        dto.setTasaItbis(producto.getTasaItbis());
+        dto.setCantidadMinimaMayor(producto.getCantidadMinimaMayor());
         dto.setEstado(producto.getEstado());
         dto.setIdCategoria(producto.getCategoria().getIdCategoria());
         dto.setCategoriaNombre(producto.getCategoria().getNombre());
         dto.setPorcentajeMargenCategoria(producto.getCategoria().getPorcentajeMargen());
+        dto.setPorcentajeMargenMayorCategoria(producto.getCategoria().getPorcentajeMargenMayor());
         dto.setIdMarca(producto.getMarca().getIdMarca());
         dto.setMarcaNombre(producto.getMarca().getNombre());
         dto.setFechaCreacion(producto.getFechaCreacion());

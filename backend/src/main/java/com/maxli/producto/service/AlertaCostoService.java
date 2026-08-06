@@ -64,6 +64,10 @@ public class AlertaCostoService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Producto no encontrado con id: " + alerta.getProducto().getIdProducto()));
             producto.setPrecioVenta(alerta.getPrecioVentaSugerido());
+            // También actualizar precio mayorista si existe sugerencia
+            if (alerta.getPrecioVentaMayorSugerido() != null) {
+                producto.setPrecioVentaMayor(alerta.getPrecioVentaMayorSugerido());
+            }
             productoRepository.save(producto);
 
             // Marcar alerta como aplicada

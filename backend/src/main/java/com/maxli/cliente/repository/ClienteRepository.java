@@ -25,6 +25,10 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     List<Cliente> findTop20ByNombreCompletoContainingIgnoreCaseAndEstadoOrderByNombreCompletoAsc(
             String nombreCompleto, String estado);
 
+    /** Lista todos los clientes activos ordenados alfabéticamente (para pre-cargar en el POS). */
+    List<Cliente> findByEstadoOrderByNombreCompletoAsc(String estado);
+
+
     /** Búsqueda adicional por RNC/Cédula para el POS (coincidencia exacta). */
     Optional<Cliente> findByRncCedulaAndEstado(String rncCedula, String estado);
 

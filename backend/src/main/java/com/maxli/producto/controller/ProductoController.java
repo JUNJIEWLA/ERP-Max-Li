@@ -37,6 +37,13 @@ public class ProductoController {
         return ResponseEntity.ok(productoService.listarActivos(pageable));
     }
 
+    /** Endpoint de búsqueda rápida para el POS. */
+    @GetMapping("/buscar")
+    public ResponseEntity<List<ProductoResponseDTO>> buscarParaPOS(@org.springframework.web.bind.annotation.RequestParam String q) {
+        return ResponseEntity.ok(productoService.buscarParaPOS(q));
+    }
+
+
     @GetMapping("/sku/{sku}")
     public ResponseEntity<ProductoResponseDTO> buscarPorSku(@PathVariable String sku) {
         return ResponseEntity.ok(productoService.buscarPorSku(sku));

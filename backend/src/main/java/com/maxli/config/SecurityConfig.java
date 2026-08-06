@@ -108,8 +108,15 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT,    "/api/cajas/**").hasAnyRole("ADMIN", "SUPERVISOR")
                 .requestMatchers(HttpMethod.DELETE, "/api/cajas/**").hasRole("ADMIN")
 
+                // ── Empaques: lectura libre; escritura solo ADMIN/SUPERVISOR ──────
+                .requestMatchers(HttpMethod.GET,    "/api/empaques/**").authenticated()
+                .requestMatchers(HttpMethod.POST,   "/api/empaques/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.PUT,    "/api/empaques/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/empaques/**").hasAnyRole("ADMIN", "SUPERVISOR")
+
                 // ── Cualquier otro endpoint: requiere autenticación ───────────
                 .anyRequest().authenticated()
+
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 

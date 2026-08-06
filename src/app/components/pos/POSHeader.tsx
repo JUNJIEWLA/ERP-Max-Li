@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { UserCircle, CheckCircle2 } from 'lucide-react';
 
 interface POSHeaderProps {
   ncf: string;
@@ -6,10 +7,12 @@ interface POSHeaderProps {
   cajero: string;
   caja: string;
   turno: string;
+  clienteNombre: string;
+  tieneCliente: boolean;
   onChangeTipoDocumento: () => void;
 }
 
-export default function POSHeader({ ncf, tipoDocumento, cajero, caja, turno, onChangeTipoDocumento }: POSHeaderProps) {
+export default function POSHeader({ ncf, tipoDocumento, cajero, caja, turno, clienteNombre, tieneCliente, onChangeTipoDocumento }: POSHeaderProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -53,6 +56,19 @@ export default function POSHeader({ ncf, tipoDocumento, cajero, caja, turno, onC
           {' '}
           <span className="text-muted-foreground">Cambiar NCF</span>
         </span>
+
+        {/* Cliente activo en el header */}
+        <div className="ml-auto flex items-center gap-1.5">
+          {tieneCliente
+            ? <CheckCircle2 size={13} className="text-emerald-500" />
+            : <UserCircle size={13} className="text-muted-foreground" />}
+          <span className={`text-xs font-semibold ${tieneCliente ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+            {clienteNombre}
+          </span>
+          {tieneCliente && (
+            <span className="text-xs text-muted-foreground">(F3 para cambiar)</span>
+          )}
+        </div>
       </div>
       <div className="text-xs text-muted-foreground flex items-center gap-4">
         <span>{formatDate(currentTime)}</span>

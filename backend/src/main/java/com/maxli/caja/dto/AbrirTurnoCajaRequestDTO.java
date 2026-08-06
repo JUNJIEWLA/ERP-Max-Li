@@ -16,6 +16,9 @@ public class AbrirTurnoCajaRequestDTO {
     @NotNull(message = "La caja es obligatoria")
     private Long idCaja;
 
+    /** ID del usuario/cajero al que se asigna la caja. Opcional (si es null se asigna al usuario autenticado). */
+    private Long idUsuario;
+
     @NotNull(message = "El monto inicial es obligatorio")
     @DecimalMin(value = "0.00", message = "El monto inicial no puede ser negativo")
     @Digits(integer = 10, fraction = 2, message = "El monto inicial debe tener maximo 10 enteros y 2 decimales")

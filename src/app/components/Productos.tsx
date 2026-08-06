@@ -17,12 +17,15 @@ interface ProductoForm {
   idCategoria: string;
   idMarca: string;
   estado: string;
+  tasaItbis: string;
+  cantidadMinimaMayor: string;
 }
 
 const EMPTY_FORM: ProductoForm = {
   codigoBarras: '', nombre: '', descripcion: '',
   precioVenta: '', costo: '',
   idCategoria: '', idMarca: '', estado: 'ACTIVO',
+  tasaItbis: '18.00', cantidadMinimaMayor: '1',
 };
 
 const fmt = (v: number) =>
@@ -110,6 +113,8 @@ export default function Productos() {
       idCategoria: String(p.idCategoria),
       idMarca: String(p.idMarca),
       estado: p.estado,
+      tasaItbis: String(p.tasaItbis ?? 18),
+      cantidadMinimaMayor: String(p.cantidadMinimaMayor ?? 1),
     });
     setFormError('');
     setShowModal(true);
@@ -141,6 +146,8 @@ export default function Productos() {
       idCategoria: Number(form.idCategoria),
       idMarca: Number(form.idMarca),
       estado: form.estado,
+      tasaItbis: Number(form.tasaItbis),
+      cantidadMinimaMayor: Number(form.cantidadMinimaMayor),
     };
     try {
       if (editTarget) {
@@ -424,26 +431,63 @@ export default function Productos() {
                   {(() => {
                     if (form.idCategoria && form.costo && Number(form.costo) > 0) {
                       const cat = categorias.find(c => c.idCategoria === Number(form.idCategoria));
-                      if (cat && cat.porcentajeMargen > 0) {
-                        const suggested = Number(form.costo) * (1 + cat.porcentajeMargen / 100);
+                      if (cat && (cat.porcentajeMargen > 0 || (cat.porcentajeMargenMayor ?? 0) > 0)) {
+                        const suggestedDetalle = cat.porcentajeMargen > 0
+                          ? Number(form.costo) * (1 + cat.porcentajeMargen / 100) : null;
+                        const suggestedMayor = (cat.porcentajeMargenMayor ?? 0) > 0
+                          ? Number(form.costo) * (1 + cat.porcentajeMargenMayor / 100) : null;
                         return (
-                          <div className="mt-2 flex items-center justify-between bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
-                            <span className="text-xs text-primary font-medium flex items-center gap-1">
-                              💡 Sugerido: {fmt(suggested)} (Costo + {cat.porcentajeMargen}%)
-                            </span>
-                            <button type="button" onClick={() => setForm(f => ({ ...f, precioVenta: suggested.toFixed(2) }))}
-                              className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors">
-                              Aplicar
-                            </button>
+                          <div className="mt-2 space-y-1.5">
+                            {suggestedDetalle !== null && (
+                              <div className="flex items-center justify-between bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
+                                <span className="text-xs text-primary font-medium flex items-center gap-1">
+                                  💡 Detalle: {fmt(suggestedDetalle)} (Costo + {cat.porcentajeMargen}%)
+                                </span>
+                                <button type="button" onClick={() => setForm(f => ({ ...f, precioVenta: suggestedDetalle.toFixed(2) }))}
+                                  className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors">
+                                  Aplicar
+                                </button>
+                              </div>
+                            )}
+                            {suggestedMayor !== null && (
+                              <div className="flex items-center justify-between bg-violet-500/5 px-3 py-2 rounded-lg border border-violet-500/20">
+                                <span className="text-xs text-violet-600 font-medium flex items-center gap-1">
+                                  💡 Mayor: {fmt(suggestedMayor)} (Costo + {cat.porcentajeMargenMayor}%)
+                                </span>
+                                <span className="text-[10px] text-violet-500 italic">Se calcula automáticamente</span>
+                              </div>
+                            )}
                           </div>
                         );
                       }
-                      if (cat && cat.porcentajeMargen === 0) {
+                      if (cat && cat.porcentajeMargen === 0 && (cat.porcentajeMargenMayor ?? 0) === 0) {
                          return <p className="text-xs text-muted-foreground mt-1 italic">Esta categoría no tiene margen configurado</p>;
                       }
                     }
                     return null;
                   })()}
+                </div>
+              </div>
+
+              {/* Campos POS: ITBIS y Cantidad mínima mayorista */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Tasa ITBIS (%)</label>
+                  <select id="input-prod-itbis" value={form.tasaItbis}
+                    onChange={e => setForm(f => ({ ...f, tasaItbis: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="18.00">18% (Gravado)</option>
+                    <option value="0.00">0% (Exento)</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">Impuesto ITBIS aplicable al producto</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Cant. Mínima Mayorista</label>
+                  <input id="input-prod-min-mayor" type="number" min="1" step="1" value={form.cantidadMinimaMayor}
+                    onChange={e => setForm(f => ({ ...f, cantidadMinimaMayor: e.target.value }))}
+                    placeholder="1"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                  <p className="text-xs text-muted-foreground mt-1">Cantidad mínima para activar precio al por mayor</p>
                 </div>
               </div>
 

@@ -52,11 +52,20 @@ public class AlertaCosto {
     @Column(name = "precio_venta_sugerido", nullable = false, precision = 12, scale = 2)
     private BigDecimal precioVentaSugerido;
 
+    @Column(name = "precio_venta_mayor_actual", precision = 12, scale = 2)
+    private BigDecimal precioVentaMayorActual;
+
+    @Column(name = "precio_venta_mayor_sugerido", precision = 12, scale = 2)
+    private BigDecimal precioVentaMayorSugerido;
+
     @Column(name = "porcentaje_variacion", nullable = false, precision = 8, scale = 2)
     private BigDecimal porcentajeVariacion;
 
     @Column(name = "porcentaje_margen", nullable = false, precision = 5, scale = 2)
     private BigDecimal porcentajeMargen;
+
+    @Column(name = "porcentaje_margen_mayor", precision = 5, scale = 2)
+    private BigDecimal porcentajeMargenMayor;
 
     @Column(name = "estado", nullable = false, length = 20)
     private String estado = "PENDIENTE";

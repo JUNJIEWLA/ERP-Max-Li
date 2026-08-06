@@ -15,6 +15,7 @@ public class CategoriaResponseDTO {
     private String descripcion;
     private String estado;
     private BigDecimal porcentajeMargen;
+    private BigDecimal porcentajeMargenMayor;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaModificacion;
 }

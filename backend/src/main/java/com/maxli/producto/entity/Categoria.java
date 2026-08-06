@@ -42,6 +42,9 @@ public class Categoria {
     @Column(name = "porcentaje_margen", nullable = false, precision = 5, scale = 2)
     private BigDecimal porcentajeMargen = BigDecimal.ZERO;
 
+    @Column(name = "porcentaje_margen_mayor", nullable = false, precision = 5, scale = 2)
+    private BigDecimal porcentajeMargenMayor = BigDecimal.ZERO;
+
     @CreatedDate
     @Column(name = "fecha_creacion", updatable = false)
     private LocalDateTime fechaCreacion;

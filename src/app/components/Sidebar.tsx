@@ -77,6 +77,7 @@ export const PERMISSION_MAP: Record<string, string> = {
   roles: 'ROL_GESTIONAR',
   ofertas: 'CONFIGURACION_VER',
   ncf: 'CONFIGURACION_VER',
+  cupones: 'CONFIGURACION_VER',
   'cajas-registradoras': 'CAJA_GESTIONAR',
 };
 
@@ -151,6 +152,7 @@ const menuSections: MenuSection[] = [
       { id: 'roles', label: 'Roles', icon: UserCircle, requiredPermission: 'ROL_GESTIONAR' },
       { id: 'ofertas', label: 'Ofertas', icon: Tag, requiredPermission: 'CONFIGURACION_VER' },
       { id: 'ncf', label: 'Secuencias NCF', icon: Receipt, requiredPermission: 'CONFIGURACION_VER' },
+      { id: 'cupones', label: 'Cupones', icon: Tag, requiredPermission: 'CONFIGURACION_VER' },
       { id: 'cajas-registradoras', label: 'Cajas Registradoras', icon: Monitor, requiredPermission: 'CAJA_GESTIONAR' },
     ]
   },

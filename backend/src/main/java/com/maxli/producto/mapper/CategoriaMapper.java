@@ -16,6 +16,7 @@ public class CategoriaMapper {
         categoria.setDescripcion(dto.getDescripcion());
         categoria.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
         categoria.setPorcentajeMargen(dto.getPorcentajeMargen() != null ? dto.getPorcentajeMargen() : BigDecimal.ZERO);
+        categoria.setPorcentajeMargenMayor(dto.getPorcentajeMargenMayor() != null ? dto.getPorcentajeMargenMayor() : BigDecimal.ZERO);
         return categoria;
     }
 
@@ -26,6 +27,7 @@ public class CategoriaMapper {
         dto.setDescripcion(categoria.getDescripcion());
         dto.setEstado(categoria.getEstado());
         dto.setPorcentajeMargen(categoria.getPorcentajeMargen());
+        dto.setPorcentajeMargenMayor(categoria.getPorcentajeMargenMayor());
         dto.setFechaCreacion(categoria.getFechaCreacion());
         dto.setFechaModificacion(categoria.getFechaModificacion());
         return dto;

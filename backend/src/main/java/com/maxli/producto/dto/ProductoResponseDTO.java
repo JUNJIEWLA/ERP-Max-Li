@@ -16,13 +16,19 @@ public class ProductoResponseDTO {
     private String nombre;
     private String descripcion;
     private BigDecimal precioVenta;
+    private BigDecimal precioVentaMayor;
     private BigDecimal costo;
+    private BigDecimal tasaItbis;
+    private Integer cantidadMinimaMayor;
     private String estado;
     private Long idCategoria;
     private String categoriaNombre;
     private BigDecimal porcentajeMargenCategoria;
+    private BigDecimal porcentajeMargenMayorCategoria;
     private Long idMarca;
     private String marcaNombre;
+    private Integer stockTotal;
     private LocalDateTime fechaCreacion;
+
     private LocalDateTime fechaModificacion;
 }

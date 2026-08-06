@@ -77,9 +77,14 @@ export interface PageResponse<T> {
 async function buildErrorMessage(res: Response): Promise<string> {
   const fallback = `Error ${res.status}: ${res.statusText || 'Error'}`;
 
+  // Only treat a 401 as "session expired" if the user was actually logged in (had a token).
+  // A 401 on /auth/login means bad credentials — show the real backend message instead.
   if (res.status === 401 || (res.status === 403 && isTokenExpired())) {
-    expireSession();
-    return 'Tu sesión expiró. Inicia sesión nuevamente.';
+    if (getToken()) {
+      expireSession();
+      return 'Tu sesión expiró. Inicia sesión nuevamente.';
+    }
+    // No token = wrong credentials on login. Fall through to show backend message.
   }
 
   if (res.status === 403) {
@@ -127,7 +132,9 @@ async function post<T>(url: string, data: any): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
-  if (res.status === 401) {
+  // /auth/login returning 401 = wrong credentials, NOT an expired session.
+  // Only dispatch AUTH_EXPIRED_EVENT for protected endpoints.
+  if (res.status === 401 && !url.includes('/auth/login')) {
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     throw new Error('Sesión expirada');
   }
@@ -135,6 +142,7 @@ async function post<T>(url: string, data: any): Promise<T> {
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
+
 
 async function put<T>(url: string, data: any): Promise<T> {
   const res = await fetch(BASE_URL + url, {
@@ -201,13 +209,18 @@ export interface Producto {
   nombre: string;
   descripcion: string;
   precioVenta: number;
+  precioVentaMayor: number;
   costo: number;
+  tasaItbis: number;
+  cantidadMinimaMayor: number;
   estado: string;
   idCategoria: number;
   categoriaNombre: string;
   porcentajeMargenCategoria: number;
+  porcentajeMargenMayorCategoria: number;
   idMarca: number;
   marcaNombre: string;
+  stockTotal?: number;
   fechaCreacion: string;
   fechaModificacion: string;
 }
@@ -252,6 +265,7 @@ export interface Categoria {
   descripcion: string;
   estado: string;
   porcentajeMargen: number;
+  porcentajeMargenMayor: number;
 }
 
 export interface HistorialCosto {
@@ -274,8 +288,11 @@ export interface AlertaCosto {
   costoNuevo: number;
   precioVentaActual: number;
   precioVentaSugerido: number;
+  precioVentaMayorActual: number;
+  precioVentaMayorSugerido: number;
   porcentajeVariacion: number;
   porcentajeMargen: number;
+  porcentajeMargenMayor: number;
   estado: string;
   fechaCreacion: string;
   fechaResolucion: string | null;
@@ -426,6 +443,11 @@ export const productosApi = {
   buscarPorCodigo: (codigo: string) =>
     get<Producto>(`/productos/codigo/${codigo}`),
 
+  /** Búsqueda rápida para el POS por código de barras, SKU o nombre. */
+  buscarParaPOS: (q: string) =>
+    get<Producto[]>(`/productos/buscar`, { q }),
+
+
   crear: (body: Omit<Producto, 'idProducto' | 'fechaCreacion' | 'fechaModificacion' | 'categoriaNombre' | 'marcaNombre'>) =>
     post<Producto>('/productos', body),
 
@@ -479,10 +501,10 @@ export const categoriasApi = {
   listarActivas: () =>
     get<PageResponse<Categoria>>('/categorias/activas', { page: 0, size: 100 }),
 
-  crear: (body: { nombre: string; descripcion?: string; porcentajeMargen?: number }) =>
+  crear: (body: { nombre: string; descripcion?: string; porcentajeMargen?: number; porcentajeMargenMayor?: number }) =>
     post<Categoria>('/categorias', body),
 
-  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado?: string; porcentajeMargen?: number }) =>
+  actualizar: (id: number, body: { nombre: string; descripcion?: string; estado?: string; porcentajeMargen?: number; porcentajeMargenMayor?: number }) =>
     put<Categoria>(`/categorias/${id}`, body),
 
   desactivar: (id: number) =>
@@ -731,7 +753,7 @@ export const turnosCajaApi = {
   calcularCuadre: (id: number) =>
     get<CuadreTurnoCaja>(`/cajas/turnos/${id}/cuadre`),
 
-  abrir: (body: { idCaja: number; montoInicial: number; observacionApertura?: string }) =>
+  abrir: (body: { idCaja: number; idUsuario?: number; montoInicial: number; observacionApertura?: string }) =>
     post<TurnoCaja>('/cajas/turnos/abrir', body),
 
   cerrar: (id: number, body: { montoFinalDeclarado: number; observacionCierre?: string }) =>
@@ -959,6 +981,10 @@ export const clientesApi = {
   buscarPorId: (id: number) =>
     get<Cliente>(`/clientes/${id}`),
 
+  /** Lista todos los clientes activos en orden alfabético (sin paginación) para el selector del POS. */
+  listarParaPOS: () =>
+    get<ClienteResumen[]>('/clientes/pos'),
+
   /** Búsqueda rápida para el selector del POS. Retorna máx. 20 clientes activos. */
   buscarParaPOS: (q: string) =>
     get<ClienteResumen[]>(`/clientes/buscar`, { q }),
@@ -1123,3 +1149,291 @@ export const conteosApi = {
   anular: (id: number) =>
     put<ConteoCabecera>(`/conteos/${id}/anular`, {}),
 };
+
+// ── Tipos: NCF ───────────────────────────────────────────
+
+export interface ResolucionNcf {
+  idResolucion: number;
+  tipoNcf: string;
+  descripcion: string;
+  numeroResolucion: string;
+  prefijo: string;
+  secuenciaInicio: number;
+  secuenciaFinal: number;
+  secuenciaActual: number;
+  fechaVencimiento: string;
+  estado: string;
+  fechaCreacion: string;
+}
+
+export interface ResolucionNcfPayload {
+  tipoNcf: string;
+  descripcion: string;
+  numeroResolucion: string;
+  prefijo: string;
+  secuenciaInicio: number;
+  secuenciaFinal: number;
+  fechaVencimiento: string;
+}
+
+// ── API: NCF ─────────────────────────────────────────────
+
+export const ncfApi = {
+  listar: () =>
+    get<ResolucionNcf[]>('/ncf'),
+
+  crear: (body: ResolucionNcfPayload) =>
+    post<ResolucionNcf>('/ncf', body),
+
+  actualizar: (id: number, body: Omit<ResolucionNcfPayload, 'tipoNcf' | 'prefijo' | 'secuenciaInicio'> & Pick<ResolucionNcfPayload, 'tipoNcf' | 'prefijo' | 'secuenciaInicio'>) =>
+    put<ResolucionNcf>(`/ncf/${id}`, body),
+
+  /** Previsualiza el próximo NCF sin consumirlo. Retorna el número que se usaría en la próxima venta. */
+  preview: (tipoNcf: string) =>
+    get<{ ncfCompleto: string; idResolucion: number | null; fechaVencimiento: string | null }>(`/ncf/preview/${tipoNcf}`),
+};
+
+
+// ── Tipos: Cupones ───────────────────────────────────────
+
+export type TipoDescuentoCupon = 'MONTO_FIJO' | 'PORCENTAJE';
+
+export interface CategoriaSimple {
+  idCategoria: number;
+  nombre: string;
+}
+
+export interface Cupon {
+  idCupon: number;
+  codigoInterno: string;
+  codigoSecreto: string;
+  tipoDescuento: TipoDescuentoCupon;
+  valorDescuento: number;
+  aplicaTodasCategorias: boolean;
+  categorias: CategoriaSimple[];
+  montoMinimoCompra: number;
+  fechaInicio: string;
+  fechaFin: string | null;
+  limiteUsos: number;
+  usosActuales: number;
+  estado: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
+}
+
+export interface CuponPayload {
+  codigoSecreto: string;
+  tipoDescuento: TipoDescuentoCupon;
+  valorDescuento: number;
+  aplicaTodasCategorias: boolean;
+  categoriaIds: number[];
+  montoMinimoCompra: number;
+  fechaInicio: string;
+  fechaFin?: string | null;
+  limiteUsos: number;
+  estado: string;
+}
+
+export interface CuponAplicado {
+  idCupon: number;
+  codigoInterno: string;
+  codigoSecreto: string;
+  tipoDescuento: string;
+  valorDescuento: number;
+  montoDescontado: number;
+}
+
+// ── API: Cupones ─────────────────────────────────────────
+
+export const cuponesApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Cupon>>('/cupones', { page, size, sort: 'idCupon,desc' }),
+
+  listarVigentes: (page = 0, size = 20) =>
+    get<PageResponse<Cupon>>('/cupones/vigentes', { page, size }),
+
+  buscarPorId: (id: number) =>
+    get<Cupon>(`/cupones/${id}`),
+
+  crear: (body: CuponPayload) =>
+    post<Cupon>('/cupones', body),
+
+  actualizar: (id: number, body: CuponPayload) =>
+    put<Cupon>(`/cupones/${id}`, body),
+
+  desactivar: (id: number) =>
+    del(`/cupones/${id}`),
+
+  aplicar: (codigoSecreto: string, idsCategorias: number[], subtotal: number) =>
+    post<CuponAplicado>(`/cupones/aplicar?codigoSecreto=${encodeURIComponent(codigoSecreto)}&subtotal=${subtotal}&idsCategorias=${idsCategorias.join(',')}`, {}),
+};
+
+// ── Tipos: Ventas POS ─────────────────────────────────────
+
+export interface DetalleVentaRequest {
+  idProducto: number;
+  cantidad: number;
+  descuentoLinea: number;
+}
+
+export interface IngresoVentaRequest {
+  metodoPago: string;
+  monto: number;
+  referencia?: string;
+}
+
+export interface CrearVentaRequest {
+  idTurnoCaja: number;
+  idCliente?: number | null;
+  nombreClienteTemporal?: string;
+  rncTemporal?: string;
+  tipoNcf: string;
+  metodoPago: string;
+  usaPrecioMayor: boolean;
+  descuentoGlobal: number;
+  codigoCupon?: string;
+  detalles: DetalleVentaRequest[];
+  ingresos: IngresoVentaRequest[];
+}
+
+export interface RecalcularFacturaRequest {
+  metodoPago: string;
+  tipoNcf: string;
+  usaPrecioMayor: boolean;
+  descuentoGlobal?: number;
+  detalles: DetalleVentaRequest[];
+}
+
+
+export interface DetalleRecalculado {
+  idProducto: number;
+  codigoProducto: string;
+  nombreProducto: string;
+  cantidad: number;
+  precioUnitario: number;
+  precioUnitarioOriginal: number | null;
+  tipoPrecio: string;
+  tasaItbis: number;
+  descuentoLinea: number;
+  descuentoOferta: number;
+  ofertaAplicada: string | null;
+  importe: number;
+  recalculado: boolean;
+  mensajeRecalculo: string | null;
+}
+
+export interface RecalcularFacturaResponse {
+  detalles: DetalleRecalculado[];
+  subtotal: number;
+  descuentoTotal: number;
+  itbis: number;
+  total: number;
+  huboRecalculo: boolean;
+}
+
+export interface DetalleVentaResponse {
+  idDetalleVenta: number;
+  idProducto: number;
+  skuProducto: string;
+  nombreProducto: string;
+  cantidad: number;
+  precioUnitario: number;
+  precioUnitarioOriginal: number | null;
+  tipoPrecio: string;
+  tasaItbis: number;
+  descuentoLinea: number;
+  descuentoOferta: number;
+  ofertaAplicada: string | null;
+  importe: number;
+}
+
+export interface IngresoVentaResponse {
+  idIngresoVenta: number;
+  metodoPago: string;
+  monto: number;
+  referencia: string | null;
+  fechaRegistro: string;
+}
+
+export interface VentaResponse {
+  idVenta: number;
+  idTurnoCaja: number;
+  cajeroNombre: string;
+  idCliente: number | null;
+  clienteNombre: string | null;
+  nombreClienteTemporal: string | null;
+  rncTemporal: string | null;
+  numeroControl: string;
+  ncf: string | null;
+  tipoNcf: string | null;
+  metodoPagoPrincipal: string;
+  usaPrecioMayor: boolean;
+  subtotal: number;
+  descuentoTotal: number;
+  itbis: number;
+  total: number;
+  montoRecibido: number;
+  cambio: number;
+  codigoCupon: string | null;
+  descuentoCupon: number;
+  estado: string;
+  fechaVenta: string;
+  detalles: DetalleVentaResponse[];
+  ingresos: IngresoVentaResponse[];
+}
+
+// ── API: Ventas POS ──────────────────────────────────────
+
+export const ventasApi = {
+  /** Recalcular precios al cambiar método de pago o tipo NCF (preview, no persiste). */
+  recalcular: (request: RecalcularFacturaRequest) =>
+    post<RecalcularFacturaResponse>('/ventas/recalcular', request),
+
+  /** Procesar una venta completa de forma atómica. */
+  procesar: (request: CrearVentaRequest) =>
+    post<VentaResponse>('/ventas', request),
+
+  /** Listar ventas con paginación. */
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<VentaResponse>>('/ventas', { page, size, sort: 'idVenta,desc' }),
+
+  /** Buscar una venta por ID. */
+  buscarPorId: (id: number) =>
+    get<VentaResponse>(`/ventas/${id}`),
+
+  /** Obtener el siguiente número de control. */
+  siguienteNumero: () =>
+    get<{ numeroControl: string }>('/ventas/siguiente-numero'),
+};
+
+// ── Tipos: Empaques ──────────────────────────────────────
+
+export interface Empaque {
+  idEmpaque: number;
+  nombre: string;
+  cantidad: number;
+  descripcion: string | null;
+  estado: string;
+  fechaCreacion: string | null;
+  fechaModificacion: string | null;
+}
+
+export const empaquesApi = {
+  /** Lista todos (activos e inactivos) para el CRUD. */
+  listar: () =>
+    get<Empaque[]>('/empaques'),
+
+  /** Lista solo los activos ordenados por cantidad — para el selector del POS. */
+  listarActivos: () =>
+    get<Empaque[]>('/empaques/activos'),
+
+  crear: (body: { nombre: string; cantidad: number; descripcion?: string; estado?: string }) =>
+    post<Empaque>('/empaques', body),
+
+  actualizar: (id: number, body: { nombre: string; cantidad: number; descripcion?: string; estado?: string }) =>
+    put<Empaque>(`/empaques/${id}`, body),
+
+  eliminar: (id: number) =>
+    del(`/empaques/${id}`),
+};
+
