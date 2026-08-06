@@ -64,9 +64,6 @@ public class OrdenCompra {
     @OneToMany(mappedBy = "ordenCompra", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DetalleOrdenCompra> detalles = new ArrayList<>();
 
-    @OneToMany(mappedBy = "ordenCompra", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<PagoProveedor> pagos = new ArrayList<>();
-
     @CreatedDate
     @Column(name = "fecha_orden", updatable = false)
     private LocalDateTime fechaOrden;

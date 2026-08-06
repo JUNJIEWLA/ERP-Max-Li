@@ -790,26 +790,13 @@ export interface DetalleOrdenCompra {
   nombreAlmacen: string | null;
 }
 
-export interface PagoProveedor {
-  idPagoProveedor: number;
-  idOrdenCompra: number;
-  montoPagado: number;
-  metodo: string;
-  numeroReferencia: string | null;
-  fecha: string;
-}
-
 export interface OrdenCompra {
   idOrdenCompra: number;
   idProveedor: number;
   nombreProveedor: string;
   total: number;
   estado: string;
-  estadoPago: string;
-  totalPagado: number;
-  balancePendiente: number;
   detalles: DetalleOrdenCompra[];
-  pagos: PagoProveedor[];
   /** Fecha acordada con el proveedor (ISO date string o null si no se configuró). */
   fechaLlegadaAcordada: string | null;
   /**
@@ -894,11 +881,38 @@ export const ordenesCompraApi = {
   forzarCierre: (id: number) =>
     put<OrdenCompra>(`/ordenes-compra/${id}/forzar-cierre`, {}),
 
-  registrarPago: (idOrden: number, body: { montoPagado: number; metodo: string; numeroReferencia?: string }) =>
-    post<PagoProveedor>(`/ordenes-compra/${idOrden}/pagos`, body),
+};
 
-  listarPagos: (idOrden: number) =>
-    get<PagoProveedor[]>(`/ordenes-compra/${idOrden}/pagos`),
+// ── API: Gastos ─────────────────────────────────────────
+
+export interface Gasto {
+  idGasto: number;
+  idOrdenCompra: number;
+  nombreProveedor: string;
+  monto: number;
+  estado: 'PENDIENTE' | 'REALIZADO';
+  fechaRegistro: string;
+  fechaRealizado: string | null;
+}
+
+export interface OrdenCompraDisponible {
+  idOrdenCompra: number;
+  nombreProveedor: string;
+  total: number;
+}
+
+export const gastosApi = {
+  listar: (page = 0, size = 20) =>
+    get<PageResponse<Gasto>>('/gastos', { page, size, sort: 'idGasto,desc' }),
+
+  listarOrdenesDisponibles: () =>
+    get<OrdenCompraDisponible[]>('/gastos/ordenes-disponibles'),
+
+  crear: (idOrdenCompra: number) =>
+    post<Gasto>('/gastos', { idOrdenCompra }),
+
+  marcarComoRealizado: (idGasto: number) =>
+    put<Gasto>(`/gastos/${idGasto}/marcar-realizado`, {}),
 };
 
 // ── API: Notas de Recepción ──────────────────────────────
