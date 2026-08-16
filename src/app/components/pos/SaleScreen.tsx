@@ -109,17 +109,6 @@ export default function SaleScreen() {
     return Math.max(0, importeTotal - descGlobalMonto);
   };
 
-  /** Subtotal neto desglosado (sin ITBIS) = Total / 1.18 */
-  const calculateSubtotalSinITBIS = () => {
-    return calculateTotalPagar() / 1.18;
-  };
-
-  /** ITBIS (18%) desglosado del Total = Total - Subtotal sin ITBIS */
-  const calculateITBIS = () => {
-    const total = calculateTotalPagar();
-    return total - (total / 1.18);
-  };
-
   const getTotalItems = () => {
     return cart.reduce((sum, item) => sum + item.cantidad, 0);
   };
@@ -532,8 +521,8 @@ export default function SaleScreen() {
           descuentoAutomatico={0}
           descuentoLinea={calculateDescuentoLinea()}
           totalAhorrado={getTotalAhorrado()}
-          subtotal={calculateSubtotalSinITBIS()}
-          itbis={calculateITBIS()}
+          subtotal={null}
+          itbis={null}
           total={calculateTotalPagar()}
         />
       </div>

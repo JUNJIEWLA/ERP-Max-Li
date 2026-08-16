@@ -16,8 +16,13 @@ interface SaleSummaryPanelProps {
   descuentoAutomatico: number;
   descuentoLinea: number;
   totalAhorrado: number;
-  subtotal: number;
-  itbis: number;
+  /**
+   * Desglose fiscal real (base imponible / ITBIS por línea), calculado por
+   * el backend. `null` mientras no haya un preview real disponible — nunca
+   * se aproxima con una tasa fija en el cliente (ISSUE-008).
+   */
+  subtotal: number | null;
+  itbis: number | null;
   total: number;
 }
 
@@ -140,14 +145,22 @@ export default function SaleSummaryPanel({
       {/* Totales — ocupa el espacio restante y pega los valores al fondo */}
       <div className="flex-1 flex flex-col justify-end px-3 py-3">
         <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Subtotal sin ITBIS</span>
-            <span className="font-mono text-foreground font-medium">RD${subtotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">ITBIS (18%)</span>
-            <span className="font-mono text-foreground font-medium">RD${itbis.toFixed(2)}</span>
-          </div>
+          {subtotal !== null && itbis !== null ? (
+            <>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Subtotal sin ITBIS</span>
+                <span className="font-mono text-foreground font-medium">RD${subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ITBIS</span>
+                <span className="font-mono text-foreground font-medium">RD${itbis.toFixed(2)}</span>
+              </div>
+            </>
+          ) : (
+            <p className="text-muted-foreground italic">
+              El desglose de ITBIS se calcula al cobrar (tasa por producto)
+            </p>
+          )}
         </div>
 
         {/* Total grande */}

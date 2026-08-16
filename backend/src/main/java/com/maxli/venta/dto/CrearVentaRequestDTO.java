@@ -1,6 +1,7 @@
 package com.maxli.venta.dto;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -41,6 +42,7 @@ public class CrearVentaRequestDTO {
     private boolean usaPrecioMayor;
 
     /** Descuento global en monto fijo (RD$). */
+    @DecimalMin(value = "0.00", message = "El descuento global no puede ser negativo")
     private BigDecimal descuentoGlobal = BigDecimal.ZERO;
 
     /** Código de cupón digitado (opcional). */

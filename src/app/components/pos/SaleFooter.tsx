@@ -87,7 +87,7 @@ export default function SaleFooter({
               <span>RD${subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">ITBIS (18%)</span>
+              <span className="text-muted-foreground">ITBIS</span>
               <span>RD${itbis.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">

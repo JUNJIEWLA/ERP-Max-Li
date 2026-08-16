@@ -65,7 +65,23 @@ public class DetalleVenta {
     @Column(name = "oferta_aplicada", length = 120)
     private String ofertaAplicada;
 
-    /** Importe final = (precioUnitario × cantidad) - descuentos. */
+    /** Importe final = (precioUnitario × cantidad) - descuentos de línea/oferta. */
     @Column(name = "importe", nullable = false, precision = 14, scale = 2)
     private BigDecimal importe;
+
+    /**
+     * Suma de descuento global + cupón ya prorrateados sobre esta línea
+     * (trazabilidad — ISSUE-008). {@code importe - descuentoProrrateado ==
+     * baseImponible + itbisLinea}.
+     */
+    @Column(name = "descuento_prorrateado", nullable = false, precision = 14, scale = 2)
+    private BigDecimal descuentoProrrateado = BigDecimal.ZERO;
+
+    /** Base imponible de la línea (importe neto de descuentos prorrateados, sin ITBIS). */
+    @Column(name = "base_imponible", nullable = false, precision = 14, scale = 2)
+    private BigDecimal baseImponible = BigDecimal.ZERO;
+
+    /** ITBIS de la línea, calculado con la tasa propia del producto (ISSUE-008). */
+    @Column(name = "itbis_linea", nullable = false, precision = 14, scale = 2)
+    private BigDecimal itbisLinea = BigDecimal.ZERO;
 }

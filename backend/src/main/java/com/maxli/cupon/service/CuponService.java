@@ -3,6 +3,7 @@ package com.maxli.cupon.service;
 import com.maxli.cupon.dto.CuponAplicadoDTO;
 import com.maxli.cupon.dto.CuponRequestDTO;
 import com.maxli.cupon.dto.CuponResponseDTO;
+import com.maxli.cupon.dto.LineaParaCuponDTO;
 import com.maxli.cupon.entity.Cupon;
 import com.maxli.cupon.entity.TipoDescuento;
 import com.maxli.cupon.repository.CuponRepository;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -79,17 +81,45 @@ public class CuponService {
 
     /**
      * Valida y aplica el cupón en el Punto de Venta.
+     * <p>
+     * El descuento se calcula únicamente sobre las líneas cuya categoría está
+     * habilitada por el cupón — una línea de categoría no elegible nunca
+     * recibe parte del descuento, aunque exista algún producto elegible en
+     * el resto del carrito (ISSUE-008).
      *
-     * @param codigoSecreto   Código que el cajero digitó.
-     * @param idsCategorias   IDs de las categorías de los productos en el carrito.
-     * @param subtotal        Subtotal de la compra (antes del descuento).
-     * @return                DTO con el monto a descontar.
+     * @param codigoSecreto Código que el cajero digitó.
+     * @param lineas        Líneas del carrito (categoría + importe neto de
+     *                      descuento de línea/oferta y de descuento global —
+     *                      el cupón es el último descuento en aplicarse).
+     * @return              DTO con el monto a descontar y los índices de las
+     *                      líneas elegibles sobre las que se prorratea.
      * @throws BusinessException / ResourceNotFoundException en caso de error.
      */
     @Transactional
-    public CuponAplicadoDTO validarYAplicarCupon(String codigoSecreto,
-                                                  List<Long> idsCategorias,
-                                                  BigDecimal subtotal) {
+    public CuponAplicadoDTO validarYAplicarCupon(String codigoSecreto, List<LineaParaCuponDTO> lineas) {
+        CuponResuelto resuelto = resolverCupon(codigoSecreto, lineas);
+
+        // Registrar uso — solo en la venta real, nunca en un preview.
+        resuelto.cupon().setUsosActuales(resuelto.cupon().getUsosActuales() + 1);
+        cuponRepository.save(resuelto.cupon());
+
+        return construirAplicadoDTO(resuelto);
+    }
+
+    /**
+     * Igual que {@link #validarYAplicarCupon}, pero de solo lectura: valida y
+     * calcula el descuento sin incrementar {@code usosActuales}. Se usa en el
+     * preview de factura, que puede ejecutarse muchas veces mientras el
+     * cajero arma el carrito y no debe consumir el límite de usos del cupón.
+     */
+    @Transactional(readOnly = true)
+    public CuponAplicadoDTO previsualizarCupon(String codigoSecreto, List<LineaParaCuponDTO> lineas) {
+        return construirAplicadoDTO(resolverCupon(codigoSecreto, lineas));
+    }
+
+    private record CuponResuelto(Cupon cupon, BigDecimal montoDescontado, List<Integer> indicesElegibles) {}
+
+    private CuponResuelto resolverCupon(String codigoSecreto, List<LineaParaCuponDTO> lineas) {
         Cupon cupon = cuponRepository.findByCodigoSecretoWithCategorias(codigoSecreto)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Cupón no encontrado. Verifica el código ingresado."));
@@ -113,46 +143,64 @@ public class CuponService {
             throw new BusinessException("El cupón ya alcanzó su límite máximo de usos (" + cupon.getLimiteUsos() + ").");
         }
 
-        // 4. Monto mínimo de compra
-        if (subtotal.compareTo(cupon.getMontoMinimoCompra()) < 0) {
+        // 4. Monto mínimo de compra — sobre el carrito completo (todas las
+        // líneas, ya netas de línea/oferta/global), no solo las elegibles:
+        // el mínimo de compra es una condición para USAR el cupón, distinta
+        // de la base sobre la que se calcula el descuento (paso 6).
+        BigDecimal totalCarrito = lineas.stream()
+                .map(LineaParaCuponDTO::importe)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalCarrito.compareTo(cupon.getMontoMinimoCompra()) < 0) {
             throw new BusinessException(
                     String.format("El subtotal RD$ %.2f no alcanza el mínimo requerido de RD$ %.2f.",
-                            subtotal, cupon.getMontoMinimoCompra()));
+                            totalCarrito, cupon.getMontoMinimoCompra()));
         }
 
-        // 5. Compatibilidad de categorías
-        if (!cupon.isAplicaTodasCategorias() && !cupon.getCategorias().isEmpty()) {
-            Set<Long> categoriasPermitidas = new HashSet<>();
-            cupon.getCategorias().forEach(c -> categoriasPermitidas.add(c.getIdCategoria()));
-            boolean hayProductoValido = idsCategorias.stream().anyMatch(categoriasPermitidas::contains);
-            if (!hayProductoValido) {
-                throw new BusinessException(
-                        "Ninguno de los productos en el carrito pertenece a las categorías habilitadas por este cupón.");
+        // 5. Determinar líneas elegibles por categoría
+        Set<Long> categoriasPermitidas = new HashSet<>();
+        cupon.getCategorias().forEach(c -> categoriasPermitidas.add(c.getIdCategoria()));
+        boolean sinRestriccionDeCategoria = cupon.isAplicaTodasCategorias() || categoriasPermitidas.isEmpty();
+
+        List<Integer> indicesElegibles = new ArrayList<>();
+        for (int i = 0; i < lineas.size(); i++) {
+            Long idCategoria = lineas.get(i).idCategoria();
+            if (sinRestriccionDeCategoria || categoriasPermitidas.contains(idCategoria)) {
+                indicesElegibles.add(i);
             }
         }
+        if (indicesElegibles.isEmpty()) {
+            throw new BusinessException(
+                    "Ninguno de los productos en el carrito pertenece a las categorías habilitadas por este cupón.");
+        }
 
-        // 6. Calcular monto a descontar
+        // 6. Calcular monto a descontar — únicamente sobre las líneas elegibles
+        BigDecimal baseElegible = indicesElegibles.stream()
+                .map(i -> lineas.get(i).importe())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         BigDecimal montoDescontado;
         if (cupon.getTipoDescuento() == TipoDescuento.PORCENTAJE) {
-            montoDescontado = subtotal
+            montoDescontado = baseElegible
                     .multiply(cupon.getValorDescuento())
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         } else {
-            // MONTO_FIJO: no puede superar el subtotal
-            montoDescontado = cupon.getValorDescuento().min(subtotal);
+            // MONTO_FIJO: no puede superar la base elegible
+            montoDescontado = cupon.getValorDescuento().min(baseElegible);
         }
 
-        // 7. Registrar uso
-        cupon.setUsosActuales(cupon.getUsosActuales() + 1);
-        cuponRepository.save(cupon);
+        return new CuponResuelto(cupon, montoDescontado, indicesElegibles);
+    }
 
+    private CuponAplicadoDTO construirAplicadoDTO(CuponResuelto resuelto) {
+        Cupon cupon = resuelto.cupon();
         return new CuponAplicadoDTO(
                 cupon.getIdCupon(),
                 cupon.getCodigoInterno(),
                 cupon.getCodigoSecreto(),
                 cupon.getTipoDescuento().name(),
                 cupon.getValorDescuento(),
-                montoDescontado
+                resuelto.montoDescontado(),
+                resuelto.indicesElegibles()
         );
     }
 

@@ -1,5 +1,7 @@
 package com.maxli.venta.dto;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -19,5 +21,7 @@ public class DetalleVentaRequestDTO {
     private Integer cantidad;
 
     /** Descuento porcentual por línea (0-100). */
+    @DecimalMin(value = "0.00", message = "El descuento de línea no puede ser negativo")
+    @DecimalMax(value = "100.00", message = "El descuento de línea no puede superar 100%")
     private BigDecimal descuentoLinea = BigDecimal.ZERO;
 }

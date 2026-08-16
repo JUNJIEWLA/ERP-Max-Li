@@ -1238,16 +1238,10 @@ export interface CuponPayload {
   estado: string;
 }
 
-export interface CuponAplicado {
-  idCupon: number;
-  codigoInterno: string;
-  codigoSecreto: string;
-  tipoDescuento: string;
-  valorDescuento: number;
-  montoDescontado: number;
-}
-
 // ── API: Cupones ─────────────────────────────────────────
+// El cupón se aplica siempre dentro del flujo de venta (ventasApi.recalcular
+// / ventasApi.crear, con codigoCupon en el body), nunca desde un endpoint
+// suelto — así no se puede consumir su límite de usos fuera de una venta.
 
 export const cuponesApi = {
   listar: (page = 0, size = 20) =>
@@ -1267,9 +1261,6 @@ export const cuponesApi = {
 
   desactivar: (id: number) =>
     del(`/cupones/${id}`),
-
-  aplicar: (codigoSecreto: string, idsCategorias: number[], subtotal: number) =>
-    post<CuponAplicado>(`/cupones/aplicar?codigoSecreto=${encodeURIComponent(codigoSecreto)}&subtotal=${subtotal}&idsCategorias=${idsCategorias.join(',')}`, {}),
 };
 
 // ── Tipos: Ventas POS ─────────────────────────────────────
@@ -1305,6 +1296,7 @@ export interface RecalcularFacturaRequest {
   tipoNcf: string;
   usaPrecioMayor: boolean;
   descuentoGlobal?: number;
+  codigoCupon?: string;
   detalles: DetalleVentaRequest[];
 }
 
@@ -1322,6 +1314,8 @@ export interface DetalleRecalculado {
   descuentoOferta: number;
   ofertaAplicada: string | null;
   importe: number;
+  baseImponible: number;
+  itbisLinea: number;
   recalculado: boolean;
   mensajeRecalculo: string | null;
 }
@@ -1333,6 +1327,8 @@ export interface RecalcularFacturaResponse {
   itbis: number;
   total: number;
   huboRecalculo: boolean;
+  codigoCupon: string | null;
+  descuentoCupon: number;
 }
 
 export interface DetalleVentaResponse {
@@ -1349,6 +1345,8 @@ export interface DetalleVentaResponse {
   descuentoOferta: number;
   ofertaAplicada: string | null;
   importe: number;
+  baseImponible: number;
+  itbisLinea: number;
 }
 
 export interface IngresoVentaResponse {

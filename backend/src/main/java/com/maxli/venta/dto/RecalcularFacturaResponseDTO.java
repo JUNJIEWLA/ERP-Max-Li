@@ -22,10 +22,15 @@ public class RecalcularFacturaResponseDTO {
     private BigDecimal total;
     private boolean huboRecalculo;
 
+    /** Cupón previsualizado (sin consumir su límite de usos — ver CuponService.previsualizarCupon). */
+    private String codigoCupon;
+    private BigDecimal descuentoCupon;
+
     @Getter
     @Setter
     public static class DetalleRecalculadoDTO {
         private Long idProducto;
+        private Long idCategoria;
         private String codigoProducto;
         private String nombreProducto;
         private Integer cantidad;
@@ -37,6 +42,11 @@ public class RecalcularFacturaResponseDTO {
         private BigDecimal descuentoOferta;
         private String ofertaAplicada;
         private BigDecimal importe;
+
+        /** Suma de descuento global + cupón ya prorrateados sobre esta línea. */
+        private BigDecimal descuentoProrrateado;
+        private BigDecimal baseImponible;
+        private BigDecimal itbisLinea;
 
         /** true si el precio cambió de mayor a detalle por regla de negocio. */
         private boolean recalculado;
