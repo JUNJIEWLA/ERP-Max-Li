@@ -18,9 +18,8 @@ import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
 import com.maxli.existencia.service.ExistenciaLockService;
 import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
-import com.maxli.inventario.entity.DetalleMovimiento;
-import com.maxli.inventario.entity.Movimiento;
-import com.maxli.inventario.repository.MovimientoRepository;
+import com.maxli.inventario.service.TrazabilidadInventarioService;
+import com.maxli.inventario.service.TrazabilidadInventarioService.CambioInventario;
 import com.maxli.producto.entity.Producto;
 import com.maxli.producto.repository.ProductoRepository;
 import com.maxli.usuario.entity.Usuario;
@@ -33,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,7 +47,7 @@ public class ConteoService {
     private final ExistenciaLockService existenciaLockService;
     private final ProductoRepository productoRepository;
     private final UsuarioRepository usuarioRepository;
-    private final MovimientoRepository movimientoRepository;
+    private final TrazabilidadInventarioService trazabilidadInventarioService;
     private final AlmacenService almacenService;
     private final ConteoMapper conteoMapper;
 
@@ -206,18 +206,7 @@ public class ConteoService {
         Usuario supervisor = usuarioRepository.findByUsername(usuarioActual)
                 .orElse(null);
 
-        // Crear movimiento de AJUSTE como rastro de auditoría
-        Movimiento movimiento = new Movimiento();
-        movimiento.setTipo("AJUSTE");
-        movimiento.setAlmacenDestino(cabecera.getAlmacen());
-        movimiento.setReferencia("CONTEO-" + idConteo);
-        movimiento.setObservacion("Ajuste por conteo físico #" + idConteo +
-                (cabecera.getZona() != null ? " — Zona: " + cabecera.getZona() : ""));
-        movimiento.setEstado("COMPLETADO");
-        movimiento.setUsuarioResponsable(usuarioActual);
-        movimiento.setFechaMovimiento(LocalDateTime.now());
-
-        boolean tieneAjustes = false;
+        List<CambioInventario> cambiosInventario = new ArrayList<>();
 
         List<ClaveExistencia> clavesExistencia = cabecera.getDetalles().stream()
                 .filter(detalle -> detalle.getDiferencia() != null && detalle.getDiferencia() != 0)
@@ -232,30 +221,30 @@ public class ConteoService {
                 continue; // Sin diferencia, no hay ajuste necesario
             }
 
-            tieneAjustes = true;
-
             // Aplicar la diferencia al saldo recién bloqueado evita que un
             // conteo con snapshot viejo sobrescriba una venta concurrente.
             Existencia existencia = existenciasBloqueadas.get(new ClaveExistencia(
                     detalle.getProducto().getIdProducto(), cabecera.getAlmacen().getIdAlmacen()));
-            int nuevaCantidad = existencia.getCantidadActual() + detalle.getDiferencia();
+            int cantidadAnterior = existencia.getCantidadActual();
+            int nuevaCantidad = cantidadAnterior + detalle.getDiferencia();
             if (nuevaCantidad < 0) {
                 throw new BusinessException("El ajuste del conteo dejaría stock negativo para el producto '" +
                         detalle.getProducto().getNombre() + "'");
             }
             existencia.setCantidadActual(nuevaCantidad);
-
-            // Registrar detalle del movimiento de ajuste (la diferencia)
-            DetalleMovimiento detalleMovimiento = new DetalleMovimiento();
-            detalleMovimiento.setMovimiento(movimiento);
-            detalleMovimiento.setProducto(detalle.getProducto());
-            detalleMovimiento.setCantidad(Math.abs(detalle.getDiferencia()));
-            movimiento.getDetalles().add(detalleMovimiento);
+            cambiosInventario.add(CambioInventario.entrada(
+                    detalle.getProducto(), cantidadAnterior, nuevaCantidad));
         }
 
         // Solo guardar el movimiento si hubo ajustes reales
-        if (tieneAjustes) {
-            movimientoRepository.save(movimiento);
+        if (!cambiosInventario.isEmpty()) {
+            trazabilidadInventarioService.registrar(
+                    "AJUSTE", null, cabecera.getAlmacen(),
+                    "CONTEO-" + idConteo,
+                    "Ajuste por conteo físico #" + idConteo
+                            + (cabecera.getZona() != null ? " — Zona: " + cabecera.getZona() : ""),
+                    usuarioActual,
+                    cambiosInventario);
         }
 
         // Actualizar cabecera

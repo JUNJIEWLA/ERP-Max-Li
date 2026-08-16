@@ -11,6 +11,8 @@ import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.mapper.ExistenciaMapper;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.inventario.service.TrazabilidadInventarioService;
+import com.maxli.inventario.service.TrazabilidadInventarioService.CambioInventario;
 import com.maxli.producto.entity.Producto;
 import com.maxli.producto.repository.ProductoRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class ExistenciaService {
     private final ProductoRepository productoRepository;
     private final AlmacenService almacenService;
     private final ExistenciaMapper existenciaMapper;
+    private final TrazabilidadInventarioService trazabilidadInventarioService;
 
     @Transactional(readOnly = true)
     public Page<ExistenciaResponseDTO> listar(Pageable pageable) {
@@ -72,19 +75,38 @@ public class ExistenciaService {
         }
         Existencia existencia = existenciaLockService.bloquear(dto.getIdProducto(), dto.getIdAlmacen())
                 .orElseThrow();
+        if (dto.getCantidadActual() > 0) {
+            trazabilidadInventarioService.registrar(
+                    "AJUSTE", null, almacen,
+                    "EXISTENCIA-" + existencia.getIdExistencia(),
+                    "Creación manual de existencia con saldo inicial",
+                    null,
+                    List.of(CambioInventario.entrada(producto, 0, dto.getCantidadActual())));
+        }
         return existenciaMapper.toDto(existencia);
     }
 
     @Transactional
     public ExistenciaResponseDTO actualizar(Long id, AjusteExistenciaRequestDTO dto) {
         Existencia existencia = obtenerPorIdBloqueada(id);
+        int cantidadAnterior = existencia.getCantidadActual();
         int nuevaCantidad = existencia.getCantidadActual() + dto.getDeltaCantidadActual();
         if (nuevaCantidad < 0) {
             throw new BusinessException("El ajuste deja el stock negativo");
         }
         existencia.setCantidadActual(nuevaCantidad);
         existencia.setCantidadMinima(dto.getCantidadMinima());
-        return existenciaMapper.toDto(existenciaRepository.save(existencia));
+        Existencia guardada = existenciaRepository.save(existencia);
+        if (cantidadAnterior != nuevaCantidad) {
+            trazabilidadInventarioService.registrar(
+                    "AJUSTE", null, existencia.getAlmacen(),
+                    "EXISTENCIA-" + id,
+                    "Ajuste manual de existencia",
+                    null,
+                    List.of(CambioInventario.entrada(
+                            existencia.getProducto(), cantidadAnterior, nuevaCantidad)));
+        }
+        return existenciaMapper.toDto(guardada);
     }
 
     private Existencia obtenerPorId(Long id) {

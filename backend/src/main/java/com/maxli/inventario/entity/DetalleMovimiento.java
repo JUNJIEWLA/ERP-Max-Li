@@ -36,4 +36,16 @@ public class DetalleMovimiento {
 
     @Column(name = "cantidad", nullable = false)
     private Integer cantidad;
+
+    @Column(name = "cantidad_anterior_origen")
+    private Integer cantidadAnteriorOrigen;
+
+    @Column(name = "cantidad_posterior_origen")
+    private Integer cantidadPosteriorOrigen;
+
+    @Column(name = "cantidad_anterior_destino")
+    private Integer cantidadAnteriorDestino;
+
+    @Column(name = "cantidad_posterior_destino")
+    private Integer cantidadPosteriorDestino;
 }

@@ -17,6 +17,7 @@ import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
 import com.maxli.existencia.service.ExistenciaLockService;
 import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
+import com.maxli.inventario.service.TrazabilidadInventarioService;
 import com.maxli.producto.entity.Categoria;
 import com.maxli.producto.entity.Producto;
 import com.maxli.producto.repository.AlertaCostoRepository;
@@ -52,6 +53,7 @@ class NotaRecepcionServiceTest {
     @Mock private AlertaCostoRepository alertaCostoRepository;
     @Mock private OrdenCompraService ordenCompraService;
     @Mock private NotaRecepcionMapper notaRecepcionMapper;
+    @Mock private TrazabilidadInventarioService trazabilidadInventarioService;
 
     @InjectMocks private NotaRecepcionService notaRecepcionService;
 

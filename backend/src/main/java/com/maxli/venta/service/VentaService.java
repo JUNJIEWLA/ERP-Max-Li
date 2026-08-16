@@ -13,6 +13,8 @@ import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
 import com.maxli.existencia.service.ExistenciaLockService;
+import com.maxli.inventario.service.TrazabilidadInventarioService;
+import com.maxli.inventario.service.TrazabilidadInventarioService.CambioInventario;
 import com.maxli.ncf.service.NcfService;
 import com.maxli.ncf.dto.NcfGeneradoDTO;
 import com.maxli.oferta.entity.Oferta;
@@ -77,6 +79,7 @@ public class VentaService {
     private final NcfService ncfService;
     private final CuponService cuponService;
     private final ClienteRepository clienteRepository;
+    private final TrazabilidadInventarioService trazabilidadInventarioService;
 
     // ═════════════════════════════════════════════════════════════════════
     //  1. RECÁLCULO DINÁMICO (preview — no persiste nada)
@@ -254,6 +257,9 @@ public class VentaService {
         // sin haber tocado la secuencia fiscal.
         Map<Long, Existencia> existenciasBloqueadas =
                 bloquearYValidarStock(request.getDetalles(), almacen.getIdAlmacen());
+        Map<Long, Integer> saldosAnteriores = existenciasBloqueadas.entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey, entry -> entry.getValue().getCantidadActual()));
 
         // ── 5. Generar NCF ───────────────────────────────────────────────
         if (request.getTipoNcf() != null && !request.getTipoNcf().isBlank()) {
@@ -369,6 +375,20 @@ public class VentaService {
 
         // ── 10. Persistir venta ──────────────────────────────────────────
         Venta ventaGuardada = ventaRepository.save(venta);
+
+        List<CambioInventario> cambiosInventario = existenciasBloqueadas.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> CambioInventario.salida(
+                        entry.getValue().getProducto(),
+                        saldosAnteriores.get(entry.getKey()),
+                        entry.getValue().getCantidadActual()))
+                .toList();
+        trazabilidadInventarioService.registrar(
+                "VENTA", almacen, null,
+                ventaGuardada.getNumeroControl(),
+                "Salida de inventario por venta",
+                username,
+                cambiosInventario);
 
         // ── 11. Actualizar cuadre del turno ──────────────────────────────
         actualizarCuadreTurno(turno);

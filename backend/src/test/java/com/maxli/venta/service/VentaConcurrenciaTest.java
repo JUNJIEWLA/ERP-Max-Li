@@ -222,6 +222,8 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
 
     @AfterEach
     void limpiarEscenario() {
+        jdbcTemplate.update("DELETE FROM detalle_movimiento");
+        jdbcTemplate.update("DELETE FROM movimiento");
         jdbcTemplate.update("DELETE FROM alerta_costo");
         jdbcTemplate.update("DELETE FROM historial_costo");
         jdbcTemplate.update("DELETE FROM detalle_nota_recepcion");

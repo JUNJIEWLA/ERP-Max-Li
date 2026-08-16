@@ -583,6 +583,10 @@ export interface DetalleMovimientoInventario {
   productoNombre: string;
   productoSku: string;
   cantidad: number;
+  cantidadAnteriorOrigen: number | null;
+  cantidadPosteriorOrigen: number | null;
+  cantidadAnteriorDestino: number | null;
+  cantidadPosteriorDestino: number | null;
 }
 
 export interface MovimientoInventario {
