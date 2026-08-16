@@ -12,6 +12,7 @@ import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.service.ExistenciaLockService;
 import com.maxli.ncf.service.NcfService;
 import com.maxli.ncf.dto.NcfGeneradoDTO;
 import com.maxli.oferta.entity.Oferta;
@@ -71,6 +72,7 @@ public class VentaService {
     private final UsuarioRepository usuarioRepository;
     private final ProductoRepository productoRepository;
     private final ExistenciaRepository existenciaRepository;
+    private final ExistenciaLockService existenciaLockService;
     private final OfertaRepository ofertaRepository;
     private final NcfService ncfService;
     private final CuponService cuponService;
@@ -440,8 +442,8 @@ public class VentaService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Producto no encontrado con id: " + idProducto));
 
-            Existencia existencia = existenciaRepository
-                    .bloquearPorProductoYAlmacenParaActualizar(idProducto, idAlmacen)
+            Existencia existencia = existenciaLockService
+                    .bloquear(idProducto, idAlmacen)
                     .orElseThrow(() -> new BusinessException(String.format(
                             "No hay existencia registrada para '%s' en el almacén de esta caja.",
                             producto.getNombre())));

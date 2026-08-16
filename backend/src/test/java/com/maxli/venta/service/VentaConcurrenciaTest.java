@@ -6,9 +6,22 @@ import com.maxli.caja.entity.Caja;
 import com.maxli.caja.entity.TurnoCaja;
 import com.maxli.caja.repository.CajaRepository;
 import com.maxli.caja.repository.TurnoCajaRepository;
+import com.maxli.compra.entity.DetalleNotaRecepcion;
+import com.maxli.compra.entity.DetalleOrdenCompra;
+import com.maxli.compra.entity.NotaRecepcion;
+import com.maxli.compra.entity.OrdenCompra;
+import com.maxli.compra.entity.Proveedor;
+import com.maxli.compra.repository.DetalleNotaRecepcionRepository;
+import com.maxli.compra.repository.DetalleOrdenCompraRepository;
+import com.maxli.compra.repository.NotaRecepcionRepository;
+import com.maxli.compra.repository.OrdenCompraRepository;
+import com.maxli.compra.repository.ProveedorRepository;
+import com.maxli.compra.service.NotaRecepcionService;
 import com.maxli.exception.BusinessException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.service.ExistenciaService;
 import com.maxli.ncf.entity.ResolucionNcf;
 import com.maxli.ncf.repository.ResolucionNcfRepository;
 import com.maxli.producto.entity.Categoria;
@@ -69,6 +82,7 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     @Autowired private VentaService ventaService;
     @Autowired private VentaRepository ventaRepository;
     @Autowired private ExistenciaRepository existenciaRepository;
+    @Autowired private ExistenciaService existenciaService;
     @Autowired private ProductoRepository productoRepository;
     @Autowired private CategoriaRepository categoriaRepository;
     @Autowired private MarcaRepository marcaRepository;
@@ -78,6 +92,12 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     @Autowired private CajaRepository cajaRepository;
     @Autowired private TurnoCajaRepository turnoCajaRepository;
     @Autowired private ResolucionNcfRepository resolucionNcfRepository;
+    @Autowired private NotaRecepcionService notaRecepcionService;
+    @Autowired private NotaRecepcionRepository notaRecepcionRepository;
+    @Autowired private DetalleNotaRecepcionRepository detalleNotaRecepcionRepository;
+    @Autowired private OrdenCompraRepository ordenCompraRepository;
+    @Autowired private DetalleOrdenCompraRepository detalleOrdenCompraRepository;
+    @Autowired private ProveedorRepository proveedorRepository;
     @Autowired private TransactionTemplate transactionTemplate;
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -85,6 +105,8 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     private Long idTurnoCaja;
     private Long idResolucionB01;
     private Long idResolucionB02;
+    private Long idNotaRecepcion;
+    private Long idExistencia;
     private String username;
 
     /**
@@ -153,17 +175,60 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             existencia.setAlmacen(almacen);
             existencia.setCantidadActual(STOCK_INICIAL);
             existencia.setCantidadMinima(0);
-            existenciaRepository.save(existencia);
+            idExistencia = existenciaRepository.save(existencia).getIdExistencia();
 
             // Dos resoluciones activas: el bloqueo de NCF no serializa entre tipos
             // distintos, que es justamente lo que destapó el hallazgo.
             idResolucionB01 = crearResolucion("B01", "Crédito Fiscal").getIdResolucion();
             idResolucionB02 = crearResolucion("B02", "Consumo").getIdResolucion();
+
+            Proveedor proveedor = new Proveedor();
+            proveedor.setNombreEmpresa("Proveedor IT " + System.nanoTime());
+            proveedor.setRnc("IT-" + System.nanoTime());
+            proveedor.setEstado("ACTIVO");
+            proveedor = proveedorRepository.save(proveedor);
+
+            OrdenCompra orden = new OrdenCompra();
+            orden.setProveedor(proveedor);
+            orden.setEstado("ENVIADA");
+            orden.setTotal(new BigDecimal("250.00"));
+            orden = ordenCompraRepository.save(orden);
+
+            DetalleOrdenCompra detalleOrden = new DetalleOrdenCompra();
+            detalleOrden.setOrdenCompra(orden);
+            detalleOrden.setProducto(producto);
+            detalleOrden.setAlmacen(almacen);
+            detalleOrden.setCantidad(5);
+            detalleOrden.setCantidadRecibida(0);
+            detalleOrden.setPrecioUnitario(new BigDecimal("50.00"));
+            detalleOrden.setSubtotal(new BigDecimal("250.00"));
+            detalleOrden = detalleOrdenCompraRepository.save(detalleOrden);
+
+            NotaRecepcion nota = new NotaRecepcion();
+            nota.setOrdenCompra(orden);
+            nota.setEstado("PENDIENTE");
+            nota = notaRecepcionRepository.save(nota);
+
+            DetalleNotaRecepcion detalleNota = new DetalleNotaRecepcion();
+            detalleNota.setNotaRecepcion(nota);
+            detalleNota.setDetalleOrdenCompra(detalleOrden);
+            detalleNota.setAlmacen(almacen);
+            detalleNota.setCantidadRecibida(5);
+            detalleNota.setObservacion("CONFORME");
+            detalleNotaRecepcionRepository.save(detalleNota);
+            idNotaRecepcion = nota.getIdNotaRecepcion();
         });
     }
 
     @AfterEach
     void limpiarEscenario() {
+        jdbcTemplate.update("DELETE FROM alerta_costo");
+        jdbcTemplate.update("DELETE FROM historial_costo");
+        jdbcTemplate.update("DELETE FROM detalle_nota_recepcion");
+        jdbcTemplate.update("DELETE FROM nota_recepcion");
+        jdbcTemplate.update("DELETE FROM detalle_orden_compra");
+        jdbcTemplate.update("DELETE FROM orden_compra");
+        jdbcTemplate.update("DELETE FROM proveedor");
         jdbcTemplate.update("DELETE FROM ingreso_venta");
         jdbcTemplate.update("DELETE FROM detalle_venta");
         jdbcTemplate.update("DELETE FROM venta");
@@ -253,6 +318,82 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
         assertThat(turnoFinal.getTotalVentasEfectivo())
                 .as("el cuadre del turno contiene una sola venta")
                 .isEqualByComparingTo(ventaConfirmada.getTotal());
+    }
+
+    @Test
+    @DisplayName("venta y recepción simultáneas conservan ambos movimientos del mismo almacén")
+    void ventaYRecepcionSimultaneasNoPierdenActualizaciones() throws Exception {
+        CyclicBarrier salidaSimultanea = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<VentaResponseDTO> venta = pool.submit(ventaConcurrente(salidaSimultanea, "B01"));
+            Future<?> recepcion = pool.submit(() -> {
+                salidaSimultanea.await(20, TimeUnit.SECONDS);
+                return notaRecepcionService.confirmar(idNotaRecepcion);
+            });
+
+            venta.get(30, TimeUnit.SECONDS);
+            recepcion.get(30, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        Existencia existenciaFinal = existenciaRepository.findFirstByProducto_IdProducto(idProducto).orElseThrow();
+        assertThat(existenciaFinal.getCantidadActual()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("dos confirmaciones simultáneas de una recepción solo incrementan una vez")
+    void dobleConfirmacionConcurrenteDeRecepcionSoloSeAplicaUnaVez() throws Exception {
+        CyclicBarrier salidaSimultanea = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        List<? extends Future<?>> resultados;
+        try {
+            resultados = pool.invokeAll(List.of(
+                    () -> { salidaSimultanea.await(20, TimeUnit.SECONDS); return notaRecepcionService.confirmar(idNotaRecepcion); },
+                    () -> { salidaSimultanea.await(20, TimeUnit.SECONDS); return notaRecepcionService.confirmar(idNotaRecepcion); }));
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        int exitosas = 0;
+        int fallidas = 0;
+        for (Future<?> resultado : resultados) {
+            try {
+                resultado.get();
+                exitosas++;
+            } catch (java.util.concurrent.ExecutionException error) {
+                assertThat(error.getCause()).isInstanceOf(BusinessException.class)
+                        .hasMessageContaining("PENDIENTE");
+                fallidas++;
+            }
+        }
+        assertThat(exitosas).isEqualTo(1);
+        assertThat(fallidas).isEqualTo(1);
+        assertThat(existenciaRepository.findFirstByProducto_IdProducto(idProducto).orElseThrow().getCantidadActual())
+                .isEqualTo(STOCK_INICIAL + 5);
+    }
+
+    @Test
+    @DisplayName("venta y ajuste manual simultáneos conservan ambos cambios")
+    void ventaYAjusteManualConcurrentesNoPierdenActualizaciones() throws Exception {
+        CyclicBarrier barrera = new CyclicBarrier(2);
+        AjusteExistenciaRequestDTO ajuste = new AjusteExistenciaRequestDTO();
+        ajuste.setDeltaCantidadActual(5);
+        ajuste.setCantidadMinima(0);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<VentaResponseDTO> venta = pool.submit(ventaConcurrente(barrera, "B01"));
+            Future<?> ajusteFuture = pool.submit(() -> { barrera.await(20, TimeUnit.SECONDS); return existenciaService.actualizar(idExistencia, ajuste); });
+            venta.get(30, TimeUnit.SECONDS);
+            ajusteFuture.get(30, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+        assertThat(existenciaRepository.findById(idExistencia).orElseThrow().getCantidadActual()).isEqualTo(5);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

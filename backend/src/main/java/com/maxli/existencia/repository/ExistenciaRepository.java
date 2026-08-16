@@ -20,6 +20,10 @@ public interface ExistenciaRepository extends JpaRepository<Existencia, Long> {
 
     Optional<Existencia> findByProducto_IdProductoAndAlmacen_IdAlmacen(Long idProducto, Long idAlmacen);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM Existencia e WHERE e.idExistencia = :idExistencia")
+    Optional<Existencia> bloquearPorIdParaActualizar(@Param("idExistencia") Long idExistencia);
+
     /**
      * Carga la existencia exacta de (producto, almacén) tomando bloqueo
      * pesimista de fila (en PostgreSQL, {@code SELECT ... FOR NO KEY UPDATE}:

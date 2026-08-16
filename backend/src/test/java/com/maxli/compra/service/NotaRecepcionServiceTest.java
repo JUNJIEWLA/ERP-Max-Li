@@ -15,6 +15,8 @@ import com.maxli.compra.repository.OrdenCompraRepository;
 import com.maxli.exception.BusinessException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.service.ExistenciaLockService;
+import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
 import com.maxli.producto.entity.Categoria;
 import com.maxli.producto.entity.Producto;
 import com.maxli.producto.repository.AlertaCostoRepository;
@@ -25,11 +27,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +45,7 @@ class NotaRecepcionServiceTest {
     @Mock private OrdenCompraRepository ordenCompraRepository;
     @Mock private DetalleOrdenCompraRepository detalleOrdenCompraRepository;
     @Mock private ExistenciaRepository existenciaRepository;
+    @Mock private ExistenciaLockService existenciaLockService;
     @Mock private AlmacenRepository almacenRepository;
     @Mock private ProductoRepository productoRepository;
     @Mock private HistorialCostoRepository historialCostoRepository;
@@ -116,11 +119,9 @@ class NotaRecepcionServiceTest {
         existenciaB.setAlmacen(almacenB);
         existenciaB.setCantidadActual(12);
 
-        when(notaRecepcionRepository.findById(idNota)).thenReturn(Optional.of(nota));
-        // Debe buscar la existencia específicamente en el Almacén B
-        when(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenB))
-                .thenReturn(Optional.of(existenciaB));
-        when(existenciaRepository.save(any(Existencia.class))).thenAnswer(i -> i.getArgument(0));
+        when(notaRecepcionRepository.bloquearPorIdParaConfirmar(idNota)).thenReturn(Optional.of(nota));
+        when(existenciaLockService.bloquearOCrearEnOrden(any()))
+                .thenReturn(Map.of(new ClaveExistencia(idProducto, idAlmacenB), existenciaB));
         when(detalleOrdenCompraRepository.findByOrdenCompra_IdOrdenCompra(100L)).thenReturn(List.of(detalleOrden));
         when(notaRecepcionMapper.toDto(any(NotaRecepcion.class))).thenReturn(new NotaRecepcionResponseDTO());
 
@@ -130,9 +131,6 @@ class NotaRecepcionServiceTest {
         // Assert
         // Verificamos que el stock se incrementó en la existencia del Almacén B
         assertThat(existenciaB.getCantidadActual()).isEqualTo(17);
-        verify(existenciaRepository).save(existenciaB);
-        // Verificamos que no se buscó en el Almacén A
-        verify(existenciaRepository, never()).findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenA);
     }
 
     @Test
@@ -192,17 +190,9 @@ class NotaRecepcionServiceTest {
         existenciaExistente.setAlmacen(almacen);
         existenciaExistente.setCantidadActual(10);
 
-        when(notaRecepcionRepository.findById(idNota)).thenReturn(Optional.of(nota));
-        // Primera consulta devuelve vacío (simulando que no existe todavía en la base de datos)
-        when(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacen))
-                .thenReturn(Optional.empty()) // primer lookup para orElseGet
-                .thenReturn(Optional.of(existenciaExistente)); // lookup de recuperación en el catch block
-
-        // El primer saveAndFlush lanza la excepción de duplicidad de clave (DataIntegrityViolationException)
-        when(existenciaRepository.saveAndFlush(any(Existencia.class)))
-                .thenThrow(new DataIntegrityViolationException("Llave duplicada"));
-
-        when(existenciaRepository.save(any(Existencia.class))).thenAnswer(i -> i.getArgument(0));
+        when(notaRecepcionRepository.bloquearPorIdParaConfirmar(idNota)).thenReturn(Optional.of(nota));
+        when(existenciaLockService.bloquearOCrearEnOrden(any()))
+                .thenReturn(Map.of(new ClaveExistencia(idProducto, idAlmacen), existenciaExistente));
         when(detalleOrdenCompraRepository.findByOrdenCompra_IdOrdenCompra(100L)).thenReturn(List.of(detalleOrden));
         when(notaRecepcionMapper.toDto(any(NotaRecepcion.class))).thenReturn(new NotaRecepcionResponseDTO());
 
@@ -212,8 +202,5 @@ class NotaRecepcionServiceTest {
         // Assert
         // Verificamos que se recuperó la existencia existente y se le sumó la cantidad
         assertThat(existenciaExistente.getCantidadActual()).isEqualTo(15);
-        verify(existenciaRepository).save(existenciaExistente);
-        // Verificamos que se consultó dos veces a la base de datos por la existencia (antes y después del error)
-        verify(existenciaRepository, times(2)).findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacen);
     }
 }

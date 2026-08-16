@@ -62,13 +62,10 @@ function AjusteModal({ existencia, productoMap, onClose, onSaved }: AjusteModalP
     setSaving(true);
     setError('');
     try {
-      const nueva = tipo === 'sumar'
-        ? existencia.cantidadActual + cantidad
-        : existencia.cantidadActual - cantidad;
       await existenciasApi.actualizar(existencia.idExistencia, {
-        idProducto: existencia.idProducto,
-        idAlmacen: existencia.idAlmacen,
-        cantidadActual: nueva,
+        // El servidor suma/resta el delta tras bloquear la fila. Enviar un
+        // saldo calculado aquí podría sobrescribir una venta concurrente.
+        deltaCantidadActual: tipo === 'sumar' ? cantidad : -cantidad,
         cantidadMinima: existencia.cantidadMinima,
       });
       onSaved();

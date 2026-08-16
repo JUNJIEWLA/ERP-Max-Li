@@ -5,7 +5,8 @@ import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
-import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.service.ExistenciaLockService;
+import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
 import com.maxli.inventario.dto.DetalleMovimientoRequestDTO;
 import com.maxli.inventario.dto.MovimientoRequestDTO;
 import com.maxli.inventario.dto.MovimientoResponseDTO;
@@ -23,13 +24,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Service
 @RequiredArgsConstructor
 public class MovimientoService {
 
     private final MovimientoRepository movimientoRepository;
-    private final ExistenciaRepository existenciaRepository;
+    private final ExistenciaLockService existenciaLockService;
     private final ProductoRepository productoRepository;
     private final AlmacenService almacenService;
     private final MovimientoMapper movimientoMapper;
@@ -86,57 +91,64 @@ public class MovimientoService {
         movimiento.setUsuarioResponsable(obtenerUsuarioActual());
         movimiento.setFechaMovimiento(LocalDateTime.now());
 
-        // 4. Procesar cada línea de detalle
+        Map<Long, Integer> cantidades = new TreeMap<>();
         for (DetalleMovimientoRequestDTO detalleDto : dto.getDetalles()) {
-            Producto producto = obtenerProductoActivo(detalleDto.getIdProducto());
+            cantidades.merge(detalleDto.getIdProducto(), detalleDto.getCantidad(), Integer::sum);
+        }
+        Map<Long, Producto> productos = new LinkedHashMap<>();
+        for (Long idProducto : cantidades.keySet()) {
+            productos.put(idProducto, obtenerProductoActivo(idProducto));
+        }
 
-            // 4a. Decrementar stock en el almacén de origen
-            Existencia existenciaOrigen = existenciaRepository
-                    .findByProducto_IdProductoAndAlmacen_IdAlmacen(
-                            detalleDto.getIdProducto(),
-                            dto.getIdAlmacenOrigen()
-                    )
-                    .orElseThrow(() -> new BusinessException(
-                            "El producto '" + producto.getNombre() +
-                            "' no tiene registro de existencia en el almacén '" +
-                            almacenOrigen.getNombre() + "'"));
+        // Se bloquean todas las filas de origen y destino por (almacén, producto)
+        // antes de leerlas. El mismo orden global evita deadlocks en transferencias
+        // con origen/destino invertidos.
+        Map<ClaveExistencia, Existencia> existencias = new LinkedHashMap<>();
+        cantidades.keySet().stream()
+                .flatMap(idProducto -> java.util.stream.Stream.of(
+                        new ClaveExistencia(idProducto, dto.getIdAlmacenOrigen()),
+                        new ClaveExistencia(idProducto, dto.getIdAlmacenDestino())))
+                .sorted(Comparator.comparing(ClaveExistencia::idAlmacen)
+                        .thenComparing(ClaveExistencia::idProducto))
+                .forEach(clave -> {
+                    boolean esDestino = clave.idAlmacen().equals(dto.getIdAlmacenDestino());
+                    Existencia existencia = esDestino
+                            ? existenciaLockService.obtenerOCrearBloqueada(clave.idProducto(), clave.idAlmacen())
+                            : existenciaLockService.bloquear(clave.idProducto(), clave.idAlmacen()).orElse(null);
+                    existencias.put(clave, existencia);
+                });
 
-            int nuevaCantidadOrigen = existenciaOrigen.getCantidadActual() - detalleDto.getCantidad();
-            if (nuevaCantidadOrigen < 0) {
-                throw new BusinessException(
-                        "Stock insuficiente para el producto '" + producto.getNombre() +
-                        "' en '" + almacenOrigen.getNombre() + "'. " +
-                        "Disponible: " + existenciaOrigen.getCantidadActual() +
-                        ", solicitado: " + detalleDto.getCantidad());
+        for (Map.Entry<Long, Integer> item : cantidades.entrySet()) {
+            Long idProducto = item.getKey();
+            int cantidad = item.getValue();
+            Producto producto = productos.get(idProducto);
+            Existencia existenciaOrigen = existencias.get(new ClaveExistencia(idProducto, dto.getIdAlmacenOrigen()));
+            if (existenciaOrigen == null) {
+                throw new BusinessException("El producto '" + producto.getNombre() +
+                        "' no tiene registro de existencia en el almacén '" + almacenOrigen.getNombre() + "'");
             }
-            existenciaOrigen.setCantidadActual(nuevaCantidadOrigen);
-            existenciaRepository.save(existenciaOrigen);
+            if (existenciaOrigen.getCantidadActual() < cantidad) {
+                throw new BusinessException("Stock insuficiente para el producto '" + producto.getNombre() +
+                        "' en '" + almacenOrigen.getNombre() + "'. Disponible: " +
+                        existenciaOrigen.getCantidadActual() + ", solicitado: " + cantidad);
+            }
+        }
 
-            // 4b. Incrementar (o crear) stock en el almacén de destino
-            Existencia existenciaDestino = existenciaRepository
-                    .findByProducto_IdProductoAndAlmacen_IdAlmacen(
-                            detalleDto.getIdProducto(),
-                            dto.getIdAlmacenDestino()
-                    )
-                    .orElseGet(() -> {
-                        Existencia nueva = new Existencia();
-                        nueva.setProducto(producto);
-                        nueva.setAlmacen(almacenDestino);
-                        nueva.setCantidadActual(0);
-                        nueva.setCantidadMinima(0);
-                        return nueva;
-                    });
-
-            existenciaDestino.setCantidadActual(
-                    existenciaDestino.getCantidadActual() + detalleDto.getCantidad()
-            );
-            existenciaRepository.save(existenciaDestino);
+        // 4. Modificar únicamente después de validar todas las líneas bloqueadas.
+        for (Map.Entry<Long, Integer> item : cantidades.entrySet()) {
+            Long idProducto = item.getKey();
+            int cantidad = item.getValue();
+            Producto producto = productos.get(idProducto);
+            Existencia existenciaOrigen = existencias.get(new ClaveExistencia(idProducto, dto.getIdAlmacenOrigen()));
+            Existencia existenciaDestino = existencias.get(new ClaveExistencia(idProducto, dto.getIdAlmacenDestino()));
+            existenciaOrigen.setCantidadActual(existenciaOrigen.getCantidadActual() - cantidad);
+            existenciaDestino.setCantidadActual(existenciaDestino.getCantidadActual() + cantidad);
 
             // 4c. Crear la línea de detalle del movimiento
             DetalleMovimiento detalle = new DetalleMovimiento();
             detalle.setMovimiento(movimiento);
             detalle.setProducto(producto);
-            detalle.setCantidad(detalleDto.getCantidad());
+            detalle.setCantidad(cantidad);
             movimiento.getDetalles().add(detalle);
         }
 

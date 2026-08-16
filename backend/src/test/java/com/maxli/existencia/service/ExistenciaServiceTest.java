@@ -4,7 +4,8 @@ import com.maxli.almacen.entity.Almacen;
 import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
-import com.maxli.existencia.dto.ExistenciaRequestDTO;
+import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.dto.CrearExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.mapper.ExistenciaMapper;
@@ -33,6 +34,7 @@ import static org.mockito.Mockito.when;
 class ExistenciaServiceTest {
 
     @Mock private ExistenciaRepository existenciaRepository;
+    @Mock private ExistenciaLockService existenciaLockService;
     @Mock private ProductoRepository productoRepository;
     @Mock private AlmacenService almacenService;
     @Mock private ExistenciaMapper existenciaMapper;
@@ -40,9 +42,8 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_guarda_existencia_correctamente() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         Producto producto = productoActivo();
-        Existencia entity = new Existencia();
         Existencia saved = new Existencia();
         saved.setIdExistencia(1L);
 
@@ -54,22 +55,20 @@ class ExistenciaServiceTest {
         almacen.setIdAlmacen(1L);
 
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
-        when(existenciaRepository.existsByProducto_IdProductoAndAlmacen_IdAlmacen(10L, 1L)).thenReturn(false);
         when(almacenService.obtenerEntidadPorId(any())).thenReturn(almacen);
-        when(existenciaMapper.toEntity(eq(request), eq(producto), any(Almacen.class))).thenReturn(entity);
-        when(existenciaRepository.save(entity)).thenReturn(saved);
+        when(existenciaLockService.crearManualSiAusente(10L, 1L, 50, 10)).thenReturn(true);
+        when(existenciaLockService.bloquear(10L, 1L)).thenReturn(Optional.of(saved));
         when(existenciaMapper.toDto(saved)).thenReturn(expectedDto);
 
         ExistenciaResponseDTO result = existenciaService.crear(request);
 
         assertThat(result.getIdExistencia()).isEqualTo(1L);
         assertThat(result.getIdProducto()).isEqualTo(10L);
-        verify(existenciaRepository).save(entity);
     }
 
     @Test
     void crear_lanza_excepcion_si_producto_no_existe() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         when(productoRepository.findById(10L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> existenciaService.crear(request))
@@ -79,7 +78,7 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_lanza_excepcion_si_producto_esta_inactivo() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         Producto producto = productoActivo();
         producto.setEstado("INACTIVO");
 
@@ -92,11 +91,12 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_lanza_excepcion_si_existencia_ya_registrada() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         Producto producto = productoActivo();
 
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
-        when(existenciaRepository.existsByProducto_IdProductoAndAlmacen_IdAlmacen(10L, 1L)).thenReturn(true);
+        when(almacenService.obtenerEntidadPorId(any())).thenReturn(new Almacen());
+        when(existenciaLockService.crearManualSiAusente(10L, 1L, 50, 10)).thenReturn(false);
 
         assertThatThrownBy(() -> existenciaService.crear(request))
                 .isInstanceOf(DuplicateResourceException.class)
@@ -119,14 +119,14 @@ class ExistenciaServiceTest {
         existencia.setCantidadActual(5);
         existencia.setCantidadMinima(10);
 
-        ExistenciaRequestDTO request = request();
-        request.setCantidadActual(20);
+        AjusteExistenciaRequestDTO request = ajusteRequest();
+        request.setDeltaCantidadActual(15);
         request.setCantidadMinima(5);
 
         ExistenciaResponseDTO expectedDto = new ExistenciaResponseDTO();
         expectedDto.setCantidadActual(20);
 
-        when(existenciaRepository.findById(1L)).thenReturn(Optional.of(existencia));
+        when(existenciaLockService.bloquearPorId(1L)).thenReturn(Optional.of(existencia));
         when(existenciaRepository.save(existencia)).thenReturn(existencia);
         when(existenciaMapper.toDto(existencia)).thenReturn(expectedDto);
 
@@ -137,12 +137,19 @@ class ExistenciaServiceTest {
         verify(existenciaRepository).save(existencia);
     }
 
-    private ExistenciaRequestDTO request() {
-        ExistenciaRequestDTO dto = new ExistenciaRequestDTO();
+    private CrearExistenciaRequestDTO crearRequest() {
+        CrearExistenciaRequestDTO dto = new CrearExistenciaRequestDTO();
         dto.setIdProducto(10L);
         dto.setIdAlmacen(1L);
         dto.setCantidadActual(50);
         dto.setCantidadMinima(10);
+        return dto;
+    }
+
+    private AjusteExistenciaRequestDTO ajusteRequest() {
+        AjusteExistenciaRequestDTO dto = new AjusteExistenciaRequestDTO();
+        dto.setDeltaCantidadActual(15);
+        dto.setCantidadMinima(5);
         return dto;
     }
 

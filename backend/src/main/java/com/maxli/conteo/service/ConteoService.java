@@ -16,6 +16,8 @@ import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.service.ExistenciaLockService;
+import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
 import com.maxli.inventario.entity.DetalleMovimiento;
 import com.maxli.inventario.entity.Movimiento;
 import com.maxli.inventario.repository.MovimientoRepository;
@@ -31,6 +33,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -40,6 +44,7 @@ public class ConteoService {
     private final ConteoCabeceraRepository cabeceraRepository;
     private final ConteoDetalleRepository detalleRepository;
     private final ExistenciaRepository existenciaRepository;
+    private final ExistenciaLockService existenciaLockService;
     private final ProductoRepository productoRepository;
     private final UsuarioRepository usuarioRepository;
     private final MovimientoRepository movimientoRepository;
@@ -188,7 +193,8 @@ public class ConteoService {
      */
     @Transactional
     public ConteoCabeceraResponseDTO aplicar(Long idConteo) {
-        ConteoCabecera cabecera = obtenerPorId(idConteo);
+        ConteoCabecera cabecera = cabeceraRepository.bloquearPorIdParaAplicar(idConteo)
+                .orElseThrow(() -> new ResourceNotFoundException("Conteo no encontrado con id: " + idConteo));
 
         if (!"REVISION".equals(cabecera.getEstado())) {
             throw new BusinessException(
@@ -213,6 +219,14 @@ public class ConteoService {
 
         boolean tieneAjustes = false;
 
+        List<ClaveExistencia> clavesExistencia = cabecera.getDetalles().stream()
+                .filter(detalle -> detalle.getDiferencia() != null && detalle.getDiferencia() != 0)
+                .map(detalle -> new ClaveExistencia(detalle.getProducto().getIdProducto(),
+                        cabecera.getAlmacen().getIdAlmacen()))
+                .toList();
+        Map<ClaveExistencia, Existencia> existenciasBloqueadas =
+                existenciaLockService.bloquearOCrearEnOrden(clavesExistencia);
+
         for (ConteoDetalle detalle : cabecera.getDetalles()) {
             if (detalle.getDiferencia() == null || detalle.getDiferencia() == 0) {
                 continue; // Sin diferencia, no hay ajuste necesario
@@ -220,23 +234,16 @@ public class ConteoService {
 
             tieneAjustes = true;
 
-            // Actualizar la existencia al valor contado físicamente
-            Existencia existencia = existenciaRepository
-                    .findByProducto_IdProductoAndAlmacen_IdAlmacen(
-                            detalle.getProducto().getIdProducto(),
-                            cabecera.getAlmacen().getIdAlmacen())
-                    .orElseGet(() -> {
-                        // Si no existe registro de existencia, crearlo
-                        Existencia nueva = new Existencia();
-                        nueva.setProducto(detalle.getProducto());
-                        nueva.setAlmacen(cabecera.getAlmacen());
-                        nueva.setCantidadActual(0);
-                        nueva.setCantidadMinima(0);
-                        return nueva;
-                    });
-
-            existencia.setCantidadActual(detalle.getCantidadFisica());
-            existenciaRepository.save(existencia);
+            // Aplicar la diferencia al saldo recién bloqueado evita que un
+            // conteo con snapshot viejo sobrescriba una venta concurrente.
+            Existencia existencia = existenciasBloqueadas.get(new ClaveExistencia(
+                    detalle.getProducto().getIdProducto(), cabecera.getAlmacen().getIdAlmacen()));
+            int nuevaCantidad = existencia.getCantidadActual() + detalle.getDiferencia();
+            if (nuevaCantidad < 0) {
+                throw new BusinessException("El ajuste del conteo dejaría stock negativo para el producto '" +
+                        detalle.getProducto().getNombre() + "'");
+            }
+            existencia.setCantidadActual(nuevaCantidad);
 
             // Registrar detalle del movimiento de ajuste (la diferencia)
             DetalleMovimiento detalleMovimiento = new DetalleMovimiento();
