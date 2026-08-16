@@ -17,7 +17,14 @@ const fmtDate = (value: string | null | undefined) =>
     ? new Intl.DateTimeFormat('es-DO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
     : '-';
 
-export default function TurnosCaja() {
+interface TurnosCajaProps {
+  username: string;
+  userPermisos: string[];
+}
+
+export default function TurnosCaja({ username, userPermisos }: TurnosCajaProps) {
+  const canManageTurnos = userPermisos.includes('CAJA_GESTIONAR');
+  const canAssignOthers = canManageTurnos && userPermisos.includes('USUARIO_GESTIONAR');
   // ── State Principal ─────────────────────────────────────────────
   const [turnos, setTurnos] = useState<TurnoCaja[]>([]);
   const [cajas, setCajas] = useState<Caja[]>([]);
@@ -60,14 +67,14 @@ export default function TurnosCaja() {
       const [turnosData, cajasData, usuariosData] = await Promise.all([
         turnosCajaApi.listar(page, PAGE_SIZE),
         cajasApi.listarActivas(0, 100),
-        usuariosApi.listarActivos(0, 100),
+        canAssignOthers ? usuariosApi.listarActivos(0, 100) : Promise.resolve(null),
       ]);
 
       setTurnos(turnosData.content);
       setTotalPages(turnosData.totalPages);
       setTotalElements(turnosData.totalElements);
       setCajas(cajasData.content);
-      setUsuarios(usuariosData.content);
+      setUsuarios(usuariosData?.content ?? []);
 
       try {
         setTurnoActual(await turnosCajaApi.abiertoActual());
@@ -79,7 +86,7 @@ export default function TurnosCaja() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, canAssignOthers]);
 
   useEffect(() => { fetchTurnos(); }, [fetchTurnos]);
 
@@ -187,9 +194,10 @@ export default function TurnosCaja() {
   // ── Manejo de Apertura y Cierre ──────────────────────────────────
   const openApertura = () => {
     setFormError('');
-    const currentUser = localStorage.getItem('maxli_user');
-    const matchUser = usuarios.find(u => u.username === currentUser);
-    const initialUserId = matchUser ? String(matchUser.idUsuario) : (usuarios[0]?.idUsuario ? String(usuarios[0].idUsuario) : '');
+    const matchUser = usuarios.find(u => u.username === username);
+    const initialUserId = canAssignOthers
+      ? (matchUser ? String(matchUser.idUsuario) : (usuarios[0]?.idUsuario ? String(usuarios[0].idUsuario) : ''))
+      : '';
 
     setOpenForm({
       idCaja: cajas[0]?.idCaja ? String(cajas[0].idCaja) : '',
@@ -228,7 +236,7 @@ export default function TurnosCaja() {
 
   const handleAbrir = async () => {
     const idCaja = Number(openForm.idCaja);
-    const idUsuario = openForm.idUsuario ? Number(openForm.idUsuario) : undefined;
+    const idUsuario = canAssignOthers && openForm.idUsuario ? Number(openForm.idUsuario) : undefined;
     const montoInicial = Number(openForm.montoInicial || 0);
 
     if (!idCaja) { setFormError('Debes seleccionar una caja física.'); return; }
@@ -773,7 +781,7 @@ export default function TurnosCaja() {
                           </button>
 
                           {/* Botón Cerrar Turno */}
-                          {t.estado === 'ABIERTO' && (
+                          {t.estado === 'ABIERTO' && (canManageTurnos || t.usernameUsuarioApertura === username) && (
                             <button
                               id={`btn-cerrar-turno-${t.idTurnoCaja}`}
                               onClick={() => openCierre(t)}
@@ -1034,17 +1042,23 @@ export default function TurnosCaja() {
 
               <div>
                 <label className="block font-semibold text-foreground mb-1">Usuario / Cajero Asignado</label>
-                <select
-                  value={openForm.idUsuario}
-                  onChange={(e) => setOpenForm((f) => ({ ...f, idUsuario: e.target.value }))}
-                  className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  {usuarios.map((u) => (
-                    <option key={u.idUsuario} value={u.idUsuario}>
-                      {u.username} ({u.email || `ID: #${u.idUsuario}`})
-                    </option>
-                  ))}
-                </select>
+                {canAssignOthers ? (
+                  <select
+                    value={openForm.idUsuario}
+                    onChange={(e) => setOpenForm((f) => ({ ...f, idUsuario: e.target.value }))}
+                    className="w-full px-3.5 py-2 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  >
+                    {usuarios.map((u) => (
+                      <option key={u.idUsuario} value={u.idUsuario}>
+                        {u.username} ({u.email || `ID: #${u.idUsuario}`})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full px-3.5 py-2 rounded-xl border border-border bg-muted/40 text-foreground font-medium">
+                    {username}
+                  </div>
+                )}
               </div>
 
               <div>

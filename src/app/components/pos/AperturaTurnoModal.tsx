@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Wallet, Loader2, AlertCircle, Building2, DollarSign, CheckCircle2, X, User } from 'lucide-react';
-import { cajasApi, turnosCajaApi, usuariosApi, type Caja, type TurnoCaja, type Usuario } from '../../../imports/api';
+import { cajasApi, turnosCajaApi, type Caja, type TurnoCaja } from '../../../imports/api';
 
 interface AperturaTurnoModalProps {
+  username: string;
   onTurnoAbierto: (turno: TurnoCaja) => void;
   onClose?: () => void;
 }
 
-export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: AperturaTurnoModalProps) {
+export default function AperturaTurnoModal({ username, onTurnoAbierto, onClose }: AperturaTurnoModalProps) {
   const [cajas, setCajas] = useState<Caja[]>([]);
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [idCajaSel, setIdCajaSel] = useState('');
-  const [idUsuarioSel, setIdUsuarioSel] = useState('');
   const [montoInicial, setMontoInicial] = useState('');
   const [observacion, setObservacion] = useState('');
   const [saving, setSaving] = useState(false);
@@ -22,24 +21,12 @@ export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: Apertura
     let isMounted = true;
     setLoading(true);
 
-    Promise.all([
-      cajasApi.listarActivas(0, 100),
-      usuariosApi.listarActivos(0, 100),
-    ])
-      .then(([cajasData, usuariosData]) => {
+    cajasApi.listarActivas(0, 100)
+      .then((cajasData) => {
         if (!isMounted) return;
         setCajas(cajasData.content);
-        setUsuarios(usuariosData.content);
         if (cajasData.content.length > 0) {
           setIdCajaSel(String(cajasData.content[0].idCaja));
-        }
-        // Intentar pre-seleccionar usuario de sesión si existe
-        const currentUser = localStorage.getItem('maxli_user');
-        const matchUser = usuariosData.content.find((u) => u.username === currentUser);
-        if (matchUser) {
-          setIdUsuarioSel(String(matchUser.idUsuario));
-        } else if (usuariosData.content.length > 0) {
-          setIdUsuarioSel(String(usuariosData.content[0].idUsuario));
         }
       })
       .catch((err) => {
@@ -54,7 +41,6 @@ export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: Apertura
 
   const handleAbrir = async () => {
     const idCaja = Number(idCajaSel);
-    const idUsuario = idUsuarioSel ? Number(idUsuarioSel) : undefined;
     const monto = Number(montoInicial || 0);
 
     if (!idCaja) {
@@ -72,7 +58,6 @@ export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: Apertura
     try {
       const nuevoTurno = await turnosCajaApi.abrir({
         idCaja,
-        idUsuario,
         montoInicial: monto,
         observacionApertura: observacion.trim() || undefined,
       });
@@ -97,7 +82,7 @@ export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: Apertura
             <div>
               <h2 className="text-xl font-bold text-foreground">Apertura de Turno de Caja</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Asigna la caja registradora física y el cajero autorizado para el turno.
+                Abre una caja registradora para la sesión autenticada.
               </p>
             </div>
           </div>
@@ -145,37 +130,17 @@ export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: Apertura
             </p>
           </div>
 
-          {/* Selección de Usuario / Cajero */}
+          {/* Usuario autenticado */}
           <div>
             <label className="block text-sm font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
               <User size={15} className="text-violet-600" />
-              Usuario / Cajero Asignado <span className="text-rose-500">*</span>
+              Usuario / Cajero Asignado
             </label>
-            {loading ? (
-              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-xl border border-border text-xs text-muted-foreground">
-                <Loader2 size={16} className="animate-spin text-violet-600" />
-                <span>Cargando usuarios...</span>
-              </div>
-            ) : usuarios.length === 0 ? (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-600 font-medium">
-                No hay usuarios activos disponibles.
-              </div>
-            ) : (
-              <select
-                id="sel-apertura-usuario"
-                value={idUsuarioSel}
-                onChange={(e) => setIdUsuarioSel(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/60"
-              >
-                {usuarios.map((u) => (
-                  <option key={u.idUsuario} value={u.idUsuario}>
-                    {u.username} ({u.email || `ID: #${u.idUsuario}`})
-                  </option>
-                ))}
-              </select>
-            )}
+            <div className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-muted/40 text-foreground text-sm font-medium">
+              {username}
+            </div>
             <p className="text-[11px] text-muted-foreground mt-1">
-              Usuario responsable de procesar las ventas en esta caja.
+              El backend asignará el turno a esta sesión; no se puede operar a nombre de otra persona.
             </p>
           </div>
 
@@ -239,7 +204,7 @@ export default function AperturaTurnoModal({ onTurnoAbierto, onClose }: Apertura
           <button
             id="btn-abrir-turno-caja"
             onClick={handleAbrir}
-            disabled={saving || loading || cajas.length === 0 || usuarios.length === 0}
+            disabled={saving || loading || cajas.length === 0}
             className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all font-semibold text-sm shadow-md shadow-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}

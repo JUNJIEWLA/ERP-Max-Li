@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, Lock, Wallet, ShieldAlert } from 'lucide-react';
+import { Loader2, Lock, Wallet } from 'lucide-react';
 import POSHeader from './POSHeader';
 import SearchBar from './SearchBar';
 import CartTable from './CartTable';
@@ -24,7 +24,12 @@ const tiposNCF = [
   { codigo: 'B15', nombre: 'Gubernamental' },
 ];
 
-export default function SaleScreen() {
+interface SaleScreenProps {
+  username: string;
+  canOpenTurno: boolean;
+}
+
+export default function SaleScreen({ username, canOpenTurno }: SaleScreenProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [holdList, setHoldList] = useState<HeldSale[]>([]);
   const [selectedRowIndex, setSelectedRowIndex] = useState(-1);
@@ -371,43 +376,16 @@ export default function SaleScreen() {
           </div>
 
           <div className="flex flex-col gap-3 pt-2">
-            {(() => {
-              let isSupervisorOrAdmin = false;
-              try {
-                const rolesRaw = localStorage.getItem('maxli_roles');
-                if (rolesRaw) {
-                  const roles: string[] = JSON.parse(rolesRaw);
-                  isSupervisorOrAdmin = roles.some((r) => {
-                    const u = r.toUpperCase();
-                    return u.includes('ADMIN') || u.includes('SUPERVISOR') || u.includes('SUPERVISORA');
-                  });
-                }
-              } catch {
-                isSupervisorOrAdmin = false;
-              }
-
-              if (isSupervisorOrAdmin) {
-                return (
-                  <button
-                    id="btn-iniciar-apertura-turno"
-                    onClick={() => setShowAperturaModal(true)}
-                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20"
-                  >
-                    <Wallet size={18} />
-                    Abrir Turno de Caja Ahora
-                  </button>
-                );
-              }
-
-              return (
-                <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center gap-2 text-left">
-                  <ShieldAlert size={18} className="flex-shrink-0 text-amber-600" />
-                  <span>
-                    No posees permisos de apertura. Solicita a un <strong>Administrador</strong> o <strong>Supervisora</strong> que abra un turno de caja asignado a tu usuario.
-                  </span>
-                </div>
-              );
-            })()}
+            {canOpenTurno && (
+              <button
+                id="btn-iniciar-apertura-turno"
+                onClick={() => setShowAperturaModal(true)}
+                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20"
+              >
+                <Wallet size={18} />
+                Abrir mi turno de caja
+              </button>
+            )}
             
             <button
               onClick={checkActiveTurno}
@@ -421,6 +399,7 @@ export default function SaleScreen() {
 
         {showAperturaModal && (
           <AperturaTurnoModal
+            username={username}
             onTurnoAbierto={(turno) => {
               setActiveTurno(turno);
               setShowAperturaModal(false);
