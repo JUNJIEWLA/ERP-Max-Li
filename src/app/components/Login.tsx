@@ -3,9 +3,10 @@ import { authApi } from '../../imports/api';
 
 interface LoginProps {
   onLogin: (token: string, username: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => void;
+  notice?: string;
 }
 
-export default function Login({ onLogin }: LoginProps) {
+export default function Login({ onLogin, notice }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -54,6 +55,12 @@ export default function Login({ onLogin }: LoginProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          {notice && (
+            <div className="login-success" role="status">
+              {notice}
+            </div>
+          )}
+
           <div className="login-field">
             <label htmlFor="login-username" className="login-label">Usuario</label>
             <input

@@ -16,6 +16,7 @@ import com.maxli.usuario.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -79,11 +80,8 @@ public class TurnoCajaService {
     @Transactional
     public TurnoCajaResponseDTO abrir(AbrirTurnoCajaRequestDTO dto, String username) {
         Caja caja = obtenerCajaActiva(dto.getIdCaja());
-        Usuario usuario = (dto.getIdUsuario() != null)
-                ? usuarioRepository.findById(dto.getIdUsuario())
-                        .filter(u -> ACTIVO.equals(u.getEstado()))
-                        .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado o inactivo con id: " + dto.getIdUsuario()))
-                : obtenerUsuarioActivo(username);
+        Usuario actor = obtenerUsuarioActivo(username);
+        Usuario usuario = resolverUsuarioApertura(dto.getIdUsuario(), actor);
 
         if (turnoCajaRepository.existsByCaja_IdCajaAndEstado(dto.getIdCaja(), ABIERTO)) {
             throw new BusinessException("La caja " + caja.getNombre() + " ya tiene un turno abierto");
@@ -119,6 +117,7 @@ public class TurnoCajaService {
         validarEstado(turno, Set.of(ABIERTO), "cerrar");
 
         Usuario usuarioCierre = obtenerUsuarioActivo(username);
+        validarPuedeOperarTurnoAjeno(turno, usuarioCierre);
         CuadreTurnoCajaResponseDTO cuadre = calcularCuadreActual(turno);
         turno.setUsuarioCierre(usuarioCierre);
         turno.setMontoFinalDeclarado(dto.getMontoFinalDeclarado());
@@ -152,6 +151,36 @@ public class TurnoCajaService {
                 .filter(usuario -> ACTIVO.equals(usuario.getEstado()))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Usuario no encontrado o inactivo: " + username));
+    }
+
+    private Usuario resolverUsuarioApertura(Long idUsuarioSolicitado, Usuario actor) {
+        if (idUsuarioSolicitado == null || idUsuarioSolicitado.equals(actor.getIdUsuario())) {
+            return actor;
+        }
+        if (!tienePermiso(actor, "CAJA_GESTIONAR")) {
+            throw new AccessDeniedException("No tiene permiso para abrir un turno a nombre de otro usuario");
+        }
+        return usuarioRepository.findById(idUsuarioSolicitado)
+                .filter(usuario -> ACTIVO.equals(usuario.getEstado()))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuario no encontrado o inactivo con id: " + idUsuarioSolicitado));
+    }
+
+    private void validarPuedeOperarTurnoAjeno(TurnoCaja turno, Usuario actor) {
+        if (turno.getUsuarioApertura().getIdUsuario().equals(actor.getIdUsuario())) {
+            return;
+        }
+        if (!tienePermiso(actor, "CAJA_GESTIONAR")) {
+            throw new AccessDeniedException("No tiene permiso para cerrar el turno de otro usuario");
+        }
+    }
+
+    private boolean tienePermiso(Usuario usuario, String nombreClave) {
+        boolean permisoDeRol = usuario.getRoles().stream()
+                .flatMap(rol -> rol.getPermisos().stream())
+                .anyMatch(permiso -> nombreClave.equals(permiso.getNombreClave()));
+        return permisoDeRol || usuario.getPermisosExtra().stream()
+                .anyMatch(permiso -> nombreClave.equals(permiso.getNombreClave()));
     }
 
     private void validarEstado(TurnoCaja turno, Set<String> estadosPermitidos, String accion) {

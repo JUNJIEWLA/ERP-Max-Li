@@ -60,6 +60,7 @@ const viewTitles: Record<string, string> = {
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
+  const [loginNotice, setLoginNotice] = useState('');
   // Inicializar sesión desde localStorage si ya hay token guardado
   const [isAuthenticated, setIsAuthenticated] = useState(() => hasValidToken());
   const [username, setUsername] = useState(() => (hasValidToken() ? localStorage.getItem('maxli_user') || '' : ''));
@@ -92,6 +93,7 @@ export default function App() {
   }, []);
 
   const handleLogin = (token: string, user: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => {
+    setLoginNotice('');
     setToken(token);
     localStorage.setItem('maxli_user', user);
     localStorage.setItem('maxli_roles', JSON.stringify(roles));
@@ -109,6 +111,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    setLoginNotice('');
     clearToken();
     localStorage.removeItem('maxli_user');
     localStorage.removeItem('maxli_roles');
@@ -123,8 +126,18 @@ export default function App() {
   };
 
   const handlePasswordChangeSuccess = () => {
+    clearToken();
+    localStorage.removeItem('maxli_user');
+    localStorage.removeItem('maxli_roles');
+    localStorage.removeItem('maxli_permisos');
     localStorage.removeItem('maxli_pwd_change');
+    setIsAuthenticated(false);
+    setUsername('');
+    setUserRoles([]);
+    setUserPermisos([]);
     setRequiresPasswordChange(false);
+    setActiveView('dashboard');
+    setLoginNotice('Contraseña actualizada. Inicia sesión nuevamente con tu contraseña nueva.');
   };
 
   // ── Polling de permisos cada 30s para actualización en tiempo real ──
@@ -176,7 +189,7 @@ export default function App() {
 
   // ── Pantalla de login ───────────────────────────────────
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} notice={loginNotice} />;
   }
 
   // ── Pantalla de cambio de contraseña obligatorio ────────
@@ -189,7 +202,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard />;
       case 'pos':
-        return <SaleScreen />;
+        return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} />;
       case 'ventas-historial':
         return <Ventas />;
       case 'productos':
@@ -207,7 +220,7 @@ export default function App() {
       case 'conteo-fisico':
         return <ConteoFisico />;
       case 'turnos-caja':
-        return <TurnosCaja />;
+        return <TurnosCaja username={username} userPermisos={userPermisos} />;
       case 'caja-chica':
         return <CajaChica />;
       case 'cajas-registradoras':

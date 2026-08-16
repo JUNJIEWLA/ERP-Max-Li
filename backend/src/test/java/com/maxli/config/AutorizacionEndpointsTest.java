@@ -3,6 +3,10 @@ package com.maxli.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maxli.auth.controller.AuthController;
 import com.maxli.auth.dto.CambiarPasswordDTO;
+import com.maxli.caja.controller.TurnoCajaController;
+import com.maxli.caja.dto.AbrirTurnoCajaRequestDTO;
+import com.maxli.caja.dto.TurnoCajaResponseDTO;
+import com.maxli.caja.service.TurnoCajaService;
 import com.maxli.compra.controller.ProveedorController;
 import com.maxli.compra.dto.ProveedorRequestDTO;
 import com.maxli.compra.dto.ProveedorResponseDTO;
@@ -28,6 +32,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.test.context.TestPropertySource;
@@ -37,6 +42,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.math.BigDecimal;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -50,7 +56,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * mediante permisos reales (GrantedAuthority), no solo el nombre del rol
  * ni lo que oculta el frontend. Cubre el hallazgo ISSUE-011.
  */
-@WebMvcTest(controllers = {ProveedorController.class, GastoController.class, NcfController.class, AuthController.class})
+@WebMvcTest(controllers = {ProveedorController.class, GastoController.class, NcfController.class,
+        AuthController.class, TurnoCajaController.class})
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class, JsonAuthResponseHandler.class})
 @TestPropertySource(properties = {
         "jwt.secret=test-secret-key-minimo-256-bits-para-pruebas-de-autorizacion-backend",
@@ -66,6 +73,7 @@ class AutorizacionEndpointsTest {
     @MockBean private ProveedorService proveedorService;
     @MockBean private GastoService gastoService;
     @MockBean private NcfService ncfService;
+    @MockBean private TurnoCajaService turnoCajaService;
     @MockBean private UsuarioService usuarioService;
     @MockBean private AuthenticationManager authenticationManager;
 
@@ -75,6 +83,7 @@ class AutorizacionEndpointsTest {
         when(gastoService.listar(any())).thenReturn(new PageImpl<GastoResponseDTO>(List.of()));
         when(ncfService.generarSiguienteNcf(anyString())).thenReturn(new NcfGeneradoDTO());
         when(ncfService.previsualizarSiguienteNcf(anyString())).thenReturn(new NcfGeneradoDTO());
+        when(turnoCajaService.abrir(any(), anyString())).thenReturn(new TurnoCajaResponseDTO());
     }
 
     // ── ADMIN puede realizar operaciones administrativas ──────────────────
@@ -134,6 +143,35 @@ class AutorizacionEndpointsTest {
         mockMvc.perform(get("/api/gastos")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cajero_puede_abrir_su_propio_turno_sin_gestionar_usuarios() throws Exception {
+        String token = tokenPara(usuarioConRoles("cajero-turno", "CAJERO"));
+
+        mockMvc.perform(post("/api/cajas/turnos/abrir")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(abrirTurnoRequest())))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/usuarios/activos")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void operacion_de_turno_ajeno_devuelve_403() throws Exception {
+        String token = tokenPara(usuarioConRoles("cajero-turno-ajeno", "CAJERO"));
+        when(turnoCajaService.abrir(any(), anyString())).thenThrow(
+                new AccessDeniedException("No tiene permiso para abrir un turno a nombre de otro usuario"));
+
+        mockMvc.perform(post("/api/cajas/turnos/abrir")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(abrirTurnoRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value(403));
     }
 
     // ── CAJERO no puede consumir NCF directamente, pero sí previsualizarlo ─
@@ -372,6 +410,13 @@ class AutorizacionEndpointsTest {
         dto.setSecuenciaInicio(1L);
         dto.setSecuenciaFinal(100L);
         dto.setFechaVencimiento(java.time.LocalDate.now().plusDays(30));
+        return dto;
+    }
+
+    private AbrirTurnoCajaRequestDTO abrirTurnoRequest() {
+        AbrirTurnoCajaRequestDTO dto = new AbrirTurnoCajaRequestDTO();
+        dto.setIdCaja(1L);
+        dto.setMontoInicial(new BigDecimal("1000.00"));
         return dto;
     }
 }

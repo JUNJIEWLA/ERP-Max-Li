@@ -113,7 +113,7 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
               disabled={loading} 
               className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary/90 transition-all active:scale-[0.98] mt-6 shadow-sm disabled:opacity-50"
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : 'Actualizar y Continuar'}
+              {loading ? <Loader2 size={18} className="animate-spin" /> : 'Actualizar contraseña'}
               {!loading && <ArrowRight size={18} />}
             </button>
           </form>
