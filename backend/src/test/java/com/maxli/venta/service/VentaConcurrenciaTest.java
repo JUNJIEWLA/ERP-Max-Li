@@ -20,6 +20,8 @@ import com.maxli.compra.service.NotaRecepcionService;
 import com.maxli.exception.BusinessException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.service.ExistenciaService;
 import com.maxli.ncf.entity.ResolucionNcf;
 import com.maxli.ncf.repository.ResolucionNcfRepository;
 import com.maxli.producto.entity.Categoria;
@@ -80,6 +82,7 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     @Autowired private VentaService ventaService;
     @Autowired private VentaRepository ventaRepository;
     @Autowired private ExistenciaRepository existenciaRepository;
+    @Autowired private ExistenciaService existenciaService;
     @Autowired private ProductoRepository productoRepository;
     @Autowired private CategoriaRepository categoriaRepository;
     @Autowired private MarcaRepository marcaRepository;
@@ -103,6 +106,7 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     private Long idResolucionB01;
     private Long idResolucionB02;
     private Long idNotaRecepcion;
+    private Long idExistencia;
     private String username;
 
     /**
@@ -171,7 +175,7 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             existencia.setAlmacen(almacen);
             existencia.setCantidadActual(STOCK_INICIAL);
             existencia.setCantidadMinima(0);
-            existenciaRepository.save(existencia);
+            idExistencia = existenciaRepository.save(existencia).getIdExistencia();
 
             // Dos resoluciones activas: el bloqueo de NCF no serializa entre tipos
             // distintos, que es justamente lo que destapó el hallazgo.
@@ -370,6 +374,26 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
         assertThat(fallidas).isEqualTo(1);
         assertThat(existenciaRepository.findFirstByProducto_IdProducto(idProducto).orElseThrow().getCantidadActual())
                 .isEqualTo(STOCK_INICIAL + 5);
+    }
+
+    @Test
+    @DisplayName("venta y ajuste manual simultáneos conservan ambos cambios")
+    void ventaYAjusteManualConcurrentesNoPierdenActualizaciones() throws Exception {
+        CyclicBarrier barrera = new CyclicBarrier(2);
+        AjusteExistenciaRequestDTO ajuste = new AjusteExistenciaRequestDTO();
+        ajuste.setDeltaCantidadActual(5);
+        ajuste.setCantidadMinima(0);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<VentaResponseDTO> venta = pool.submit(ventaConcurrente(barrera, "B01"));
+            Future<?> ajusteFuture = pool.submit(() -> { barrera.await(20, TimeUnit.SECONDS); return existenciaService.actualizar(idExistencia, ajuste); });
+            venta.get(30, TimeUnit.SECONDS);
+            ajusteFuture.get(30, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+        assertThat(existenciaRepository.findById(idExistencia).orElseThrow().getCantidadActual()).isEqualTo(5);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
