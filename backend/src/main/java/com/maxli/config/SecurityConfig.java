@@ -37,6 +37,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final JsonAuthResponseHandler jsonAuthResponseHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -44,78 +45,109 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(jsonAuthResponseHandler)
+                .accessDeniedHandler(jsonAuthResponseHandler)
+            )
             .authorizeHttpRequests(auth -> auth
 
                 // ── Rutas públicas ────────────────────────────────────────────
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/error").permitAll()
 
-                // ── Cambio de contraseña y perfil: cualquier usuario autenticado ─
+                // ── Sesión propia: alcanzable incluso con cambio de contraseña
+                //    pendiente (PWD_CHANGE_REQUIRED es la única autoridad en ese caso) ─
                 .requestMatchers("/api/auth/cambiar-password").authenticated()
                 .requestMatchers("/api/auth/me").authenticated()
 
-                // ── Gestión de usuarios y roles: solo ADMIN ───────────────────
-                .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
-                .requestMatchers("/api/roles/**").hasRole("ADMIN")
+                // ── Gestión de usuarios y roles ────────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/api/roles/permisos")
+                        .hasAnyAuthority("USUARIO_GESTIONAR", "ROL_GESTIONAR")
+                .requestMatchers("/api/usuarios/**").hasAuthority("USUARIO_GESTIONAR")
+                .requestMatchers("/api/roles/**").hasAuthority("ROL_GESTIONAR")
 
-                // ── Catálogo (productos, categorías, marcas): lectura libre ───
-                //    CAJERO y AUXILIAR_INVENTARIO necesitan ver el catálogo
-                .requestMatchers(HttpMethod.GET, "/api/productos/**").authenticated()
-                .requestMatchers(HttpMethod.GET, "/api/categorias/**").authenticated()
-                .requestMatchers(HttpMethod.GET, "/api/marcas/**").authenticated()
-                .requestMatchers(HttpMethod.GET, "/api/ofertas/**").authenticated()
+                // ── Historial de costos: información de costos, no de catálogo ─
+                .requestMatchers(HttpMethod.GET, "/api/productos/*/historial-costos")
+                        .hasAuthority("PRODUCTO_GESTIONAR")
 
-                // ── Escritura en catálogo: ADMIN o SUPERVISOR ─────────────────
-                .requestMatchers(HttpMethod.POST,   "/api/productos/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.PUT,    "/api/productos/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.POST,   "/api/categorias/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.PUT,    "/api/categorias/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/categorias/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.POST,   "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.PUT,    "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/marcas/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.POST,   "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.PUT,    "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/ofertas/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                // ── Catálogo: lectura con PRODUCTO_VER, escritura con PRODUCTO_GESTIONAR
+                .requestMatchers(HttpMethod.GET,
+                        "/api/productos/**", "/api/categorias/**", "/api/marcas/**",
+                        "/api/ofertas/**", "/api/empaques/**")
+                        .hasAuthority("PRODUCTO_VER")
+                .requestMatchers(HttpMethod.POST,
+                        "/api/productos/**", "/api/categorias/**", "/api/marcas/**",
+                        "/api/ofertas/**", "/api/empaques/**")
+                        .hasAuthority("PRODUCTO_GESTIONAR")
+                .requestMatchers(HttpMethod.PUT,
+                        "/api/productos/**", "/api/categorias/**", "/api/marcas/**",
+                        "/api/ofertas/**", "/api/empaques/**")
+                        .hasAuthority("PRODUCTO_GESTIONAR")
+                .requestMatchers(HttpMethod.DELETE,
+                        "/api/productos/**", "/api/categorias/**", "/api/marcas/**",
+                        "/api/ofertas/**", "/api/empaques/**")
+                        .hasAuthority("PRODUCTO_GESTIONAR")
+                .requestMatchers("/api/alertas-costo/**").hasAuthority("PRODUCTO_GESTIONAR")
 
-                // ── Almacenes: ADMIN gestiona, todos los demás leen ───────────
-                .requestMatchers(HttpMethod.GET,    "/api/almacenes/**").authenticated()
-                .requestMatchers(HttpMethod.POST,   "/api/almacenes/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT,    "/api/almacenes/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/api/almacenes/**").hasRole("ADMIN")
+                // ── Almacenes ───────────────────────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/api/almacenes/**").hasAuthority("INVENTARIO_VER")
+                .requestMatchers(HttpMethod.POST,   "/api/almacenes/**").hasAuthority("ALMACEN_GESTIONAR")
+                .requestMatchers(HttpMethod.PUT,    "/api/almacenes/**").hasAuthority("ALMACEN_GESTIONAR")
+                .requestMatchers(HttpMethod.DELETE, "/api/almacenes/**").hasAuthority("ALMACEN_GESTIONAR")
 
-                // ── Existencias / Inventario ───────────────────────────────────
-                //    Lectura: todos los autenticados (AUXILIAR_INVENTARIO necesita contar)
-                //    Escritura: ADMIN y SUPERVISOR
-                .requestMatchers(HttpMethod.GET, "/api/existencias/**").authenticated()
-                .requestMatchers(HttpMethod.POST,   "/api/existencias/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.PUT,    "/api/existencias/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/existencias/**").hasRole("ADMIN")
+                // ── Existencias / Movimientos / Conteos ─────────────────────
+                .requestMatchers(HttpMethod.GET,
+                        "/api/existencias/**", "/api/movimientos/**", "/api/conteos/**")
+                        .hasAuthority("INVENTARIO_VER")
+                .requestMatchers(HttpMethod.POST,
+                        "/api/existencias/**", "/api/movimientos/**", "/api/conteos/**")
+                        .hasAuthority("INVENTARIO_GESTIONAR")
+                .requestMatchers(HttpMethod.PUT,
+                        "/api/existencias/**", "/api/movimientos/**", "/api/conteos/**")
+                        .hasAuthority("INVENTARIO_GESTIONAR")
+                .requestMatchers(HttpMethod.DELETE,
+                        "/api/existencias/**", "/api/movimientos/**", "/api/conteos/**")
+                        .hasAuthority("INVENTARIO_GESTIONAR")
 
-                // ── Ventas / POS ───────────────────────────────────────────────
-                //    CAJERO crea facturas; SUPERVISOR y ADMIN también
-                .requestMatchers(HttpMethod.POST, "/api/ventas/**").hasAnyRole("ADMIN", "SUPERVISOR", "CAJERO")
-                .requestMatchers(HttpMethod.GET,  "/api/ventas/**").hasAnyRole("ADMIN", "SUPERVISOR", "CAJERO")
+                // ── Ventas / POS ─────────────────────────────────────────────
+                .requestMatchers(HttpMethod.POST, "/api/ventas/**").hasAuthority("VENTA_CREAR")
+                .requestMatchers(HttpMethod.GET,  "/api/ventas/**").hasAuthority("VENTA_VER")
 
-                // ── Devoluciones: CAJERO solo lee; SUPERVISOR+ puede crear ─────
-                .requestMatchers(HttpMethod.GET,  "/api/devoluciones/**").hasAnyRole("ADMIN", "SUPERVISOR", "CAJERO")
-                .requestMatchers(HttpMethod.POST, "/api/devoluciones/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                // ── Cupones: aplicar es parte del flujo de venta; el resto es gestión ─
+                .requestMatchers(HttpMethod.POST, "/api/cupones/aplicar").hasAuthority("VENTA_CREAR")
+                .requestMatchers("/api/cupones/**").hasAuthority("CUPON_GESTIONAR")
 
-                // ── Cajas / Turnos: CAJERO accede; SUPERVISOR y ADMIN gestionan
-                .requestMatchers(HttpMethod.GET,    "/api/cajas/**").authenticated()
-                .requestMatchers(HttpMethod.POST,   "/api/cajas/**").hasAnyRole("ADMIN", "SUPERVISOR", "CAJERO")
-                .requestMatchers(HttpMethod.PUT,    "/api/cajas/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/cajas/**").hasRole("ADMIN")
+                // ── Devoluciones: lectura con VENTA_VER, creación con DEVOLUCION_CREAR ─
+                .requestMatchers(HttpMethod.GET,  "/api/devoluciones/**").hasAuthority("VENTA_VER")
+                .requestMatchers(HttpMethod.POST, "/api/devoluciones/**").hasAuthority("DEVOLUCION_CREAR")
 
-                // ── Empaques: lectura libre; escritura solo ADMIN/SUPERVISOR ──────
-                .requestMatchers(HttpMethod.GET,    "/api/empaques/**").authenticated()
-                .requestMatchers(HttpMethod.POST,   "/api/empaques/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.PUT,    "/api/empaques/**").hasAnyRole("ADMIN", "SUPERVISOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/empaques/**").hasAnyRole("ADMIN", "SUPERVISOR")
+                // ── Cajas / Turnos / Caja chica ──────────────────────────────
+                .requestMatchers("/api/cajas/turnos/**").hasAuthority("CAJA_OPERAR")
+                .requestMatchers("/api/cajas/chicas/**").hasAuthority("CAJA_GESTIONAR")
+                .requestMatchers(HttpMethod.GET, "/api/cajas/**")
+                        .hasAnyAuthority("CAJA_OPERAR", "CAJA_GESTIONAR")
+                .requestMatchers(HttpMethod.POST,   "/api/cajas/**").hasAuthority("CAJA_GESTIONAR")
+                .requestMatchers(HttpMethod.PUT,    "/api/cajas/**").hasAuthority("CAJA_GESTIONAR")
+                .requestMatchers(HttpMethod.DELETE, "/api/cajas/**").hasAuthority("CAJA_GESTIONAR")
 
-                // ── Cualquier otro endpoint: requiere autenticación ───────────
-                .anyRequest().authenticated()
+                // ── Clientes ─────────────────────────────────────────────────
+                .requestMatchers("/api/clientes/**").hasAuthority("CLIENTE_GESTIONAR")
+
+                // ── Compras: proveedores, órdenes, recepción, gastos ─────────
+                .requestMatchers("/api/proveedores/**").hasAuthority("PROVEEDOR_GESTIONAR")
+                .requestMatchers(
+                        "/api/ordenes-compra/**", "/api/notas-recepcion/**",
+                        "/api/gastos/**", "/api/alertas-retraso-oc/**")
+                        .hasAuthority("COMPRA_GESTIONAR")
+
+                // ── NCF: preview es parte del flujo de venta; el resto es fiscal ─
+                .requestMatchers(HttpMethod.GET, "/api/ncf/preview/**")
+                        .hasAnyAuthority("VENTA_CREAR", "NCF_GESTIONAR")
+                .requestMatchers("/api/ncf/**").hasAuthority("NCF_GESTIONAR")
+
+                // ── Cualquier otro endpoint: denegado por defecto ─────────────
+                .anyRequest().denyAll()
 
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

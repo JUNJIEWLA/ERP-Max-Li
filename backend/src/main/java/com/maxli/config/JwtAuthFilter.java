@@ -7,9 +7,12 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -19,6 +22,10 @@ import java.io.IOException;
 /**
  * Intercepta cada request, extrae el token JWT del header Authorization,
  * lo valida (incluyendo token_version) y setea la autenticación en el SecurityContext.
+ *
+ * Cualquier fallo de autenticación se resuelve lanzando AuthenticationException,
+ * que ExceptionTranslationFilter delega al AuthenticationEntryPoint de SecurityConfig
+ * para responder 401 en el mismo formato JSON que el resto de la API.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,6 +34,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
     private final UserDetailsServiceImpl userDetailsService;
     private final UsuarioRepository usuarioRepository;
+    private final AuthenticationEntryPoint authenticationEntryPoint;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -58,39 +66,37 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                if (jwtUtil.esValido(token, userDetails)) {
-                    // Verificar token_version contra la BD
-                    int tokenTv = jwtUtil.extraerTokenVersion(token);
-                    int dbTv = usuarioRepository.findByUsername(username)
-                            .map(Usuario::getTokenVersion)
-                            .orElse(-1);
-                            
-                    System.out.println("DEBUG Auth: username=" + username + ", tokenTv=" + tokenTv + ", dbTv=" + dbTv);
-
-                    if (tokenTv >= 0 && tokenTv != dbTv) {
-                        System.out.println("DEBUG Auth: Token invalidado (TV mismatch)");
-                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Sesión invalidada por cambios en la cuenta");
-                        return;
-                    }
-
-                    UsernamePasswordAuthenticationToken authToken =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails, null, userDetails.getAuthorities());
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                    System.out.println("DEBUG Auth: Autenticado exitosamente con roles: " + userDetails.getAuthorities());
-                } else {
-                    System.out.println("DEBUG Auth: jwtUtil.esValido devolvió false para " + username);
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token expirado o inválido");
+                if (!jwtUtil.esValido(token, userDetails)) {
+                    authenticationEntryPoint.commence(request, response,
+                            new BadCredentialsException("Token expirado o inválido"));
                     return;
                 }
+
+                // Verificar token_version contra la BD
+                int tokenTv = jwtUtil.extraerTokenVersion(token);
+                int dbTv = usuarioRepository.findByUsername(username)
+                        .map(Usuario::getTokenVersion)
+                        .orElse(-1);
+
+                if (tokenTv >= 0 && tokenTv != dbTv) {
+                    authenticationEntryPoint.commence(request, response,
+                            new BadCredentialsException("Sesión invalidada por cambios en la cuenta"));
+                    return;
+                }
+
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(
+                                userDetails, null, userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            } catch (AuthenticationException e) {
+                authenticationEntryPoint.commence(request, response, e);
+                return;
             } catch (Exception e) {
-                System.out.println("DEBUG Auth: Excepción durante autenticación: " + e.getMessage());
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Error de autenticación");
+                authenticationEntryPoint.commence(request, response,
+                        new BadCredentialsException("Error de autenticación"));
                 return;
             }
-        } else if (username != null) {
-            System.out.println("DEBUG Auth: Falló condición inicial. username=" + username + ", auth=" + SecurityContextHolder.getContext().getAuthentication());
         }
 
         filterChain.doFilter(request, response);
