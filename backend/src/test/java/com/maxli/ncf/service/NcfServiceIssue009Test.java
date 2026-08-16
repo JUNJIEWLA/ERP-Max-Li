@@ -15,9 +15,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -163,6 +165,84 @@ class NcfServiceIssue009Test extends PostgresIntegrationTest {
         assertThat(secuenciaActual(idResolucion)).isEqualTo(13L);
     }
 
+    @Test
+    @DisplayName("generar mientras se actualiza o desactiva no retrocede secuencia ni duplica NCF")
+    void generarMientrasSeActualizaODesactivaNoRetrocedeSecuenciaNiDuplica() throws Exception {
+        Long idResolucionActualizada = ncfService.crearResolucion(request("B02", 1, 80)).getIdResolucion();
+        CyclicBarrier barreraActualizacion = new CyclicBarrier(40);
+        ExecutorService poolActualizacion = Executors.newFixedThreadPool(40);
+
+        List<Future<String>> resultadosActualizacion;
+        try {
+            List<Callable<String>> tareas = new ArrayList<>();
+            for (int i = 0; i < 20; i++) {
+                tareas.add(() -> {
+                    barreraActualizacion.await(20, TimeUnit.SECONDS);
+                    return ncfService.generarSiguienteNcf("B02").getNcfCompleto();
+                });
+            }
+            for (int i = 0; i < 20; i++) {
+                int indice = i;
+                tareas.add(() -> {
+                    barreraActualizacion.await(20, TimeUnit.SECONDS);
+                    ResolucionNcfRequestDTO update = request("B02", 1, 80);
+                    update.setDescripcion("Actualizada " + indice);
+                    ncfService.actualizarResolucion(idResolucionActualizada, update);
+                    return null;
+                });
+            }
+            resultadosActualizacion = poolActualizacion.invokeAll(tareas);
+        } finally {
+            poolActualizacion.shutdown();
+            poolActualizacion.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        List<String> ncfActualizacion = exitosos(resultadosActualizacion).stream()
+                .filter(ncf -> ncf != null)
+                .sorted()
+                .toList();
+        assertThat(ncfActualizacion).containsExactly(
+                "B0200000001", "B0200000002", "B0200000003", "B0200000004",
+                "B0200000005", "B0200000006", "B0200000007", "B0200000008",
+                "B0200000009", "B0200000010", "B0200000011", "B0200000012",
+                "B0200000013", "B0200000014", "B0200000015", "B0200000016",
+                "B0200000017", "B0200000018", "B0200000019", "B0200000020");
+        assertThat(secuenciaActual(idResolucionActualizada)).isEqualTo(21L);
+
+        Long idResolucionDesactivada = ncfService.crearResolucion(request("B01", 1, 80)).getIdResolucion();
+        CyclicBarrier barreraDesactivacion = new CyclicBarrier(21);
+        ExecutorService poolDesactivacion = Executors.newFixedThreadPool(21);
+
+        List<Future<String>> resultadosDesactivacion;
+        try {
+            List<Callable<String>> tareas = new ArrayList<>();
+            for (int i = 0; i < 20; i++) {
+                tareas.add(() -> {
+                    barreraDesactivacion.await(20, TimeUnit.SECONDS);
+                    return ncfService.generarSiguienteNcf("B01").getNcfCompleto();
+                });
+            }
+            tareas.add(() -> {
+                barreraDesactivacion.await(20, TimeUnit.SECONDS);
+                ncfService.desactivarResolucion(idResolucionDesactivada);
+                return null;
+            });
+            resultadosDesactivacion = poolDesactivacion.invokeAll(tareas);
+        } finally {
+            poolDesactivacion.shutdown();
+            poolDesactivacion.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        List<String> ncfDesactivacion = emitidosOErroresDeNegocio(resultadosDesactivacion).stream()
+                .filter(ncf -> ncf != null)
+                .sorted()
+                .toList();
+        assertThat(ncfDesactivacion).doesNotHaveDuplicates();
+        assertThat(ncfDesactivacion).allMatch(ncf -> ncf.matches("B01\\d{8}"));
+        assertThat(secuenciaActual(idResolucionDesactivada))
+                .isEqualTo(ncfDesactivacion.size() + 1L);
+    }
+
     private ResolucionNcfRequestDTO request(String tipo, long inicio, long fin) {
         ResolucionNcfRequestDTO dto = new ResolucionNcfRequestDTO();
         dto.setTipoNcf(tipo);
@@ -193,5 +273,35 @@ class NcfServiceIssue009Test extends PostgresIntegrationTest {
         return jdbcTemplate.queryForObject(
                 "SELECT secuencia_actual FROM resolucion_ncf WHERE id_resolucion = ?",
                 Long.class, idResolucion);
+    }
+
+    private List<String> exitosos(List<Future<String>> resultados) {
+        return resultados.stream().map(resultado -> {
+            try {
+                return resultado.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(e);
+            } catch (ExecutionException e) {
+                throw new AssertionError(e.getCause());
+            }
+        }).toList();
+    }
+
+    private List<String> emitidosOErroresDeNegocio(List<Future<String>> resultados) {
+        List<String> emitidos = new ArrayList<>();
+        for (Future<String> resultado : resultados) {
+            try {
+                emitidos.add(resultado.get());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(e);
+            } catch (ExecutionException e) {
+                assertThat(e.getCause())
+                        .isInstanceOf(BusinessException.class)
+                        .hasMessageContaining("inactiva");
+            }
+        }
+        return emitidos;
     }
 }

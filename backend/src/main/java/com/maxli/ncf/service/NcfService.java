@@ -27,6 +27,10 @@ public class NcfService {
     private static final String INACTIVO = "INACTIVO";
     private static final String VENCIDO = "VENCIDO";
     private static final String AGOTADO = "AGOTADO";
+    private static final String UX_ACTIVA_POR_TIPO = "ux_resolucion_ncf_activa_por_tipo";
+    private static final String CHK_ESTADO = "chk_resolucion_ncf_estado";
+    private static final String CHK_TIPO_PREFIJO = "chk_resolucion_ncf_tipo_prefijo";
+    private static final String CHK_RANGO = "chk_resolucion_ncf_rango";
     private static final Set<String> TIPOS_VALIDOS = Set.of("B01", "B02", "B14", "B15");
 
     private final ResolucionNcfRepository resolucionNcfRepository;
@@ -66,8 +70,7 @@ public class NcfService {
     @Transactional
     public ResolucionNcfResponseDTO actualizarResolucion(Long id, ResolucionNcfRequestDTO requestDTO) {
         normalizar(requestDTO);
-        ResolucionNcf resolucion = resolucionNcfRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Resolución NCF no encontrada con id: " + id));
+        ResolucionNcf resolucion = buscarParaActualizacion(id);
 
         if (!resolucion.getTipoNcf().equals(requestDTO.getTipoNcf())) {
             throw new BusinessException("El tipo NCF de una resolución existente no puede cambiarse.");
@@ -87,8 +90,7 @@ public class NcfService {
 
     @Transactional
     public ResolucionNcfResponseDTO activarResolucion(Long id) {
-        ResolucionNcf resolucion = resolucionNcfRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Resolución NCF no encontrada con id: " + id));
+        ResolucionNcf resolucion = buscarParaActualizacion(id);
 
         if (AGOTADO.equals(resolucion.getEstado())) {
             throw new BusinessException("Una resolución agotada no puede reactivarse. Registre una nueva resolución.");
@@ -109,8 +111,7 @@ public class NcfService {
 
     @Transactional
     public ResolucionNcfResponseDTO desactivarResolucion(Long id) {
-        ResolucionNcf resolucion = resolucionNcfRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Resolución NCF no encontrada con id: " + id));
+        ResolucionNcf resolucion = buscarParaActualizacion(id);
         if (AGOTADO.equals(resolucion.getEstado())) {
             throw new BusinessException("Una resolución agotada no puede desactivarse manualmente.");
         }
@@ -230,6 +231,11 @@ public class NcfService {
         throw new BusinessException("No hay resolución activa disponible para el tipo NCF: " + tipoNcf);
     }
 
+    private ResolucionNcf buscarParaActualizacion(Long id) {
+        return resolucionNcfRepository.findByIdParaActualizacion(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Resolución NCF no encontrada con id: " + id));
+    }
+
     private void normalizar(ResolucionNcfRequestDTO requestDTO) {
         if (requestDTO.getTipoNcf() != null) {
             requestDTO.setTipoNcf(requestDTO.getTipoNcf().trim().toUpperCase());
@@ -325,11 +331,26 @@ public class NcfService {
         try {
             return resolucionNcfRepository.saveAndFlush(resolucion);
         } catch (DataIntegrityViolationException e) {
-            if (ACTIVO.equals(resolucion.getEstado())) {
+            String detalle = detalleIntegridad(e);
+            if (detalle.contains(UX_ACTIVA_POR_TIPO)) {
                 throw new DuplicateResourceException(
                         "Ya existe una resolución activa para el tipo NCF: " + resolucion.getTipoNcf());
             }
-            throw new BusinessException("La resolución NCF viola las reglas de integridad configuradas.");
+            if (detalle.contains(CHK_RANGO)) {
+                throw new BusinessException("La resolución NCF viola la regla de rangos positivos y ordenados.");
+            }
+            if (detalle.contains(CHK_TIPO_PREFIJO)) {
+                throw new BusinessException("La resolución NCF viola la regla de tipo y prefijo permitidos.");
+            }
+            if (detalle.contains(CHK_ESTADO)) {
+                throw new BusinessException("La resolución NCF viola la regla de estados permitidos.");
+            }
+            throw e;
         }
+    }
+
+    private String detalleIntegridad(DataIntegrityViolationException e) {
+        Throwable causa = e.getMostSpecificCause();
+        return causa == null || causa.getMessage() == null ? "" : causa.getMessage();
     }
 }

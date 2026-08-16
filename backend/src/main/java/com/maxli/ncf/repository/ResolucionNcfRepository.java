@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ResolucionNcfRepository extends JpaRepository<ResolucionNcf, Long> {
@@ -16,6 +17,10 @@ public interface ResolucionNcfRepository extends JpaRepository<ResolucionNcf, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM ResolucionNcf r WHERE r.tipoNcf = :tipoNcf AND r.estado = 'ACTIVO' ORDER BY r.idResolucion")
     List<ResolucionNcf> findActivasByTipoParaActualizacion(@Param("tipoNcf") String tipoNcf);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM ResolucionNcf r WHERE r.idResolucion = :id")
+    Optional<ResolucionNcf> findByIdParaActualizacion(@Param("id") Long id);
 
     List<ResolucionNcf> findByTipoNcf(String tipoNcf);
 
