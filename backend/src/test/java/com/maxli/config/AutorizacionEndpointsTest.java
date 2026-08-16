@@ -10,8 +10,10 @@ import com.maxli.compra.service.ProveedorService;
 import com.maxli.gasto.controller.GastoController;
 import com.maxli.gasto.dto.GastoResponseDTO;
 import com.maxli.gasto.service.GastoService;
+import com.maxli.exception.DuplicateResourceException;
 import com.maxli.ncf.controller.NcfController;
 import com.maxli.ncf.dto.NcfGeneradoDTO;
+import com.maxli.ncf.dto.ResolucionNcfRequestDTO;
 import com.maxli.ncf.service.NcfService;
 import com.maxli.permiso.entity.Permiso;
 import com.maxli.rol.entity.Rol;
@@ -89,12 +91,27 @@ class AutorizacionEndpointsTest {
     }
 
     @Test
-    void admin_puede_generar_ncf() throws Exception {
+    void admin_no_puede_consumir_ncf_directamente() throws Exception {
         String token = tokenPara(usuarioConRoles("admin2", "ADMIN"));
 
         mockMvc.perform(post("/api/ncf/generar/B01")
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void errores_de_dominio_ncf_devuelven_json_consistente() throws Exception {
+        String token = tokenPara(usuarioConRoles("admin-ncf-error", "ADMIN"));
+        when(ncfService.crearResolucion(any())).thenThrow(
+                new DuplicateResourceException("Ya existe una resolución activa para B02"));
+
+        mockMvc.perform(post("/api/ncf")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(resolucionRequest())))
+                .andExpect(status().isConflict())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value(409))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.error").value("Ya existe una resolución activa para B02"));
     }
 
     // ── CAJERO no puede crear proveedores ni leer gastos administrativos ──
@@ -343,6 +360,18 @@ class AutorizacionEndpointsTest {
         ProveedorRequestDTO dto = new ProveedorRequestDTO();
         dto.setNombreEmpresa("Proveedor de prueba");
         dto.setRnc("123456789");
+        return dto;
+    }
+
+    private ResolucionNcfRequestDTO resolucionRequest() {
+        ResolucionNcfRequestDTO dto = new ResolucionNcfRequestDTO();
+        dto.setTipoNcf("B02");
+        dto.setDescripcion("Consumo");
+        dto.setNumeroResolucion("RES-B02");
+        dto.setPrefijo("B02");
+        dto.setSecuenciaInicio(1L);
+        dto.setSecuenciaFinal(100L);
+        dto.setFechaVencimiento(java.time.LocalDate.now().plusDays(30));
         return dto;
     }
 }
