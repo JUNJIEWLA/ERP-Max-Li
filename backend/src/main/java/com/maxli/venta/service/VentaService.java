@@ -43,7 +43,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Service
 @RequiredArgsConstructor
@@ -149,11 +152,11 @@ public class VentaService {
      * Procesa la venta completa en una sola transacción:
      * <ol>
      *   <li>Validar turno abierto</li>
-     *   <li>Validar stock de todos los items</li>
+     *   <li>Bloquear existencias y validar stock de todos los items</li>
+     *   <li>Generar NCF</li>
      *   <li>Recalcular precios según reglas</li>
      *   <li>Aplicar ofertas vigentes</li>
      *   <li>Validar y aplicar cupón</li>
-     *   <li>Generar NCF</li>
      *   <li>Decrementar existencias</li>
      *   <li>Registrar ingresos por método de pago</li>
      *   <li>Actualizar cuadre del turno de caja</li>
@@ -211,13 +214,18 @@ public class VentaService {
         Long seq = ventaRepository.obtenerSiguienteNumeroControl();
         venta.setNumeroControl(String.format("VT-%06d", seq));
 
-        // ── 4. Generar NCF ───────────────────────────────────────────────
+        // ── 4. Bloquear existencias y validar stock ──────────────────────
+        // Antes de consumir el NCF: si el stock no alcanza, la venta se rechaza
+        // sin haber tocado la secuencia fiscal.
+        Map<Long, Existencia> existenciasBloqueadas = bloquearYValidarStock(request.getDetalles());
+
+        // ── 5. Generar NCF ───────────────────────────────────────────────
         if (request.getTipoNcf() != null && !request.getTipoNcf().isBlank()) {
             NcfGeneradoDTO ncfGenerado = ncfService.generarSiguienteNcf(request.getTipoNcf());
             venta.setNcf(ncfGenerado.getNcfCompleto());
         }
 
-        // ── 5. Procesar líneas de detalle ────────────────────────────────
+        // ── 6. Procesar líneas de detalle ────────────────────────────────
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal itbisTotal = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
@@ -228,16 +236,8 @@ public class VentaService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Producto no encontrado con id: " + item.getIdProducto()));
 
-            // Validar stock
-            Existencia existencia = existenciaRepository.findFirstByProducto_IdProducto(producto.getIdProducto())
-                    .orElseThrow(() -> new BusinessException(
-                            "No hay registro de existencia para el producto: " + producto.getNombre()));
-
-            if (existencia.getCantidadActual() < item.getCantidad()) {
-                throw new BusinessException(String.format(
-                        "Stock insuficiente para '%s'. Disponible: %d, Solicitado: %d",
-                        producto.getNombre(), existencia.getCantidadActual(), item.getCantidad()));
-            }
+            // Existencia ya bloqueada y validada en el paso 4
+            Existencia existencia = existenciasBloqueadas.get(producto.getIdProducto());
 
             // Calcular línea con reglas de precio
             DetalleRecalculadoDTO calc = calcularLineaDetalle(
@@ -269,13 +269,13 @@ public class VentaService {
             existenciaRepository.save(existencia);
         }
 
-        // ── 6. Descuento global ──────────────────────────────────────────
+        // ── 7. Descuento global ──────────────────────────────────────────
         BigDecimal descuentoGlobal = request.getDescuentoGlobal() != null
                 ? request.getDescuentoGlobal() : BigDecimal.ZERO;
         BigDecimal importeTotalConDescuento = subtotal.subtract(descuentoGlobal);
         descuentoTotal = descuentoTotal.add(descuentoGlobal);
 
-        // ── 7. Validar y aplicar cupón ───────────────────────────────────
+        // ── 8. Validar y aplicar cupón ───────────────────────────────────
         BigDecimal descuentoCupon = BigDecimal.ZERO;
         if (request.getCodigoCupon() != null && !request.getCodigoCupon().isBlank()) {
             CuponAplicadoDTO cupon = cuponService.validarYAplicarCupon(
@@ -298,7 +298,7 @@ public class VentaService {
 
 
 
-        // ── 8. Registrar ingresos (pagos) ────────────────────────────────
+        // ── 9. Registrar ingresos (pagos) ────────────────────────────────
         BigDecimal totalPagado = BigDecimal.ZERO;
         for (IngresoVentaRequestDTO ingresoDto : request.getIngresos()) {
             MetodoPago metodoPagoIngreso = parseMetodoPago(ingresoDto.getMetodoPago());
@@ -320,10 +320,10 @@ public class VentaService {
         venta.setMontoRecibido(normalizar(totalPagado));
         venta.setCambio(normalizar(totalPagado.subtract(totalVenta)));
 
-        // ── 9. Persistir venta ───────────────────────────────────────────
+        // ── 10. Persistir venta ──────────────────────────────────────────
         Venta ventaGuardada = ventaRepository.save(venta);
 
-        // ── 10. Actualizar cuadre del turno ──────────────────────────────
+        // ── 11. Actualizar cuadre del turno ──────────────────────────────
         actualizarCuadreTurno(turno);
 
         return mapToResponseDTO(ventaGuardada);
@@ -349,6 +349,60 @@ public class VentaService {
     public String obtenerSiguienteNumero() {
         Long seq = ventaRepository.obtenerSiguienteNumeroControl();
         return String.format("VT-%06d", seq);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    //  LÓGICA PRIVADA: Control de concurrencia sobre existencias
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Bloquea las existencias implicadas en la venta y valida que alcancen.
+     * <p>
+     * Sin bloqueo, validar y decrementar es un check-then-act: dos ventas
+     * simultáneas leen la misma cantidad, ambas la consideran suficiente y
+     * ambas confirman, dejando el inventario sobrevendido (ISSUE-004). El
+     * bloqueo de fila serializa a las transacciones: la segunda espera al commit
+     * de la primera y luego re-lee la cantidad ya descontada, por lo que su
+     * validación falla con un error de negocio en vez de sobrevender.
+     * <p>
+     * Los bloqueos se toman en orden ascendente de {@code idProducto} para que
+     * todas las ventas los adquieran en la misma secuencia y no se produzcan
+     * deadlocks entre carritos con los mismos productos en distinto orden. Las
+     * cantidades se agregan por producto para cubrir carritos con líneas
+     * repetidas del mismo artículo.
+     *
+     * @return existencia bloqueada por id de producto, lista para decrementar
+     */
+    private Map<Long, Existencia> bloquearYValidarStock(List<DetalleVentaRequestDTO> detalles) {
+        Map<Long, Integer> cantidadPorProducto = new TreeMap<>();
+        for (DetalleVentaRequestDTO item : detalles) {
+            cantidadPorProducto.merge(item.getIdProducto(), item.getCantidad(), Integer::sum);
+        }
+
+        Map<Long, Existencia> bloqueadas = new HashMap<>();
+        for (Map.Entry<Long, Integer> entry : cantidadPorProducto.entrySet()) {
+            Long idProducto = entry.getKey();
+            int cantidadSolicitada = entry.getValue();
+
+            Producto producto = productoRepository.findById(idProducto)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Producto no encontrado con id: " + idProducto));
+
+            Existencia existencia = existenciaRepository.bloquearPorProductoParaActualizar(idProducto)
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException(
+                            "No hay registro de existencia para el producto: " + producto.getNombre()));
+
+            if (existencia.getCantidadActual() < cantidadSolicitada) {
+                throw new BusinessException(String.format(
+                        "Stock insuficiente para '%s'. Disponible: %d, Solicitado: %d",
+                        producto.getNombre(), existencia.getCantidadActual(), cantidadSolicitada));
+            }
+
+            bloqueadas.put(idProducto, existencia);
+        }
+        return bloqueadas;
     }
 
     // ═════════════════════════════════════════════════════════════════════
