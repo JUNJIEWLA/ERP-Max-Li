@@ -87,6 +87,19 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+            PostgreSQL real (binarios embebidos, sin Docker) para las pruebas de
+            integración de concurrencia. CLAUDE.md §9 sugiere Testcontainers, pero
+            requiere Docker y no hay CI que lo provea; H2/HSQLDB no reproducen la
+            semántica de SELECT ... FOR UPDATE que valida ISSUE-004.
+        -->
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>2.1.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
