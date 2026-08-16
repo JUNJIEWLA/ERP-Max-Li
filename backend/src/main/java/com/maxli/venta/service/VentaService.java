@@ -44,8 +44,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 @Service
@@ -191,6 +193,10 @@ public class VentaService {
             mayorPermitido = false;
         }
 
+        // Se valida antes de bloquear stock y de generar NCF: un cobro mal
+        // compuesto no debe consumir secuencia fiscal.
+        validarComposicionPagos(metodo, request.getIngresos());
+
         // ── 3. Crear la venta ────────────────────────────────────────────
         Venta venta = new Venta();
         venta.setTurnoCaja(turno);
@@ -300,6 +306,7 @@ public class VentaService {
 
         // ── 9. Registrar ingresos (pagos) ────────────────────────────────
         BigDecimal totalPagado = BigDecimal.ZERO;
+        BigDecimal efectivoRecibido = BigDecimal.ZERO;
         for (IngresoVentaRequestDTO ingresoDto : request.getIngresos()) {
             MetodoPago metodoPagoIngreso = parseMetodoPago(ingresoDto.getMetodoPago());
             IngresoVenta ingreso = new IngresoVenta();
@@ -309,6 +316,9 @@ public class VentaService {
             ingreso.setFechaRegistro(LocalDateTime.now());
             venta.addIngreso(ingreso);
             totalPagado = totalPagado.add(ingresoDto.getMonto());
+            if (metodoPagoIngreso == MetodoPago.EFECTIVO) {
+                efectivoRecibido = efectivoRecibido.add(ingresoDto.getMonto());
+            }
         }
 
         if (totalPagado.compareTo(totalVenta) < 0) {
@@ -317,8 +327,20 @@ public class VentaService {
                     totalPagado, totalVenta));
         }
 
+        // El cambio sale del cajón, así que solo puede devolverse contra el
+        // efectivo que entregó el cliente. Un sobrepago con tarjeta,
+        // transferencia o cheque es un error de digitación, no un vuelto
+        // (ISSUE-006).
+        BigDecimal cambio = normalizar(totalPagado.subtract(totalVenta));
+        if (cambio.compareTo(efectivoRecibido) > 0) {
+            throw new BusinessException(String.format(
+                    "El cambio (RD$ %.2f) supera el efectivo recibido (RD$ %.2f). "
+                            + "El vuelto solo puede devolverse del efectivo entregado por el cliente.",
+                    cambio, efectivoRecibido));
+        }
+
         venta.setMontoRecibido(normalizar(totalPagado));
-        venta.setCambio(normalizar(totalPagado.subtract(totalVenta)));
+        venta.setCambio(cambio);
 
         // ── 10. Persistir venta ──────────────────────────────────────────
         Venta ventaGuardada = ventaRepository.save(venta);
@@ -530,9 +552,23 @@ public class VentaService {
     //  HELPERS
     // ═════════════════════════════════════════════════════════════════════
 
+    /**
+     * Recalcula el cuadre del turno a partir de las ventas confirmadas.
+     * <p>
+     * El efectivo se cuenta <b>neto</b>: lo recibido menos el cambio devuelto.
+     * Sumar solo los ingresos en efectivo contaba como dinero en caja el vuelto
+     * que ya había salido del cajón, e inflaba el monto esperado — una venta de
+     * RD$130 pagada con RD$200 subía el turno RD$200 y dejaba al cajero con un
+     * faltante de RD$70 al cerrar (ISSUE-006).
+     * <p>
+     * Los métodos no efectivos no se ajustan: el cambio nunca se devuelve por
+     * el POS ni por el banco, siempre sale del efectivo.
+     */
     private void actualizarCuadreTurno(TurnoCaja turno) {
         Long idTurno = turno.getIdTurnoCaja();
-        turno.setTotalVentasEfectivo(ventaRepository.sumarVentasEfectivoPorTurno(idTurno));
+        BigDecimal efectivoRecibido = ventaRepository.sumarVentasEfectivoPorTurno(idTurno);
+        BigDecimal cambioEntregado = ventaRepository.sumarCambioEntregadoPorTurno(idTurno);
+        turno.setTotalVentasEfectivo(normalizar(efectivoRecibido.subtract(cambioEntregado)));
         turno.setTotalVentasTarjeta(ventaRepository.sumarVentasTarjetaPorTurno(idTurno));
         turno.setTotalVentasTransferencia(ventaRepository.sumarVentasTransferenciaPorTurno(idTurno));
         turno.setTotalVentasCheque(ventaRepository.sumarVentasChequePorTurno(idTurno));
@@ -544,6 +580,50 @@ public class VentaService {
         turno.setMontoEsperado(normalizar(montoEsperado));
 
         turnoCajaRepository.save(turno);
+    }
+
+    /**
+     * Exige que el método de pago principal describa realmente cómo se cobró.
+     * <p>
+     * Sin esta validación el POS aceptaba una venta declarada como EFECTIVO
+     * cobrada con un ingreso TARJETA: el cuadre repartía el dinero por los
+     * ingresos y el reporte por el principal, así que los dos se contradecían
+     * (ISSUE-006). {@code MIXTO} es un resumen, no una forma de cobro, y por eso
+     * no puede aparecer en un ingreso individual.
+     */
+    private void validarComposicionPagos(MetodoPago principal, List<IngresoVentaRequestDTO> ingresos) {
+        Set<MetodoPago> metodosCobrados = new LinkedHashSet<>();
+        for (IngresoVentaRequestDTO ingreso : ingresos) {
+            MetodoPago metodoIngreso = parseMetodoPago(ingreso.getMetodoPago());
+            if (metodoIngreso == MetodoPago.MIXTO) {
+                throw new BusinessException(
+                        "MIXTO no es una forma de cobro: cada ingreso debe declarar el método real "
+                                + "(EFECTIVO, TARJETA, TRANSFERENCIA, CHEQUE o CUPON).");
+            }
+            metodosCobrados.add(metodoIngreso);
+        }
+
+        if (principal == MetodoPago.MIXTO) {
+            if (metodosCobrados.size() < 2) {
+                throw new BusinessException(
+                        "Una venta MIXTA requiere al menos dos métodos de cobro distintos. Recibido: "
+                                + metodosCobrados);
+            }
+            return;
+        }
+
+        if (metodosCobrados.size() > 1) {
+            throw new BusinessException(String.format(
+                    "La venta declara método principal %s pero se cobró con varios métodos %s. "
+                            + "Use MIXTO como método principal.",
+                    principal, metodosCobrados));
+        }
+
+        if (!metodosCobrados.contains(principal)) {
+            throw new BusinessException(String.format(
+                    "El método de pago principal (%s) no coincide con el cobro registrado %s.",
+                    principal, metodosCobrados));
+        }
     }
 
     private MetodoPago parseMetodoPago(String metodo) {

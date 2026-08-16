@@ -55,4 +55,19 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
               AND iv.metodoPago = com.maxli.venta.entity.MetodoPago.CHEQUE
             """)
     java.math.BigDecimal sumarVentasChequePorTurno(@Param("idTurno") Long idTurno);
+
+    /**
+     * Cambio devuelto al cliente durante el turno.
+     * <p>
+     * Complementa a {@link #sumarVentasEfectivoPorTurno(Long)}: esa suma el efectivo
+     * <b>recibido</b>, y el cambio es la parte que volvió a salir del cajón. El efectivo
+     * que realmente permanece en caja es la diferencia entre ambos (ISSUE-006).
+     */
+    @Query("""
+            SELECT COALESCE(SUM(v.cambio), 0)
+            FROM Venta v
+            WHERE v.turnoCaja.idTurnoCaja = :idTurno
+              AND v.estado = 'COMPLETADA'
+            """)
+    java.math.BigDecimal sumarCambioEntregadoPorTurno(@Param("idTurno") Long idTurno);
 }
