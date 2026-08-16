@@ -66,6 +66,9 @@ public class VentaResponseDTO {
         private BigDecimal descuentoOferta;
         private String ofertaAplicada;
         private BigDecimal importe;
+
+        /** Suma de descuento global + cupón ya prorrateados sobre esta línea. */
+        private BigDecimal descuentoProrrateado;
         private BigDecimal baseImponible;
         private BigDecimal itbisLinea;
     }

@@ -74,11 +74,11 @@ export default function CheckoutModal({
   // ── Totales calculados ──────────────────────────────────────────────
   const subtotalCarrito = cart.reduce((sum, item) => sum + item.importe, 0);
   const total = recalculo ? recalculo.total : Math.max(0, subtotalCarrito - descuentoGlobal);
-  // Antes de la primera respuesta del backend (o carrito vacío) se usa una
-  // aproximación al 18%; en cuanto llega `recalculo`, se usan sus valores
-  // reales por línea (ISSUE-008 — la tasa ya no es uniforme).
-  const subtotalSinItbis = recalculo ? recalculo.subtotal : total / 1.18;
-  const itbis = recalculo ? recalculo.itbis : (total - subtotalSinItbis);
+  // El desglose de ITBIS solo viene del backend (tasa por línea, ISSUE-008):
+  // nunca se aproxima con /1.18 en el cliente. Antes de la primera respuesta
+  // del preview, se muestra como pendiente en vez de un valor inventado.
+  const subtotalSinItbis = recalculo ? recalculo.subtotal : null;
+  const itbis = recalculo ? recalculo.itbis : null;
   const cambio = parseFloat(montoRecibido || '0') - total;
 
 
@@ -457,10 +457,14 @@ export default function CheckoutModal({
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm space-y-0.5">
               <div className="text-muted-foreground">
-                Subtotal sin ITBIS: <span className="text-foreground font-medium font-mono">RD${subtotalSinItbis.toFixed(2)}</span>
+                Subtotal sin ITBIS: <span className="text-foreground font-medium font-mono">
+                  {subtotalSinItbis !== null ? `RD$${subtotalSinItbis.toFixed(2)}` : 'Calculando…'}
+                </span>
               </div>
               <div className="text-muted-foreground">
-                ITBIS: <span className="text-foreground font-medium font-mono">RD${itbis.toFixed(2)}</span>
+                ITBIS: <span className="text-foreground font-medium font-mono">
+                  {itbis !== null ? `RD$${itbis.toFixed(2)}` : 'Calculando…'}
+                </span>
               </div>
             </div>
             <div className="text-right">

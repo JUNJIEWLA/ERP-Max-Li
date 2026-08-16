@@ -109,22 +109,6 @@ export default function SaleScreen() {
     return Math.max(0, importeTotal - descGlobalMonto);
   };
 
-  /**
-   * Subtotal aproximado (sin ITBIS) para el panel de carrito en vivo.
-   * Asume 18% plano — es solo una vista previa antes de abrir el checkout;
-   * los totales reales (con ITBIS por línea, ISSUE-008) se calculan en el
-   * backend y se muestran en CheckoutModal.
-   */
-  const calculateSubtotalSinITBIS = () => {
-    return calculateTotalPagar() / 1.18;
-  };
-
-  /** ITBIS aproximado (18% plano) — ver nota en calculateSubtotalSinITBIS. */
-  const calculateITBIS = () => {
-    const total = calculateTotalPagar();
-    return total - (total / 1.18);
-  };
-
   const getTotalItems = () => {
     return cart.reduce((sum, item) => sum + item.cantidad, 0);
   };
@@ -537,8 +521,8 @@ export default function SaleScreen() {
           descuentoAutomatico={0}
           descuentoLinea={calculateDescuentoLinea()}
           totalAhorrado={getTotalAhorrado()}
-          subtotal={calculateSubtotalSinITBIS()}
-          itbis={calculateITBIS()}
+          subtotal={null}
+          itbis={null}
           total={calculateTotalPagar()}
         />
       </div>

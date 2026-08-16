@@ -7,6 +7,7 @@ import com.maxli.cliente.entity.Cliente;
 import com.maxli.cliente.repository.ClienteRepository;
 import com.maxli.cupon.service.CuponService;
 import com.maxli.cupon.dto.CuponAplicadoDTO;
+import com.maxli.cupon.dto.LineaParaCuponDTO;
 import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
@@ -108,10 +109,8 @@ public class VentaService {
         RecalcularFacturaResponseDTO response = new RecalcularFacturaResponseDTO();
         List<DetalleRecalculadoDTO> detallesRecalculados = new ArrayList<>();
 
-        BigDecimal importeLineasTotal = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
         boolean huboRecalculo = false;
-        List<Long> idsCategorias = new ArrayList<>();
 
         for (DetalleVentaRequestDTO item : request.getDetalles()) {
             Producto producto = productoRepository.findById(item.getIdProducto())
@@ -126,29 +125,25 @@ public class VentaService {
                 huboRecalculo = true;
             }
 
-            importeLineasTotal = importeLineasTotal.add(detalle.getImporte());
             descuentoTotal = descuentoTotal.add(
                     detalle.getDescuentoOferta() != null ? detalle.getDescuentoOferta() : BigDecimal.ZERO);
-            idsCategorias.add(producto.getCategoria().getIdCategoria());
 
             detallesRecalculados.add(detalle);
         }
 
         BigDecimal descuentoGlobal = valor(request.getDescuentoGlobal());
-        BigDecimal descuentoCupon = BigDecimal.ZERO;
-        if (request.getCodigoCupon() != null && !request.getCodigoCupon().isBlank()) {
-            CuponAplicadoDTO cupon = cuponService.previsualizarCupon(
-                    request.getCodigoCupon(), idsCategorias, importeLineasTotal);
-            descuentoCupon = cupon.getMontoDescontado();
-            response.setCodigoCupon(request.getCodigoCupon());
-            response.setDescuentoCupon(descuentoCupon);
-        }
+        TotalesVenta totales = calcularTotalesConItbisPorLinea(
+                detallesRecalculados, descuentoGlobal, request.getCodigoCupon(), cuponService::previsualizarCupon);
 
-        TotalesVenta totales = calcularTotalesConItbisPorLinea(detallesRecalculados, descuentoGlobal, descuentoCupon);
+        if (request.getCodigoCupon() != null && !request.getCodigoCupon().isBlank()) {
+            response.setCodigoCupon(request.getCodigoCupon());
+            response.setDescuentoCupon(totales.descuentoCuponAplicado());
+        }
 
         response.setDetalles(detallesRecalculados);
         response.setSubtotal(totales.subtotal());
-        response.setDescuentoTotal(normalizar(descuentoTotal.add(descuentoGlobal).add(descuentoCupon)));
+        response.setDescuentoTotal(normalizar(
+                descuentoTotal.add(totales.descuentoGlobalAplicado()).add(totales.descuentoCuponAplicado())));
         response.setItbis(totales.itbis());
         response.setTotal(totales.total());
         response.setHuboRecalculo(huboRecalculo);
@@ -265,9 +260,7 @@ public class VentaService {
         }
 
         // ── 6. Procesar líneas de detalle ────────────────────────────────
-        BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
-        List<Long> idsCategorias = new ArrayList<>();
         List<DetalleVenta> detallesEntidades = new ArrayList<>();
         List<DetalleRecalculadoDTO> detallesCalculados = new ArrayList<>();
 
@@ -301,37 +294,32 @@ public class VentaService {
             detallesEntidades.add(detalle);
             detallesCalculados.add(calc);
 
-            subtotal = subtotal.add(calc.getImporte());
             descuentoTotal = descuentoTotal.add(
                     calc.getDescuentoOferta() != null ? calc.getDescuentoOferta() : BigDecimal.ZERO);
-
-            idsCategorias.add(producto.getCategoria().getIdCategoria());
 
             // Decrementar stock
             existencia.setCantidadActual(existencia.getCantidadActual() - item.getCantidad());
             existenciaRepository.save(existencia);
         }
 
-        // ── 7. Descuento global ──────────────────────────────────────────
+        // ── 7-8. Descuento global + cupón, prorrateados, e ITBIS por línea ──
+        // Orden: línea/oferta (ya en `importe`) → global entre todas las
+        // líneas → cupón solo entre sus líneas elegibles (ISSUE-008).
         BigDecimal descuentoGlobal = valor(request.getDescuentoGlobal());
+        TotalesVenta totales = calcularTotalesConItbisPorLinea(
+                detallesCalculados, descuentoGlobal, request.getCodigoCupon(), cuponService::validarYAplicarCupon);
 
-        // ── 8. Validar y aplicar cupón ───────────────────────────────────
-        BigDecimal descuentoCupon = BigDecimal.ZERO;
-        if (request.getCodigoCupon() != null && !request.getCodigoCupon().isBlank()) {
-            CuponAplicadoDTO cupon = cuponService.validarYAplicarCupon(
-                    request.getCodigoCupon(), idsCategorias, subtotal);
-            descuentoCupon = cupon.getMontoDescontado();
-            venta.setCodigoCupon(request.getCodigoCupon());
-            venta.setDescuentoCupon(descuentoCupon);
-        }
-        descuentoTotal = descuentoTotal.add(descuentoGlobal).add(descuentoCupon);
-
-        // ── 8b. Prorratear descuentos y calcular ITBIS por línea (ISSUE-008) ──
-        TotalesVenta totales = calcularTotalesConItbisPorLinea(detallesCalculados, descuentoGlobal, descuentoCupon);
         for (int i = 0; i < detallesEntidades.size(); i++) {
+            detallesEntidades.get(i).setDescuentoProrrateado(detallesCalculados.get(i).getDescuentoProrrateado());
             detallesEntidades.get(i).setBaseImponible(detallesCalculados.get(i).getBaseImponible());
             detallesEntidades.get(i).setItbisLinea(detallesCalculados.get(i).getItbisLinea());
         }
+
+        if (request.getCodigoCupon() != null && !request.getCodigoCupon().isBlank()) {
+            venta.setCodigoCupon(request.getCodigoCupon());
+            venta.setDescuentoCupon(totales.descuentoCuponAplicado());
+        }
+        descuentoTotal = descuentoTotal.add(totales.descuentoGlobalAplicado()).add(totales.descuentoCuponAplicado());
 
         venta.setSubtotal(totales.subtotal());
         venta.setDescuentoTotal(normalizar(descuentoTotal));
@@ -488,6 +476,7 @@ public class VentaService {
 
         DetalleRecalculadoDTO dto = new DetalleRecalculadoDTO();
         dto.setIdProducto(producto.getIdProducto());
+        dto.setIdCategoria(producto.getCategoria().getIdCategoria());
         dto.setCodigoProducto(producto.getSku());
         dto.setNombreProducto(producto.getNombre());
         dto.setCantidad(cantidad);
@@ -613,42 +602,94 @@ public class VentaService {
         }
     }
 
-    private record TotalesVenta(BigDecimal subtotal, BigDecimal itbis, BigDecimal total) {}
+    private record TotalesVenta(
+            BigDecimal subtotal, BigDecimal itbis, BigDecimal total,
+            BigDecimal descuentoGlobalAplicado, BigDecimal descuentoCuponAplicado) {}
+
+    /** Resuelve el cupón (preview o venta real, según el caller) para un conjunto de líneas ya netas de descuento global. */
+    @FunctionalInterface
+    private interface ResolutorCupon {
+        CuponAplicadoDTO resolver(String codigoSecreto, List<LineaParaCuponDTO> lineas);
+    }
 
     /**
-     * Prorratea el descuento global + cupón entre las líneas (método del
-     * mayor resto: la suma de descuentos por línea da exactamente el
-     * descuento total, sin perder ni ganar centavos) y calcula base
-     * imponible / ITBIS por línea usando la tasa propia de cada producto,
-     * bajo la convención de que {@code importe} ya incluye ITBIS. Escribe
-     * {@code baseImponible}/{@code itbisLinea} en cada DTO recibido.
-     * <p>
+     * Orden explícito de descuentos (ISSUE-008):
+     * <ol>
+     *   <li>Descuento de línea + oferta — ya aplicado en {@code importe}
+     *       (ver {@link #calcularLineaDetalle}).</li>
+     *   <li>Descuento global, prorrateado entre TODAS las líneas.</li>
+     *   <li>Cupón, calculado y prorrateado ÚNICAMENTE entre las líneas cuya
+     *       categoría está habilitada por el cupón — una línea de categoría
+     *       no elegible nunca recibe descuento de cupón, aunque exista algún
+     *       producto elegible en el resto del carrito.</li>
+     * </ol>
+     * Ningún descuento puede dejar una línea negativa (se clampea a cero).
+     * Base imponible e ITBIS se calculan por línea con la tasa propia de
+     * cada producto, sobre el importe neto tras los tres descuentos:
      * {@code base_i + itbis_i == importeNeto_i} siempre, por construcción
      * (itbis es el resto, nunca se redondea de forma independiente), así que
      * {@code subtotal + itbis == total} reconcilia exacto al centavo.
+     * <p>
+     * {@code descuentoGlobalAplicado}/{@code descuentoCuponAplicado} son los
+     * montos REALMENTE aplicados (tras limitar al importe disponible), no
+     * los solicitados — su suma nunca supera el importe del carrito.
      */
     private TotalesVenta calcularTotalesConItbisPorLinea(
-            List<DetalleRecalculadoDTO> detalles, BigDecimal descuentoGlobal, BigDecimal descuentoCupon) {
+            List<DetalleRecalculadoDTO> detalles, BigDecimal descuentoGlobal,
+            String codigoCupon, ResolutorCupon resolutorCupon) {
 
-        BigDecimal importeLineasTotal = detalles.stream()
-                .map(DetalleRecalculadoDTO::getImporte)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        int n = detalles.size();
+        List<BigDecimal> importes = detalles.stream().map(DetalleRecalculadoDTO::getImporte).toList();
+        BigDecimal importeLineasTotal = importes.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal descuentoSolicitado = valor(descuentoGlobal).add(valor(descuentoCupon));
-        BigDecimal descuentoProrrateable = descuentoSolicitado.min(importeLineasTotal).max(BigDecimal.ZERO);
+        // ── 1. Descuento global, prorrateado entre TODAS las líneas ──────
+        BigDecimal descuentoGlobalAplicado = valor(descuentoGlobal).max(BigDecimal.ZERO).min(importeLineasTotal);
+        BigDecimal[] descuentoGlobalPorLinea =
+                prorratearPorMayorResto(importes, importeLineasTotal, descuentoGlobalAplicado);
 
-        BigDecimal[] descuentosLinea = prorratearPorMayorResto(detalles, importeLineasTotal, descuentoProrrateable);
+        BigDecimal[] importeTrasGlobal = new BigDecimal[n];
+        for (int i = 0; i < n; i++) {
+            importeTrasGlobal[i] = importes.get(i).subtract(descuentoGlobalPorLinea[i]).max(BigDecimal.ZERO);
+        }
 
+        // ── 2. Cupón, resuelto y prorrateado solo entre líneas elegibles ──
+        BigDecimal descuentoCuponAplicado = BigDecimal.ZERO;
+        BigDecimal[] descuentoCuponPorLinea = new BigDecimal[n];
+        Arrays.fill(descuentoCuponPorLinea, BigDecimal.ZERO);
+
+        if (codigoCupon != null && !codigoCupon.isBlank()) {
+            List<LineaParaCuponDTO> lineasParaCupon = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                lineasParaCupon.add(new LineaParaCuponDTO(detalles.get(i).getIdCategoria(), importeTrasGlobal[i]));
+            }
+            CuponAplicadoDTO cupon = resolutorCupon.resolver(codigoCupon, lineasParaCupon);
+            descuentoCuponAplicado = cupon.getMontoDescontado();
+
+            List<Integer> indicesElegibles = cupon.getIndicesLineasElegibles();
+            BigDecimal baseElegible = indicesElegibles.stream()
+                    .map(i -> importeTrasGlobal[i]).reduce(BigDecimal.ZERO, BigDecimal::add);
+            List<BigDecimal> importesElegibles = indicesElegibles.stream().map(i -> importeTrasGlobal[i]).toList();
+            BigDecimal[] descuentosElegibles =
+                    prorratearPorMayorResto(importesElegibles, baseElegible, descuentoCuponAplicado);
+            for (int k = 0; k < indicesElegibles.size(); k++) {
+                descuentoCuponPorLinea[indicesElegibles.get(k)] = descuentosElegibles[k];
+            }
+        }
+
+        // ── 3. Importe neto final, base e ITBIS por línea ─────────────────
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal itbis = BigDecimal.ZERO;
-        for (int i = 0; i < detalles.size(); i++) {
+        for (int i = 0; i < n; i++) {
             DetalleRecalculadoDTO d = detalles.get(i);
-            BigDecimal importeNeto = d.getImporte().subtract(descuentosLinea[i]).max(BigDecimal.ZERO);
+            BigDecimal descuentoProrrateadoLinea = descuentoGlobalPorLinea[i].add(descuentoCuponPorLinea[i]);
+            BigDecimal importeNeto = importeTrasGlobal[i].subtract(descuentoCuponPorLinea[i]).max(BigDecimal.ZERO);
+
             BigDecimal tasa = valor(d.getTasaItbis());
             BigDecimal factor = BigDecimal.ONE.add(tasa.divide(CIEN, 10, RoundingMode.HALF_UP));
             BigDecimal base = importeNeto.divide(factor, 2, RoundingMode.HALF_UP);
             BigDecimal itbisLinea = importeNeto.subtract(base);
 
+            d.setDescuentoProrrateado(descuentoProrrateadoLinea);
             d.setBaseImponible(base);
             d.setItbisLinea(itbisLinea);
 
@@ -656,42 +697,44 @@ public class VentaService {
             itbis = itbis.add(itbisLinea);
         }
 
-        return new TotalesVenta(subtotal, itbis, subtotal.add(itbis));
+        return new TotalesVenta(subtotal, itbis, subtotal.add(itbis), descuentoGlobalAplicado, descuentoCuponAplicado);
     }
 
     /**
-     * Reparte {@code descuentoProrrateable} entre las líneas, proporcional al
-     * {@code importe} de cada una, usando el método del mayor resto: cada
-     * línea recibe el piso de su parte exacta y los centavos que sobran
-     * (siempre menos que el número de líneas) se entregan de a uno a las
-     * líneas con mayor resto fraccionario. Así la suma de los descuentos por
-     * línea es exactamente {@code descuentoProrrateable}.
+     * Reparte {@code montoAProrratear} entre {@code importes}, proporcional
+     * al valor de cada uno, usando el método del mayor resto: cada línea
+     * recibe el piso de su parte exacta y los centavos que sobran (siempre
+     * menos que el número de líneas) se entregan de a uno a las líneas con
+     * mayor resto fraccionario. Así la suma de los montos repartidos es
+     * exactamente {@code montoAProrratear} — nunca se pierde ni se gana un
+     * centavo, y ninguna línea recibe más de lo que su propio importe puede
+     * absorber cuando {@code montoAProrratear <= importeTotal}.
      */
     private BigDecimal[] prorratearPorMayorResto(
-            List<DetalleRecalculadoDTO> detalles, BigDecimal importeLineasTotal, BigDecimal descuentoProrrateable) {
+            List<BigDecimal> importes, BigDecimal importeTotal, BigDecimal montoAProrratear) {
 
-        int n = detalles.size();
-        BigDecimal[] descuentosLinea = new BigDecimal[n];
+        int n = importes.size();
+        BigDecimal[] montosPorLinea = new BigDecimal[n];
 
-        if (importeLineasTotal.compareTo(BigDecimal.ZERO) == 0 || descuentoProrrateable.compareTo(BigDecimal.ZERO) == 0) {
-            Arrays.fill(descuentosLinea, BigDecimal.ZERO);
-            return descuentosLinea;
+        if (n == 0 || importeTotal.compareTo(BigDecimal.ZERO) == 0 || montoAProrratear.compareTo(BigDecimal.ZERO) == 0) {
+            Arrays.fill(montosPorLinea, BigDecimal.ZERO);
+            return montosPorLinea;
         }
 
         BigDecimal[] exactas = new BigDecimal[n];
         BigDecimal[] restos = new BigDecimal[n];
         BigDecimal sumaPisos = BigDecimal.ZERO;
         for (int i = 0; i < n; i++) {
-            BigDecimal exacta = descuentoProrrateable.multiply(detalles.get(i).getImporte())
-                    .divide(importeLineasTotal, 10, RoundingMode.DOWN);
+            BigDecimal exacta = montoAProrratear.multiply(importes.get(i))
+                    .divide(importeTotal, 10, RoundingMode.DOWN);
             BigDecimal piso = exacta.setScale(2, RoundingMode.DOWN);
             exactas[i] = exacta;
-            descuentosLinea[i] = piso;
+            montosPorLinea[i] = piso;
             restos[i] = exacta.subtract(piso);
             sumaPisos = sumaPisos.add(piso);
         }
 
-        int centavosRestantes = descuentoProrrateable.subtract(sumaPisos)
+        int centavosRestantes = montoAProrratear.subtract(sumaPisos)
                 .movePointRight(2).setScale(0, RoundingMode.HALF_UP).intValueExact();
 
         List<Integer> orden = IntStream.range(0, n).boxed()
@@ -700,10 +743,10 @@ public class VentaService {
 
         for (int i = 0; i < centavosRestantes && i < orden.size(); i++) {
             int idx = orden.get(i);
-            descuentosLinea[idx] = descuentosLinea[idx].add(new BigDecimal("0.01"));
+            montosPorLinea[idx] = montosPorLinea[idx].add(new BigDecimal("0.01"));
         }
 
-        return descuentosLinea;
+        return montosPorLinea;
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -850,6 +893,7 @@ public class VentaService {
             det.setDescuentoOferta(d.getDescuentoOferta());
             det.setOfertaAplicada(d.getOfertaAplicada());
             det.setImporte(d.getImporte());
+            det.setDescuentoProrrateado(d.getDescuentoProrrateado());
             det.setBaseImponible(d.getBaseImponible());
             det.setItbisLinea(d.getItbisLinea());
             return det;

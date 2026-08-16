@@ -1,6 +1,5 @@
 package com.maxli.cupon.controller;
 
-import com.maxli.cupon.dto.CuponAplicadoDTO;
 import com.maxli.cupon.dto.CuponRequestDTO;
 import com.maxli.cupon.dto.CuponResponseDTO;
 import com.maxli.cupon.service.CuponService;
@@ -14,9 +13,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.math.BigDecimal;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/cupones")
@@ -67,13 +63,10 @@ public class CuponController {
         return ResponseEntity.noContent().build();
     }
 
-    // ── Endpoint para el POS (llamado internamente al facturar) ─────────
-
-    @PostMapping("/aplicar")
-    public ResponseEntity<CuponAplicadoDTO> aplicar(
-            @RequestParam String codigoSecreto,
-            @RequestParam(required = false, defaultValue = "") List<Long> idsCategorias,
-            @RequestParam BigDecimal subtotal) {
-        return ResponseEntity.ok(cuponService.validarYAplicarCupon(codigoSecreto, idsCategorias, subtotal));
-    }
+    // El cupón se valida y aplica siempre dentro del flujo de venta
+    // (VentaService, vía /api/ventas/recalcular y /api/ventas), nunca desde
+    // un endpoint suelto: aplicarlo fuera de una venta consumiría su límite
+    // de usos sin que exista una venta real detrás (mismo riesgo que
+    // consumir un NCF fuera de una venta). No exponer un endpoint genérico
+    // "/aplicar" aquí.
 }

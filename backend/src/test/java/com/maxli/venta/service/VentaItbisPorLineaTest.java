@@ -43,6 +43,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -315,6 +316,162 @@ class VentaItbisPorLineaTest extends PostgresIntegrationTest {
         assertThat(sumaItbis).isEqualByComparingTo(venta.getItbis());
     }
 
+    // ── 8. Cupón restringido por categoría ──────────────────────────────
+
+    @Test
+    @DisplayName("un cupón limitado a una categoría solo descuenta sus líneas elegibles, nunca las de otra categoría")
+    void cuponLimitadoACategoriaSoloDescuentaLineasElegibles() {
+        Long idCategoriaB = crearCategoria();
+        Long idElegible = crearProductoConStockYCategoria(
+                new BigDecimal("118.00"), new BigDecimal("18.00"), 10, idCategoria);
+        Long idNoElegible = crearProductoConStockYCategoria(
+                new BigDecimal("118.00"), new BigDecimal("18.00"), 10, idCategoriaB);
+
+        Cupon cupon = crearCupon("SOLOCATA", TipoDescuento.MONTO_FIJO, new BigDecimal("20.00"), 1,
+                false, List.of(idCategoria));
+
+        VentaResponseDTO venta = ventaService.procesarVenta(
+                construirRequest(
+                        List.of(detalle(idElegible, 1), detalle(idNoElegible, 1)),
+                        BigDecimal.ZERO, cupon.getCodigoSecreto()),
+                username);
+
+        VentaResponseDTO.DetalleVentaResponseDTO lineaElegible = lineaDe(venta, idElegible);
+        VentaResponseDTO.DetalleVentaResponseDTO lineaNoElegible = lineaDe(venta, idNoElegible);
+
+        assertThat(lineaElegible.getDescuentoProrrateado())
+                .as("todo el descuento del cupón cae sobre la línea de la categoría habilitada")
+                .isEqualByComparingTo("20.00");
+        assertThat(lineaNoElegible.getDescuentoProrrateado())
+                .as("la línea de la categoría no habilitada no recibe descuento de cupón")
+                .isEqualByComparingTo("0.00");
+        assertThat(lineaNoElegible.getBaseImponible()).isEqualByComparingTo("100.00");
+        assertThat(lineaNoElegible.getItbisLinea()).isEqualByComparingTo("18.00");
+
+        assertThat(venta.getDescuentoCupon()).isEqualByComparingTo("20.00");
+        assertThat(venta.getTotal()).isEqualByComparingTo("216.00");
+        assertThat(venta.getSubtotal().add(venta.getItbis())).isEqualByComparingTo(venta.getTotal());
+    }
+
+    @Test
+    @DisplayName("cupón por categoría: preview y venta coinciden exacto, y el preview no consume el uso")
+    void cuponPorCategoriaPreviewYVentaCoincidenSinConsumirUso() {
+        Long idCategoriaB = crearCategoria();
+        Long idElegible = crearProductoConStockYCategoria(
+                new BigDecimal("118.00"), new BigDecimal("18.00"), 10, idCategoria);
+        Long idNoElegible = crearProductoConStockYCategoria(
+                new BigDecimal("50.00"), BigDecimal.ZERO, 10, idCategoriaB);
+
+        Cupon cupon = crearCupon("CATPREV", TipoDescuento.PORCENTAJE, new BigDecimal("15.00"), 1,
+                false, List.of(idCategoria));
+
+        List<DetalleVentaRequestDTO> lineas = List.of(detalle(idElegible, 1), detalle(idNoElegible, 1));
+
+        RecalcularFacturaResponseDTO preview = null;
+        for (int i = 0; i < 3; i++) {
+            preview = ventaService.recalcularFactura(
+                    construirRecalculo(lineas, BigDecimal.ZERO, cupon.getCodigoSecreto()));
+        }
+
+        assertThat(cuponRepository.findById(cupon.getIdCupon()).orElseThrow().getUsosActuales())
+                .as("el preview no debe consumir el límite de usos del cupón")
+                .isZero();
+
+        VentaResponseDTO venta = ventaService.procesarVenta(
+                construirRequest(lineas, BigDecimal.ZERO, cupon.getCodigoSecreto()), username);
+
+        assertThat(venta.getSubtotal()).isEqualByComparingTo(preview.getSubtotal());
+        assertThat(venta.getItbis()).isEqualByComparingTo(preview.getItbis());
+        assertThat(venta.getTotal()).isEqualByComparingTo(preview.getTotal());
+        assertThat(venta.getDescuentoCupon()).isEqualByComparingTo(preview.getDescuentoCupon());
+
+        assertThat(cuponRepository.findById(cupon.getIdCupon()).orElseThrow().getUsosActuales())
+                .as("la venta real sí consume el uso del cupón")
+                .isEqualTo(1);
+    }
+
+    // ── 9. Descuento global + cupón superior al carrito ─────────────────
+
+    @Test
+    @DisplayName("descuento global + cupón que juntos superan el carrito no lo dejan negativo, y se registra lo aplicado, no lo solicitado")
+    void descuentoGlobalMasCuponSuperiorAlCarritoRegistraLoAplicado() {
+        Long idProducto = crearProductoConStock(new BigDecimal("118.00"), new BigDecimal("18.00"), 10);
+        Cupon cupon = crearCupon("SOBRECARGA", TipoDescuento.MONTO_FIJO, new BigDecimal("100.00"), 1);
+
+        VentaResponseDTO venta = ventaService.procesarVenta(
+                construirRequest(
+                        List.of(detalle(idProducto, 1)),
+                        new BigDecimal("100.00"), cupon.getCodigoSecreto()),
+                username);
+
+        assertThat(venta.getTotal())
+                .as("el total nunca puede quedar negativo")
+                .isEqualByComparingTo("0.00");
+        assertThat(venta.getSubtotal()).isEqualByComparingTo("0.00");
+        assertThat(venta.getItbis()).isEqualByComparingTo("0.00");
+
+        // Se solicitaron 100.00 de global + 100.00 de cupón (200.00) sobre un
+        // carrito de 118.00: lo realmente aplicado no puede superar 118.00,
+        // y descuentoCupon debe reflejar lo aplicado (18.00), no lo pedido (100.00).
+        assertThat(venta.getDescuentoCupon())
+                .as("se registra el descuento de cupón realmente aplicado, no el solicitado")
+                .isEqualByComparingTo("18.00");
+        assertThat(venta.getDescuentoTotal())
+                .as("la suma de descuentos aplicados no supera el importe del carrito")
+                .isEqualByComparingTo("118.00");
+    }
+
+    // ── 10. Reconciliación por línea con global + cupón por categoría ───
+
+    @Test
+    @DisplayName("con descuento global y cupón por categoría, cada línea reconcilia y la línea ajena a la categoría queda igual que sin cupón")
+    void reconciliacionPorLineaConGlobalYCuponPorCategoria() {
+        Long idCategoriaB = crearCategoria();
+        Long idA1 = crearProductoConStockYCategoria(new BigDecimal("118.00"), new BigDecimal("18.00"), 10, idCategoria);
+        Long idA2 = crearProductoConStockYCategoria(new BigDecimal("50.00"), BigDecimal.ZERO, 10, idCategoria);
+        Long idB = crearProductoConStockYCategoria(new BigDecimal("118.00"), new BigDecimal("18.00"), 10, idCategoriaB);
+
+        List<DetalleVentaRequestDTO> lineas =
+                List.of(detalle(idA1, 1), detalle(idA2, 1), detalle(idB, 1));
+        BigDecimal descuentoGlobal = new BigDecimal("30.00");
+
+        Cupon cupon = crearCupon("RECONCAT", TipoDescuento.PORCENTAJE, new BigDecimal("10.00"), 2,
+                false, List.of(idCategoria));
+
+        VentaResponseDTO conCupon = ventaService.procesarVenta(
+                construirRequest(lineas, descuentoGlobal, cupon.getCodigoSecreto()), username);
+
+        // Reconciliación exacta: suma de líneas == totales de la venta.
+        BigDecimal sumaBase = conCupon.getDetalles().stream()
+                .map(VentaResponseDTO.DetalleVentaResponseDTO::getBaseImponible)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sumaItbis = conCupon.getDetalles().stream()
+                .map(VentaResponseDTO.DetalleVentaResponseDTO::getItbisLinea)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(sumaBase).isEqualByComparingTo(conCupon.getSubtotal());
+        assertThat(sumaItbis).isEqualByComparingTo(conCupon.getItbis());
+        assertThat(conCupon.getSubtotal().add(conCupon.getItbis())).isEqualByComparingTo(conCupon.getTotal());
+
+        // Misma venta pero SIN cupón (mismo descuento global, mismos productos
+        // con stock suficiente para ambas ventas): la línea de la categoría B
+        // debe quedar idéntica en ambos casos — el cupón nunca la tocó.
+        VentaResponseDTO sinCupon = ventaService.procesarVenta(
+                construirRequest(lineas, descuentoGlobal, null), username);
+
+        VentaResponseDTO.DetalleVentaResponseDTO lineaB_conCupon = lineaDe(conCupon, idB);
+        VentaResponseDTO.DetalleVentaResponseDTO lineaB_sinCupon = lineaDe(sinCupon, idB);
+
+        assertThat(lineaB_conCupon.getDescuentoProrrateado())
+                .isEqualByComparingTo(lineaB_sinCupon.getDescuentoProrrateado());
+        assertThat(lineaB_conCupon.getBaseImponible())
+                .isEqualByComparingTo(lineaB_sinCupon.getBaseImponible());
+        assertThat(lineaB_conCupon.getItbisLinea())
+                .isEqualByComparingTo(lineaB_sinCupon.getItbisLinea());
+
+        // El cupón sí bajó el total de la venta que lo usó.
+        assertThat(conCupon.getTotal()).isLessThan(sinCupon.getTotal());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private void assertSinEfectosSecundarios(Long idProducto, int stockEsperado) {
@@ -339,6 +496,11 @@ class VentaItbisPorLineaTest extends PostgresIntegrationTest {
     }
 
     private Long crearProductoConStock(BigDecimal precioVenta, BigDecimal tasaItbis, int stock) {
+        return crearProductoConStockYCategoria(precioVenta, tasaItbis, stock, idCategoria);
+    }
+
+    private Long crearProductoConStockYCategoria(
+            BigDecimal precioVenta, BigDecimal tasaItbis, int stock, Long idCategoriaProducto) {
         return transactionTemplate.execute(status -> {
             Producto producto = new Producto();
             producto.setSku("SKU-ITBIS-" + System.nanoTime());
@@ -347,7 +509,7 @@ class VentaItbisPorLineaTest extends PostgresIntegrationTest {
             producto.setCosto(new BigDecimal("10.00"));
             producto.setTasaItbis(tasaItbis);
             producto.setEstado("ACTIVO");
-            producto.setCategoria(categoriaRepository.findById(idCategoria).orElseThrow());
+            producto.setCategoria(categoriaRepository.findById(idCategoriaProducto).orElseThrow());
             producto.setMarca(marcaRepository.findById(idMarca).orElseThrow());
             Producto guardado = productoRepository.save(producto);
 
@@ -362,20 +524,44 @@ class VentaItbisPorLineaTest extends PostgresIntegrationTest {
         });
     }
 
+    private Long crearCategoria() {
+        return transactionTemplate.execute(status -> {
+            Categoria categoria = new Categoria();
+            categoria.setNombre("Categoria ITBIS B " + System.nanoTime());
+            categoria.setEstado("ACTIVO");
+            return categoriaRepository.save(categoria).getIdCategoria();
+        });
+    }
+
     private Cupon crearCupon(String codigoSecreto, TipoDescuento tipo, BigDecimal valor, int limiteUsos) {
+        return crearCupon(codigoSecreto, tipo, valor, limiteUsos, true, List.of());
+    }
+
+    private Cupon crearCupon(String codigoSecreto, TipoDescuento tipo, BigDecimal valor, int limiteUsos,
+                              boolean aplicaTodasCategorias, List<Long> idsCategoriasElegibles) {
         return transactionTemplate.execute(status -> {
             Cupon cupon = new Cupon();
             cupon.setCodigoInterno("CUPON-ITBIS-" + System.nanoTime());
             cupon.setCodigoSecreto(codigoSecreto);
             cupon.setTipoDescuento(tipo);
             cupon.setValorDescuento(valor);
-            cupon.setAplicaTodasCategorias(true);
+            cupon.setAplicaTodasCategorias(aplicaTodasCategorias);
             cupon.setMontoMinimoCompra(BigDecimal.ZERO);
             cupon.setFechaInicio(LocalDate.now());
             cupon.setLimiteUsos(limiteUsos);
             cupon.setEstado("ACTIVO");
+            if (!aplicaTodasCategorias) {
+                cupon.setCategorias(new HashSet<>(categoriaRepository.findAllById(idsCategoriasElegibles)));
+            }
             return cuponRepository.save(cupon);
         });
+    }
+
+    private VentaResponseDTO.DetalleVentaResponseDTO lineaDe(VentaResponseDTO venta, Long idProducto) {
+        return venta.getDetalles().stream()
+                .filter(d -> d.getIdProducto().equals(idProducto))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No se encontró línea para producto " + idProducto));
     }
 
     private DetalleVentaRequestDTO detalle(Long idProducto, int cantidad) {
