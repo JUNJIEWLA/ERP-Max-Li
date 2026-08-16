@@ -1,5 +1,7 @@
 package com.maxli.exception;
 
+import jakarta.persistence.NonUniqueResultException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -27,6 +29,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusiness(BusinessException ex) {
         return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+    }
+
+    @ExceptionHandler(NonUniqueResultException.class)
+    public ResponseEntity<Map<String, Object>> handleNonUnique(NonUniqueResultException ex) {
+        return buildError(HttpStatus.CONFLICT,
+                "La consulta devolvió más de un resultado para una configuración que debe ser única.");
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        return buildError(HttpStatus.UNPROCESSABLE_ENTITY,
+                "La solicitud viola una regla de integridad de datos.");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

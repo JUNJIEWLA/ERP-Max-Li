@@ -41,12 +41,16 @@ public class NcfController {
         return ResponseEntity.ok(ncfService.actualizarResolucion(id, requestDTO));
     }
 
-    // Este endpoint puede ser usado internamente por el sistema (cajeros) al facturar, 
-    // pero como prueba podemos exponerlo o mantenerlo restringido. 
-    // Asumiremos que es llamado por el módulo de facturación, no directamente por el frontend.
-    @PostMapping("/generar/{tipoNcf}")
-    public ResponseEntity<NcfGeneradoDTO> generarSiguienteNcf(@PathVariable String tipoNcf) {
-        return ResponseEntity.ok(ncfService.generarSiguienteNcf(tipoNcf));
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{id}/activar")
+    public ResponseEntity<ResolucionNcfResponseDTO> activarResolucion(@PathVariable Long id) {
+        return ResponseEntity.ok(ncfService.activarResolucion(id));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{id}/desactivar")
+    public ResponseEntity<ResolucionNcfResponseDTO> desactivarResolucion(@PathVariable Long id) {
+        return ResponseEntity.ok(ncfService.desactivarResolucion(id));
     }
 
     /** Previsualiza el próximo NCF sin consumirlo. Usado por el POS para mostrar en el header. */
@@ -55,4 +59,3 @@ public class NcfController {
         return ResponseEntity.ok(ncfService.previsualizarSiguienteNcf(tipoNcf));
     }
 }
-

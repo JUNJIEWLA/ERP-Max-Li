@@ -9,14 +9,15 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface ResolucionNcfRepository extends JpaRepository<ResolucionNcf, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT r FROM ResolucionNcf r WHERE r.tipoNcf = :tipoNcf AND r.estado = 'ACTIVO'")
-    Optional<ResolucionNcf> findActivaByTipoParaActualizacion(@Param("tipoNcf") String tipoNcf);
+    @Query("SELECT r FROM ResolucionNcf r WHERE r.tipoNcf = :tipoNcf AND r.estado = 'ACTIVO' ORDER BY r.idResolucion")
+    List<ResolucionNcf> findActivasByTipoParaActualizacion(@Param("tipoNcf") String tipoNcf);
 
     List<ResolucionNcf> findByTipoNcf(String tipoNcf);
+
+    boolean existsByTipoNcfAndEstado(String tipoNcf, String estado);
 }
