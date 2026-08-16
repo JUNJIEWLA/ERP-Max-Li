@@ -15,6 +15,8 @@ import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.existencia.service.ExistenciaLockService;
+import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
 import com.maxli.almacen.entity.Almacen;
 import com.maxli.almacen.repository.AlmacenRepository;
 import com.maxli.producto.entity.AlertaCosto;
@@ -33,6 +35,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -50,6 +53,7 @@ public class NotaRecepcionService {
     private final OrdenCompraRepository ordenCompraRepository;
     private final DetalleOrdenCompraRepository detalleOrdenCompraRepository;
     private final ExistenciaRepository existenciaRepository;
+    private final ExistenciaLockService existenciaLockService;
     private final AlmacenRepository almacenRepository;
     private final ProductoRepository productoRepository;
     private final HistorialCostoRepository historialCostoRepository;
@@ -118,6 +122,18 @@ public class NotaRecepcionService {
 
         OrdenCompra orden = nota.getOrdenCompra();
 
+        // Bloquear todas las existencias que esta recepción incrementará antes
+        // de leerlas. Las ausentes se crean con ON CONFLICT y luego se bloquean.
+        List<ClaveExistencia> clavesExistencia = nota.getDetalles().stream()
+                .filter(detalle -> detalle.getCantidadRecibida() > 0)
+                .peek(detalle -> validarAlmacenDestino(detalle.getAlmacen()))
+                .map(detalle -> new ClaveExistencia(
+                        detalle.getDetalleOrdenCompra().getProducto().getIdProducto(),
+                        detalle.getAlmacen().getIdAlmacen()))
+                .toList();
+        Map<ClaveExistencia, Existencia> existenciasBloqueadas =
+                existenciaLockService.bloquearOCrearEnOrden(clavesExistencia);
+
         for (DetalleNotaRecepcion detalle : nota.getDetalles()) {
             int cantidadRecibida = detalle.getCantidadRecibida();
 
@@ -128,33 +144,12 @@ public class NotaRecepcionService {
                 Long idProducto = producto.getIdProducto();
 
                 Almacen almacenDestino = detalle.getAlmacen();
-                if (almacenDestino == null) {
-                    throw new BusinessException("El almacén de destino no está definido en el detalle de la nota de recepción.");
-                }
-                if (!"ACTIVO".equals(almacenDestino.getEstado())) {
-                    throw new BusinessException("El almacén de destino '" + almacenDestino.getNombre() + "' está inactivo.");
-                }
 
-                // 1. Incrementar stock en Existencia (específica de producto y almacén) con protección de concurrencia
-                Existencia existencia;
-                try {
-                    existencia = existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, almacenDestino.getIdAlmacen())
-                            .orElseGet(() -> {
-                                Existencia nuevaExistencia = new Existencia();
-                                nuevaExistencia.setProducto(producto);
-                                nuevaExistencia.setAlmacen(almacenDestino);
-                                nuevaExistencia.setCantidadActual(0);
-                                nuevaExistencia.setCantidadMinima(0);
-                                return existenciaRepository.saveAndFlush(nuevaExistencia);
-                            });
-                } catch (org.springframework.dao.DataIntegrityViolationException e) {
-                    // Si se lanzó por clave duplicada concurrente, lo buscamos nuevamente
-                    existencia = existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, almacenDestino.getIdAlmacen())
-                            .orElseThrow(() -> e);
-                }
+                // 1. Incrementar una existencia ya bloqueada para este par exacto.
+                Existencia existencia = existenciasBloqueadas.get(
+                        new ClaveExistencia(idProducto, almacenDestino.getIdAlmacen()));
 
                 existencia.setCantidadActual(existencia.getCantidadActual() + cantidadRecibida);
-                existenciaRepository.save(existencia);
 
                 // 2. Acumular en DetalleOrdenCompra
                 detalleOrden.setCantidadRecibida(detalleOrden.getCantidadRecibida() + cantidadRecibida);
@@ -251,6 +246,15 @@ public class NotaRecepcionService {
         detalle.setNotas(dto.getNotas());
         detalle.setAlmacen(almacen);
         return detalle;
+    }
+
+    private void validarAlmacenDestino(Almacen almacenDestino) {
+        if (almacenDestino == null) {
+            throw new BusinessException("El almacén de destino no está definido en el detalle de la nota de recepción.");
+        }
+        if (!"ACTIVO".equals(almacenDestino.getEstado())) {
+            throw new BusinessException("El almacén de destino '" + almacenDestino.getNombre() + "' está inactivo.");
+        }
     }
 
     /**

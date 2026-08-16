@@ -19,8 +19,10 @@ public class ExistenciaRequestDTO {
     @Min(value = 0, message = "La cantidad actual no puede ser negativa")
     private Integer cantidadActual;
 
+    /** Variación atómica usada al ajustar una existencia ya creada. */
+    private Integer deltaCantidadActual;
+
     @NotNull(message = "La cantidad mínima es obligatoria")
     @Min(value = 0, message = "La cantidad mínima no puede ser negativa")
     private Integer cantidadMinima;
 }
-

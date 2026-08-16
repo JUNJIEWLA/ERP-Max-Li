@@ -6,6 +6,17 @@ import com.maxli.caja.entity.Caja;
 import com.maxli.caja.entity.TurnoCaja;
 import com.maxli.caja.repository.CajaRepository;
 import com.maxli.caja.repository.TurnoCajaRepository;
+import com.maxli.compra.entity.DetalleNotaRecepcion;
+import com.maxli.compra.entity.DetalleOrdenCompra;
+import com.maxli.compra.entity.NotaRecepcion;
+import com.maxli.compra.entity.OrdenCompra;
+import com.maxli.compra.entity.Proveedor;
+import com.maxli.compra.repository.DetalleNotaRecepcionRepository;
+import com.maxli.compra.repository.DetalleOrdenCompraRepository;
+import com.maxli.compra.repository.NotaRecepcionRepository;
+import com.maxli.compra.repository.OrdenCompraRepository;
+import com.maxli.compra.repository.ProveedorRepository;
+import com.maxli.compra.service.NotaRecepcionService;
 import com.maxli.exception.BusinessException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
@@ -78,6 +89,12 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     @Autowired private CajaRepository cajaRepository;
     @Autowired private TurnoCajaRepository turnoCajaRepository;
     @Autowired private ResolucionNcfRepository resolucionNcfRepository;
+    @Autowired private NotaRecepcionService notaRecepcionService;
+    @Autowired private NotaRecepcionRepository notaRecepcionRepository;
+    @Autowired private DetalleNotaRecepcionRepository detalleNotaRecepcionRepository;
+    @Autowired private OrdenCompraRepository ordenCompraRepository;
+    @Autowired private DetalleOrdenCompraRepository detalleOrdenCompraRepository;
+    @Autowired private ProveedorRepository proveedorRepository;
     @Autowired private TransactionTemplate transactionTemplate;
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -85,6 +102,7 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     private Long idTurnoCaja;
     private Long idResolucionB01;
     private Long idResolucionB02;
+    private Long idNotaRecepcion;
     private String username;
 
     /**
@@ -159,11 +177,54 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             // distintos, que es justamente lo que destapó el hallazgo.
             idResolucionB01 = crearResolucion("B01", "Crédito Fiscal").getIdResolucion();
             idResolucionB02 = crearResolucion("B02", "Consumo").getIdResolucion();
+
+            Proveedor proveedor = new Proveedor();
+            proveedor.setNombreEmpresa("Proveedor IT " + System.nanoTime());
+            proveedor.setRnc("IT-" + System.nanoTime());
+            proveedor.setEstado("ACTIVO");
+            proveedor = proveedorRepository.save(proveedor);
+
+            OrdenCompra orden = new OrdenCompra();
+            orden.setProveedor(proveedor);
+            orden.setEstado("ENVIADA");
+            orden.setTotal(new BigDecimal("250.00"));
+            orden = ordenCompraRepository.save(orden);
+
+            DetalleOrdenCompra detalleOrden = new DetalleOrdenCompra();
+            detalleOrden.setOrdenCompra(orden);
+            detalleOrden.setProducto(producto);
+            detalleOrden.setAlmacen(almacen);
+            detalleOrden.setCantidad(5);
+            detalleOrden.setCantidadRecibida(0);
+            detalleOrden.setPrecioUnitario(new BigDecimal("50.00"));
+            detalleOrden.setSubtotal(new BigDecimal("250.00"));
+            detalleOrden = detalleOrdenCompraRepository.save(detalleOrden);
+
+            NotaRecepcion nota = new NotaRecepcion();
+            nota.setOrdenCompra(orden);
+            nota.setEstado("PENDIENTE");
+            nota = notaRecepcionRepository.save(nota);
+
+            DetalleNotaRecepcion detalleNota = new DetalleNotaRecepcion();
+            detalleNota.setNotaRecepcion(nota);
+            detalleNota.setDetalleOrdenCompra(detalleOrden);
+            detalleNota.setAlmacen(almacen);
+            detalleNota.setCantidadRecibida(5);
+            detalleNota.setObservacion("CONFORME");
+            detalleNotaRecepcionRepository.save(detalleNota);
+            idNotaRecepcion = nota.getIdNotaRecepcion();
         });
     }
 
     @AfterEach
     void limpiarEscenario() {
+        jdbcTemplate.update("DELETE FROM alerta_costo");
+        jdbcTemplate.update("DELETE FROM historial_costo");
+        jdbcTemplate.update("DELETE FROM detalle_nota_recepcion");
+        jdbcTemplate.update("DELETE FROM nota_recepcion");
+        jdbcTemplate.update("DELETE FROM detalle_orden_compra");
+        jdbcTemplate.update("DELETE FROM orden_compra");
+        jdbcTemplate.update("DELETE FROM proveedor");
         jdbcTemplate.update("DELETE FROM ingreso_venta");
         jdbcTemplate.update("DELETE FROM detalle_venta");
         jdbcTemplate.update("DELETE FROM venta");
@@ -253,6 +314,29 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
         assertThat(turnoFinal.getTotalVentasEfectivo())
                 .as("el cuadre del turno contiene una sola venta")
                 .isEqualByComparingTo(ventaConfirmada.getTotal());
+    }
+
+    @Test
+    @DisplayName("venta y recepción simultáneas conservan ambos movimientos del mismo almacén")
+    void ventaYRecepcionSimultaneasNoPierdenActualizaciones() throws Exception {
+        CyclicBarrier salidaSimultanea = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<VentaResponseDTO> venta = pool.submit(ventaConcurrente(salidaSimultanea, "B01"));
+            Future<?> recepcion = pool.submit(() -> {
+                salidaSimultanea.await(20, TimeUnit.SECONDS);
+                return notaRecepcionService.confirmar(idNotaRecepcion);
+            });
+
+            venta.get(30, TimeUnit.SECONDS);
+            recepcion.get(30, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        Existencia existenciaFinal = existenciaRepository.findFirstByProducto_IdProducto(idProducto).orElseThrow();
+        assertThat(existenciaFinal.getCantidadActual()).isEqualTo(5);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

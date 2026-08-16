@@ -2,6 +2,7 @@ package com.maxli.existencia.service;
 
 import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.DuplicateResourceException;
+import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import java.util.List;
 import com.maxli.existencia.dto.ExistenciaRequestDTO;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExistenciaService {
 
     private final ExistenciaRepository existenciaRepository;
+    private final ExistenciaLockService existenciaLockService;
     private final ProductoRepository productoRepository;
     private final AlmacenService almacenService;
     private final ExistenciaMapper existenciaMapper;
@@ -62,25 +64,38 @@ public class ExistenciaService {
     public ExistenciaResponseDTO crear(ExistenciaRequestDTO dto) {
         Producto producto = obtenerProductoActivo(dto.getIdProducto());
         var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
-        validarExistenciaUnica(dto.getIdProducto(), dto.getIdAlmacen());
-        Existencia existencia = existenciaMapper.toEntity(dto, producto, almacen);
-        return existenciaMapper.toDto(existenciaRepository.save(existencia));
+        if (!existenciaLockService.crearManualSiAusente(dto.getIdProducto(), dto.getIdAlmacen(),
+                dto.getCantidadActual(), dto.getCantidadMinima())) {
+            throw new DuplicateResourceException(
+                    "Ya existe un registro de existencia para este producto en este almacén");
+        }
+        Existencia existencia = existenciaLockService.bloquear(dto.getIdProducto(), dto.getIdAlmacen())
+                .orElseThrow();
+        return existenciaMapper.toDto(existencia);
     }
 
     @Transactional
     public ExistenciaResponseDTO actualizar(Long id, ExistenciaRequestDTO dto) {
-        Existencia existencia = obtenerPorId(id);
-        existencia.setCantidadActual(dto.getCantidadActual());
-        existencia.setCantidadMinima(dto.getCantidadMinima());
-        if (dto.getIdAlmacen() != null) {
-            var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
-            existencia.setAlmacen(almacen);
+        if (dto.getDeltaCantidadActual() == null) {
+            throw new BusinessException("El ajuste de stock requiere deltaCantidadActual");
         }
+        Existencia existencia = obtenerPorIdBloqueada(id);
+        int nuevaCantidad = existencia.getCantidadActual() + dto.getDeltaCantidadActual();
+        if (nuevaCantidad < 0) {
+            throw new BusinessException("El ajuste deja el stock negativo");
+        }
+        existencia.setCantidadActual(nuevaCantidad);
+        existencia.setCantidadMinima(dto.getCantidadMinima());
         return existenciaMapper.toDto(existenciaRepository.save(existencia));
     }
 
     private Existencia obtenerPorId(Long id) {
         return existenciaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Existencia no encontrada con id: " + id));
+    }
+
+    private Existencia obtenerPorIdBloqueada(Long id) {
+        return existenciaLockService.bloquearPorId(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Existencia no encontrada con id: " + id));
     }
 
@@ -91,11 +106,4 @@ public class ExistenciaService {
                         "Producto no encontrado o inactivo con id: " + idProducto));
     }
 
-    private void validarExistenciaUnica(Long idProducto, Long idAlmacen) {
-        if (existenciaRepository.existsByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacen)) {
-            throw new DuplicateResourceException(
-                    "Ya existe un registro de existencia para este producto en este almacén");
-        }
-    }
 }
-
