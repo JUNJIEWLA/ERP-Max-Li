@@ -339,6 +339,39 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
         assertThat(existenciaFinal.getCantidadActual()).isEqualTo(5);
     }
 
+    @Test
+    @DisplayName("dos confirmaciones simultáneas de una recepción solo incrementan una vez")
+    void dobleConfirmacionConcurrenteDeRecepcionSoloSeAplicaUnaVez() throws Exception {
+        CyclicBarrier salidaSimultanea = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        List<? extends Future<?>> resultados;
+        try {
+            resultados = pool.invokeAll(List.of(
+                    () -> { salidaSimultanea.await(20, TimeUnit.SECONDS); return notaRecepcionService.confirmar(idNotaRecepcion); },
+                    () -> { salidaSimultanea.await(20, TimeUnit.SECONDS); return notaRecepcionService.confirmar(idNotaRecepcion); }));
+        } finally {
+            pool.shutdown();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
+        }
+
+        int exitosas = 0;
+        int fallidas = 0;
+        for (Future<?> resultado : resultados) {
+            try {
+                resultado.get();
+                exitosas++;
+            } catch (java.util.concurrent.ExecutionException error) {
+                assertThat(error.getCause()).isInstanceOf(BusinessException.class)
+                        .hasMessageContaining("PENDIENTE");
+                fallidas++;
+            }
+        }
+        assertThat(exitosas).isEqualTo(1);
+        assertThat(fallidas).isEqualTo(1);
+        assertThat(existenciaRepository.findFirstByProducto_IdProducto(idProducto).orElseThrow().getCantidadActual())
+                .isEqualTo(STOCK_INICIAL + 5);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private Callable<VentaResponseDTO> ventaConcurrente(CyclicBarrier barrera, String tipoNcf) {

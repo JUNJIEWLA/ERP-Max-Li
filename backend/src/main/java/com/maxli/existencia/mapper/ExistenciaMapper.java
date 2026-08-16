@@ -1,7 +1,7 @@
 package com.maxli.existencia.mapper;
 
 import com.maxli.almacen.entity.Almacen;
-import com.maxli.existencia.dto.ExistenciaRequestDTO;
+import com.maxli.existencia.dto.CrearExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.producto.entity.Producto;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ExistenciaMapper {
 
-    public Existencia toEntity(ExistenciaRequestDTO dto, Producto producto, Almacen almacen) {
+    public Existencia toEntity(CrearExistenciaRequestDTO dto, Producto producto, Almacen almacen) {
         Existencia existencia = new Existencia();
         existencia.setProducto(producto);
         existencia.setAlmacen(almacen);
@@ -36,4 +36,3 @@ public class ExistenciaMapper {
         return dto;
     }
 }
-

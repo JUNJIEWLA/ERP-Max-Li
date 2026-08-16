@@ -119,7 +119,7 @@ class NotaRecepcionServiceTest {
         existenciaB.setAlmacen(almacenB);
         existenciaB.setCantidadActual(12);
 
-        when(notaRecepcionRepository.findById(idNota)).thenReturn(Optional.of(nota));
+        when(notaRecepcionRepository.bloquearPorIdParaConfirmar(idNota)).thenReturn(Optional.of(nota));
         when(existenciaLockService.bloquearOCrearEnOrden(any()))
                 .thenReturn(Map.of(new ClaveExistencia(idProducto, idAlmacenB), existenciaB));
         when(detalleOrdenCompraRepository.findByOrdenCompra_IdOrdenCompra(100L)).thenReturn(List.of(detalleOrden));
@@ -190,7 +190,7 @@ class NotaRecepcionServiceTest {
         existenciaExistente.setAlmacen(almacen);
         existenciaExistente.setCantidadActual(10);
 
-        when(notaRecepcionRepository.findById(idNota)).thenReturn(Optional.of(nota));
+        when(notaRecepcionRepository.bloquearPorIdParaConfirmar(idNota)).thenReturn(Optional.of(nota));
         when(existenciaLockService.bloquearOCrearEnOrden(any()))
                 .thenReturn(Map.of(new ClaveExistencia(idProducto, idAlmacen), existenciaExistente));
         when(detalleOrdenCompraRepository.findByOrdenCompra_IdOrdenCompra(100L)).thenReturn(List.of(detalleOrden));

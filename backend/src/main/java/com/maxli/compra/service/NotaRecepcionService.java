@@ -113,7 +113,8 @@ public class NotaRecepcionService {
      */
     @Transactional
     public NotaRecepcionResponseDTO confirmar(Long id) {
-        NotaRecepcion nota = obtenerPorId(id);
+        NotaRecepcion nota = notaRecepcionRepository.bloquearPorIdParaConfirmar(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Nota de recepción no encontrada con id: " + id));
 
         if (!PENDIENTE.equals(nota.getEstado())) {
             throw new BusinessException("Solo se puede confirmar una nota en estado PENDIENTE. " +

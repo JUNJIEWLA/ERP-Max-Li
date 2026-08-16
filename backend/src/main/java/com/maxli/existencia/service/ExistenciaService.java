@@ -5,7 +5,8 @@ import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.BusinessException;
 import com.maxli.exception.ResourceNotFoundException;
 import java.util.List;
-import com.maxli.existencia.dto.ExistenciaRequestDTO;
+import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.dto.CrearExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.mapper.ExistenciaMapper;
@@ -61,7 +62,7 @@ public class ExistenciaService {
     }
 
     @Transactional
-    public ExistenciaResponseDTO crear(ExistenciaRequestDTO dto) {
+    public ExistenciaResponseDTO crear(CrearExistenciaRequestDTO dto) {
         Producto producto = obtenerProductoActivo(dto.getIdProducto());
         var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
         if (!existenciaLockService.crearManualSiAusente(dto.getIdProducto(), dto.getIdAlmacen(),
@@ -75,10 +76,7 @@ public class ExistenciaService {
     }
 
     @Transactional
-    public ExistenciaResponseDTO actualizar(Long id, ExistenciaRequestDTO dto) {
-        if (dto.getDeltaCantidadActual() == null) {
-            throw new BusinessException("El ajuste de stock requiere deltaCantidadActual");
-        }
+    public ExistenciaResponseDTO actualizar(Long id, AjusteExistenciaRequestDTO dto) {
         Existencia existencia = obtenerPorIdBloqueada(id);
         int nuevaCantidad = existencia.getCantidadActual() + dto.getDeltaCantidadActual();
         if (nuevaCantidad < 0) {

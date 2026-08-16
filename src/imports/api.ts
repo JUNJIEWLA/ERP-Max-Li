@@ -571,7 +571,7 @@ export const existenciasApi = {
   crear: (body: { idProducto: number; idAlmacen: number; cantidadActual: number; cantidadMinima: number }) =>
     post<Existencia>('/existencias', body),
 
-  actualizar: (id: number, body: { idProducto: number; idAlmacen: number; cantidadActual: number; deltaCantidadActual: number; cantidadMinima: number }) =>
+  actualizar: (id: number, body: { deltaCantidadActual: number; cantidadMinima: number }) =>
     put<Existencia>(`/existencias/${id}`, body),
 };
 

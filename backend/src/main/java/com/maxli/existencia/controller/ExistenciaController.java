@@ -1,6 +1,7 @@
 package com.maxli.existencia.controller;
 
-import com.maxli.existencia.dto.ExistenciaRequestDTO;
+import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.dto.CrearExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.service.ExistenciaService;
 import jakarta.validation.Valid;
@@ -58,13 +59,13 @@ public class ExistenciaController {
     }
 
     @PostMapping
-    public ResponseEntity<ExistenciaResponseDTO> crear(@Valid @RequestBody ExistenciaRequestDTO dto) {
+    public ResponseEntity<ExistenciaResponseDTO> crear(@Valid @RequestBody CrearExistenciaRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(existenciaService.crear(dto));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ExistenciaResponseDTO> actualizar(@PathVariable Long id,
-                                                            @Valid @RequestBody ExistenciaRequestDTO dto) {
+                                                            @Valid @RequestBody AjusteExistenciaRequestDTO dto) {
         return ResponseEntity.ok(existenciaService.actualizar(id, dto));
     }
 }

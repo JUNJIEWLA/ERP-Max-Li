@@ -63,11 +63,8 @@ function AjusteModal({ existencia, productoMap, onClose, onSaved }: AjusteModalP
     setError('');
     try {
       await existenciasApi.actualizar(existencia.idExistencia, {
-        idProducto: existencia.idProducto,
-        idAlmacen: existencia.idAlmacen,
         // El servidor suma/resta el delta tras bloquear la fila. Enviar un
         // saldo calculado aquí podría sobrescribir una venta concurrente.
-        cantidadActual: existencia.cantidadActual,
         deltaCantidadActual: tipo === 'sumar' ? cantidad : -cantidad,
         cantidadMinima: existencia.cantidadMinima,
       });

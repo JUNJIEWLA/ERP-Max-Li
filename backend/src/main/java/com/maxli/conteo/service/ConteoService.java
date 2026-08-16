@@ -193,7 +193,8 @@ public class ConteoService {
      */
     @Transactional
     public ConteoCabeceraResponseDTO aplicar(Long idConteo) {
-        ConteoCabecera cabecera = obtenerPorId(idConteo);
+        ConteoCabecera cabecera = cabeceraRepository.bloquearPorIdParaAplicar(idConteo)
+                .orElseThrow(() -> new ResourceNotFoundException("Conteo no encontrado con id: " + idConteo));
 
         if (!"REVISION".equals(cabecera.getEstado())) {
             throw new BusinessException(

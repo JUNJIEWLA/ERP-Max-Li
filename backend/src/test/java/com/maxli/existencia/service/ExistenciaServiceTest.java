@@ -4,7 +4,8 @@ import com.maxli.almacen.entity.Almacen;
 import com.maxli.almacen.service.AlmacenService;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
-import com.maxli.existencia.dto.ExistenciaRequestDTO;
+import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.dto.CrearExistenciaRequestDTO;
 import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.mapper.ExistenciaMapper;
@@ -41,7 +42,7 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_guarda_existencia_correctamente() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         Producto producto = productoActivo();
         Existencia saved = new Existencia();
         saved.setIdExistencia(1L);
@@ -67,7 +68,7 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_lanza_excepcion_si_producto_no_existe() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         when(productoRepository.findById(10L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> existenciaService.crear(request))
@@ -77,7 +78,7 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_lanza_excepcion_si_producto_esta_inactivo() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         Producto producto = productoActivo();
         producto.setEstado("INACTIVO");
 
@@ -90,7 +91,7 @@ class ExistenciaServiceTest {
 
     @Test
     void crear_lanza_excepcion_si_existencia_ya_registrada() {
-        ExistenciaRequestDTO request = request();
+        CrearExistenciaRequestDTO request = crearRequest();
         Producto producto = productoActivo();
 
         when(productoRepository.findById(10L)).thenReturn(Optional.of(producto));
@@ -118,8 +119,7 @@ class ExistenciaServiceTest {
         existencia.setCantidadActual(5);
         existencia.setCantidadMinima(10);
 
-        ExistenciaRequestDTO request = request();
-        request.setCantidadActual(20);
+        AjusteExistenciaRequestDTO request = ajusteRequest();
         request.setDeltaCantidadActual(15);
         request.setCantidadMinima(5);
 
@@ -137,12 +137,19 @@ class ExistenciaServiceTest {
         verify(existenciaRepository).save(existencia);
     }
 
-    private ExistenciaRequestDTO request() {
-        ExistenciaRequestDTO dto = new ExistenciaRequestDTO();
+    private CrearExistenciaRequestDTO crearRequest() {
+        CrearExistenciaRequestDTO dto = new CrearExistenciaRequestDTO();
         dto.setIdProducto(10L);
         dto.setIdAlmacen(1L);
         dto.setCantidadActual(50);
         dto.setCantidadMinima(10);
+        return dto;
+    }
+
+    private AjusteExistenciaRequestDTO ajusteRequest() {
+        AjusteExistenciaRequestDTO dto = new AjusteExistenciaRequestDTO();
+        dto.setDeltaCantidadActual(15);
+        dto.setCantidadMinima(5);
         return dto;
     }
 
