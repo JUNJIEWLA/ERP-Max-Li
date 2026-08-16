@@ -105,7 +105,7 @@ function DetalleMovModal({ mov, onClose }: { mov: MovimientoInventario; onClose:
           {/* Tabla de productos */}
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Productos transferidos ({mov.detalles.length})
+              Impactos de inventario ({mov.detalles.length})
             </p>
             <div className="border border-border rounded-xl overflow-hidden">
               <table className="w-full text-sm">
@@ -113,6 +113,7 @@ function DetalleMovModal({ mov, onClose }: { mov: MovimientoInventario; onClose:
                   <tr className="bg-muted/40 border-b border-border">
                     <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">SKU</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Producto</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Saldos</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Cantidad</th>
                   </tr>
                 </thead>
@@ -121,6 +122,17 @@ function DetalleMovModal({ mov, onClose }: { mov: MovimientoInventario; onClose:
                     <tr key={d.idDetalleMovimiento} className="border-b border-border/50">
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{d.productoSku}</td>
                       <td className="px-3 py-2">{d.productoNombre}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {d.cantidadAnteriorOrigen != null && d.cantidadPosteriorOrigen != null && (
+                          <div>Origen: {fmtNum(d.cantidadAnteriorOrigen)} → {fmtNum(d.cantidadPosteriorOrigen)}</div>
+                        )}
+                        {d.cantidadAnteriorDestino != null && d.cantidadPosteriorDestino != null && (
+                          <div>Destino: {fmtNum(d.cantidadAnteriorDestino)} → {fmtNum(d.cantidadPosteriorDestino)}</div>
+                        )}
+                        {d.cantidadAnteriorOrigen == null && d.cantidadAnteriorDestino == null && (
+                          <span>Histórico sin saldo</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right font-bold text-blue-700">{fmtNum(d.cantidad)}</td>
                     </tr>
                   ))}

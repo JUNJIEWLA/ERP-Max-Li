@@ -10,7 +10,6 @@ import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
 import com.maxli.inventario.dto.DetalleMovimientoRequestDTO;
 import com.maxli.inventario.dto.MovimientoRequestDTO;
 import com.maxli.inventario.dto.MovimientoResponseDTO;
-import com.maxli.inventario.entity.DetalleMovimiento;
 import com.maxli.inventario.entity.Movimiento;
 import com.maxli.inventario.mapper.MovimientoMapper;
 import com.maxli.inventario.repository.MovimientoRepository;
@@ -19,11 +18,10 @@ import com.maxli.producto.repository.ProductoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,6 +36,7 @@ public class MovimientoService {
     private final ProductoRepository productoRepository;
     private final AlmacenService almacenService;
     private final MovimientoMapper movimientoMapper;
+    private final TrazabilidadInventarioService trazabilidadInventarioService;
 
     @Transactional(readOnly = true)
     public Page<MovimientoResponseDTO> listar(Pageable pageable) {
@@ -79,17 +78,6 @@ public class MovimientoService {
 
         validarAlmacenActivo(almacenOrigen);
         validarAlmacenActivo(almacenDestino);
-
-        // 3. Construir la cabecera del movimiento
-        Movimiento movimiento = new Movimiento();
-        movimiento.setTipo("TRANSFERENCIA");
-        movimiento.setAlmacenOrigen(almacenOrigen);
-        movimiento.setAlmacenDestino(almacenDestino);
-        movimiento.setReferencia(dto.getReferencia());
-        movimiento.setObservacion(dto.getObservacion());
-        movimiento.setEstado("COMPLETADO");
-        movimiento.setUsuarioResponsable(obtenerUsuarioActual());
-        movimiento.setFechaMovimiento(LocalDateTime.now());
 
         Map<Long, Integer> cantidades = new TreeMap<>();
         for (DetalleMovimientoRequestDTO detalleDto : dto.getDetalles()) {
@@ -135,25 +123,27 @@ public class MovimientoService {
         }
 
         // 4. Modificar únicamente después de validar todas las líneas bloqueadas.
+        var cambiosInventario = new ArrayList<TrazabilidadInventarioService.CambioInventario>();
         for (Map.Entry<Long, Integer> item : cantidades.entrySet()) {
             Long idProducto = item.getKey();
             int cantidad = item.getValue();
             Producto producto = productos.get(idProducto);
             Existencia existenciaOrigen = existencias.get(new ClaveExistencia(idProducto, dto.getIdAlmacenOrigen()));
             Existencia existenciaDestino = existencias.get(new ClaveExistencia(idProducto, dto.getIdAlmacenDestino()));
-            existenciaOrigen.setCantidadActual(existenciaOrigen.getCantidadActual() - cantidad);
-            existenciaDestino.setCantidadActual(existenciaDestino.getCantidadActual() + cantidad);
-
-            // 4c. Crear la línea de detalle del movimiento
-            DetalleMovimiento detalle = new DetalleMovimiento();
-            detalle.setMovimiento(movimiento);
-            detalle.setProducto(producto);
-            detalle.setCantidad(cantidad);
-            movimiento.getDetalles().add(detalle);
+            int anteriorOrigen = existenciaOrigen.getCantidadActual();
+            int anteriorDestino = existenciaDestino.getCantidadActual();
+            int posteriorOrigen = anteriorOrigen - cantidad;
+            int posteriorDestino = anteriorDestino + cantidad;
+            existenciaOrigen.setCantidadActual(posteriorOrigen);
+            existenciaDestino.setCantidadActual(posteriorDestino);
+            cambiosInventario.add(TrazabilidadInventarioService.CambioInventario.transferencia(
+                    producto, anteriorOrigen, posteriorOrigen, anteriorDestino, posteriorDestino));
         }
 
-        // 5. Guardar movimiento (cascade guarda los detalles)
-        Movimiento guardado = movimientoRepository.save(movimiento);
+        // 5. Guardar el rastro dentro de esta misma transacción.
+        Movimiento guardado = trazabilidadInventarioService.registrar(
+                "TRANSFERENCIA", almacenOrigen, almacenDestino,
+                dto.getReferencia(), dto.getObservacion(), null, cambiosInventario);
         return movimientoMapper.toDto(guardado);
     }
 
@@ -179,11 +169,4 @@ public class MovimientoService {
         }
     }
 
-    private String obtenerUsuarioActual() {
-        try {
-            return SecurityContextHolder.getContext().getAuthentication().getName();
-        } catch (Exception e) {
-            return "SISTEMA";
-        }
-    }
 }

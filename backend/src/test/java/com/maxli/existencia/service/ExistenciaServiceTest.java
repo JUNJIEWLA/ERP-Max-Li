@@ -10,6 +10,7 @@ import com.maxli.existencia.dto.ExistenciaResponseDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.mapper.ExistenciaMapper;
 import com.maxli.existencia.repository.ExistenciaRepository;
+import com.maxli.inventario.service.TrazabilidadInventarioService;
 import com.maxli.producto.entity.Categoria;
 import com.maxli.producto.entity.Marca;
 import com.maxli.producto.entity.Producto;
@@ -38,6 +39,7 @@ class ExistenciaServiceTest {
     @Mock private ProductoRepository productoRepository;
     @Mock private AlmacenService almacenService;
     @Mock private ExistenciaMapper existenciaMapper;
+    @Mock private TrazabilidadInventarioService trazabilidadInventarioService;
     @InjectMocks private ExistenciaService existenciaService;
 
     @Test

@@ -164,6 +164,8 @@ class CuadreCajaEfectivoTest extends PostgresIntegrationTest {
 
     @AfterEach
     void limpiarEscenario() {
+        jdbcTemplate.update("DELETE FROM detalle_movimiento");
+        jdbcTemplate.update("DELETE FROM movimiento");
         jdbcTemplate.update("DELETE FROM ingreso_venta");
         jdbcTemplate.update("DELETE FROM detalle_venta");
         jdbcTemplate.update("DELETE FROM venta");

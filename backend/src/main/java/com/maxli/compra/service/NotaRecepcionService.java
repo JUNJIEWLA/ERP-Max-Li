@@ -17,6 +17,8 @@ import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
 import com.maxli.existencia.service.ExistenciaLockService;
 import com.maxli.existencia.service.ExistenciaLockService.ClaveExistencia;
+import com.maxli.inventario.service.TrazabilidadInventarioService;
+import com.maxli.inventario.service.TrazabilidadInventarioService.CambioInventario;
 import com.maxli.almacen.entity.Almacen;
 import com.maxli.almacen.repository.AlmacenRepository;
 import com.maxli.producto.entity.AlertaCosto;
@@ -35,6 +37,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -60,6 +63,7 @@ public class NotaRecepcionService {
     private final AlertaCostoRepository alertaCostoRepository;
     private final OrdenCompraService ordenCompraService;
     private final NotaRecepcionMapper notaRecepcionMapper;
+    private final TrazabilidadInventarioService trazabilidadInventarioService;
 
     @Transactional(readOnly = true)
     public Page<NotaRecepcionResponseDTO> listar(Pageable pageable) {
@@ -134,6 +138,9 @@ public class NotaRecepcionService {
                 .toList();
         Map<ClaveExistencia, Existencia> existenciasBloqueadas =
                 existenciaLockService.bloquearOCrearEnOrden(clavesExistencia);
+        Map<ClaveExistencia, Integer> saldosAnteriores = new LinkedHashMap<>();
+        existenciasBloqueadas.forEach((clave, existencia) ->
+                saldosAnteriores.put(clave, existencia.getCantidadActual()));
 
         for (DetalleNotaRecepcion detalle : nota.getDetalles()) {
             int cantidadRecibida = detalle.getCantidadRecibida();
@@ -187,6 +194,25 @@ public class NotaRecepcionService {
 
         // 7. Actualizar estado de la orden (COMPLETADA o RECEPCION_PARCIAL)
         actualizarEstadoOrden(orden);
+
+        Map<Long, List<CambioInventario>> cambiosPorAlmacen = new LinkedHashMap<>();
+        Map<Long, Almacen> almacenes = new LinkedHashMap<>();
+        existenciasBloqueadas.forEach((clave, existencia) -> {
+            int anterior = saldosAnteriores.get(clave);
+            int posterior = existencia.getCantidadActual();
+            if (anterior != posterior) {
+                cambiosPorAlmacen.computeIfAbsent(clave.idAlmacen(), ignored -> new java.util.ArrayList<>())
+                        .add(CambioInventario.entrada(existencia.getProducto(), anterior, posterior));
+                almacenes.put(clave.idAlmacen(), existencia.getAlmacen());
+            }
+        });
+        cambiosPorAlmacen.forEach((idAlmacen, cambios) ->
+                trazabilidadInventarioService.registrar(
+                        "ENTRADA", null, almacenes.get(idAlmacen),
+                        "RECEPCION-" + nota.getIdNotaRecepcion(),
+                        "Entrada por nota de recepción de orden #" + orden.getIdOrdenCompra(),
+                        null,
+                        cambios));
 
         return notaRecepcionMapper.toDto(nota);
     }

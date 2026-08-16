@@ -12,4 +12,8 @@ public class DetalleMovimientoResponseDTO {
     private String productoNombre;
     private String productoSku;
     private Integer cantidad;
+    private Integer cantidadAnteriorOrigen;
+    private Integer cantidadPosteriorOrigen;
+    private Integer cantidadAnteriorDestino;
+    private Integer cantidadPosteriorDestino;
 }

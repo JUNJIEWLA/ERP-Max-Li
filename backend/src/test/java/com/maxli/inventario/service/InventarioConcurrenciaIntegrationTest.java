@@ -25,6 +25,7 @@ import com.maxli.conteo.repository.ConteoCabeceraRepository;
 import com.maxli.conteo.service.ConteoService;
 import com.maxli.exception.BusinessException;
 import com.maxli.existencia.dto.AjusteExistenciaRequestDTO;
+import com.maxli.existencia.dto.CrearExistenciaRequestDTO;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
 import com.maxli.existencia.service.ExistenciaLockService;
@@ -170,6 +171,12 @@ class InventarioConcurrenciaIntegrationTest extends PostgresIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM detalle_venta", Long.class)).isEqualTo(1);
         assertThat(movimientosPorTipo("AJUSTE")).isEqualTo(1);
         assertThat(detallesMovimientoPorTipo("AJUSTE")).isEqualTo(1);
+        assertThat(movimientosPorTipo("VENTA")).isEqualTo(1);
+        assertThat(detallesMovimientoPorTipo("VENTA")).isEqualTo(1);
+        assertThat(cantidadAuditada("VENTA", "origen")).isEqualTo(9);
+        assertThat(cantidadAuditada("AJUSTE", "destino")).isEqualTo(3);
+        assertTrazabilidadCompleta("VENTA");
+        assertTrazabilidadCompleta("AJUSTE");
         assertThat(conteoCabeceraRepository.findById(idConteo).orElseThrow().getEstado()).isEqualTo("APLICADO");
     }
 
@@ -200,6 +207,9 @@ class InventarioConcurrenciaIntegrationTest extends PostgresIntegrationTest {
                 .isGreaterThanOrEqualTo(0);
         assertThat(movimientosPorTipo("TRANSFERENCIA")).isEqualTo(2);
         assertThat(detallesMovimientoPorTipo("TRANSFERENCIA")).isEqualTo(2);
+        assertThat(cantidadAuditada("TRANSFERENCIA", "origen")).isEqualTo(7);
+        assertThat(cantidadAuditada("TRANSFERENCIA", "destino")).isEqualTo(7);
+        assertTrazabilidadCompleta("TRANSFERENCIA");
     }
 
     @Test
@@ -226,6 +236,20 @@ class InventarioConcurrenciaIntegrationTest extends PostgresIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM nota_recepcion WHERE estado = 'CONFIRMADA'", Long.class))
                 .isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM detalle_nota_recepcion", Long.class)).isEqualTo(2);
+        assertThat(movimientosPorTipo("ENTRADA")).isEqualTo(2);
+        assertThat(detallesMovimientoPorTipo("ENTRADA")).isEqualTo(2);
+        assertThat(cantidadAuditada("ENTRADA", "destino")).isEqualTo(12);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT MIN(dm.cantidad_anterior_destino)
+                FROM detalle_movimiento dm JOIN movimiento m USING (id_movimiento)
+                WHERE m.tipo = 'ENTRADA'
+                """, Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT MAX(dm.cantidad_posterior_destino)
+                FROM detalle_movimiento dm JOIN movimiento m USING (id_movimiento)
+                WHERE m.tipo = 'ENTRADA'
+                """, Integer.class)).isEqualTo(12);
+        assertTrazabilidadCompleta("ENTRADA");
     }
 
     @Test
@@ -295,6 +319,16 @@ class InventarioConcurrenciaIntegrationTest extends PostgresIntegrationTest {
         assertThat(bTerminoMientrasASigueBloqueado.getCount()).isZero();
         assertThat(cantidad(escenario.idProducto(), escenario.idAlmacenB())).isEqualTo(24);
         assertThat(cantidad(escenario.idProducto(), escenario.idAlmacenA())).isEqualTo(10);
+        assertThat(movimientosPorTipo("AJUSTE")).isEqualTo(1);
+        assertThat(detallesMovimientoPorTipo("AJUSTE")).isEqualTo(1);
+        assertThat(cantidadAuditada("AJUSTE", "destino")).isEqualTo(4);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT cantidad_anterior_destino FROM detalle_movimiento
+                """, Integer.class)).isEqualTo(20);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT cantidad_posterior_destino FROM detalle_movimiento
+                """, Integer.class)).isEqualTo(24);
+        assertTrazabilidadCompleta("AJUSTE");
 
         liberarA.countDown();
         lockA.get(10, TimeUnit.SECONDS);
@@ -343,6 +377,30 @@ class InventarioConcurrenciaIntegrationTest extends PostgresIntegrationTest {
         assertThat(conteoCabeceraRepository.findById(idConteo).orElseThrow().getEstado()).isEqualTo("APLICADO");
         assertThat(movimientosPorTipo("AJUSTE")).isEqualTo(1);
         assertThat(detallesMovimientoPorTipo("AJUSTE")).isEqualTo(1);
+        assertThat(cantidadAuditada("AJUSTE", "destino")).isEqualTo(3);
+        assertTrazabilidadCompleta("AJUSTE");
+    }
+
+    @Test
+    @DisplayName("crear existencia manual con saldo inicial deja movimiento auditable")
+    void creacionManualConSaldoInicialDejaMovimiento() {
+        EscenarioBase escenario = crearEscenarioBaseSinExistencia();
+        CrearExistenciaRequestDTO request = new CrearExistenciaRequestDTO();
+        request.setIdProducto(escenario.idProducto());
+        request.setIdAlmacen(escenario.idAlmacenA());
+        request.setCantidadActual(6);
+        request.setCantidadMinima(1);
+
+        existenciaService.crear(request);
+
+        assertThat(cantidad(escenario.idProducto(), escenario.idAlmacenA())).isEqualTo(6);
+        assertThat(movimientosPorTipo("AJUSTE")).isEqualTo(1);
+        assertThat(detallesMovimientoPorTipo("AJUSTE")).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT cantidad_anterior_destino FROM detalle_movimiento", Integer.class))
+                .isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT cantidad_posterior_destino FROM detalle_movimiento", Integer.class))
+                .isEqualTo(6);
+        assertTrazabilidadCompleta("AJUSTE");
     }
 
     private Callable<MovimientoResponseDTO> transferenciaConcurrente(
@@ -577,6 +635,37 @@ class InventarioConcurrenciaIntegrationTest extends PostgresIntegrationTest {
                 JOIN movimiento m ON m.id_movimiento = dm.id_movimiento
                 WHERE m.tipo = ?
                 """, Long.class, tipo);
+    }
+
+    private int cantidadAuditada(String tipo, String lado) {
+        if (!Set.of("origen", "destino").contains(lado)) {
+            throw new IllegalArgumentException("Lado de movimiento inválido");
+        }
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(ABS(
+                    CASE WHEN ? = 'origen'
+                        THEN dm.cantidad_posterior_origen - dm.cantidad_anterior_origen
+                        ELSE dm.cantidad_posterior_destino - dm.cantidad_anterior_destino
+                    END)), 0)
+                FROM detalle_movimiento dm
+                JOIN movimiento m USING (id_movimiento)
+                WHERE m.tipo = ?
+                """, Integer.class, lado, tipo);
+    }
+
+    private void assertTrazabilidadCompleta(String tipo) {
+        Long incompletos = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM detalle_movimiento dm
+                JOIN movimiento m USING (id_movimiento)
+                WHERE m.tipo = ?
+                  AND (m.referencia IS NULL OR BTRIM(m.referencia) = ''
+                    OR m.usuario_responsable IS NULL OR BTRIM(m.usuario_responsable) = ''
+                    OR m.fecha_movimiento IS NULL
+                    OR (dm.cantidad_anterior_origen IS NULL
+                        AND dm.cantidad_anterior_destino IS NULL))
+                """, Long.class, tipo);
+        assertThat(incompletos).as("cada movimiento debe tener referencia, usuario, fecha y saldos").isZero();
     }
 
     private record EscenarioBase(

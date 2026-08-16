@@ -48,6 +48,10 @@ public class MovimientoMapper {
         dto.setProductoNombre(detalle.getProducto().getNombre());
         dto.setProductoSku(detalle.getProducto().getSku());
         dto.setCantidad(detalle.getCantidad());
+        dto.setCantidadAnteriorOrigen(detalle.getCantidadAnteriorOrigen());
+        dto.setCantidadPosteriorOrigen(detalle.getCantidadPosteriorOrigen());
+        dto.setCantidadAnteriorDestino(detalle.getCantidadAnteriorDestino());
+        dto.setCantidadPosteriorDestino(detalle.getCantidadPosteriorDestino());
         return dto;
     }
 
