@@ -109,12 +109,17 @@ export default function SaleScreen() {
     return Math.max(0, importeTotal - descGlobalMonto);
   };
 
-  /** Subtotal neto desglosado (sin ITBIS) = Total / 1.18 */
+  /**
+   * Subtotal aproximado (sin ITBIS) para el panel de carrito en vivo.
+   * Asume 18% plano — es solo una vista previa antes de abrir el checkout;
+   * los totales reales (con ITBIS por línea, ISSUE-008) se calculan en el
+   * backend y se muestran en CheckoutModal.
+   */
   const calculateSubtotalSinITBIS = () => {
     return calculateTotalPagar() / 1.18;
   };
 
-  /** ITBIS (18%) desglosado del Total = Total - Subtotal sin ITBIS */
+  /** ITBIS aproximado (18% plano) — ver nota en calculateSubtotalSinITBIS. */
   const calculateITBIS = () => {
     const total = calculateTotalPagar();
     return total - (total / 1.18);

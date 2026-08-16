@@ -44,12 +44,14 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -90,6 +92,8 @@ public class VentaService {
      */
     @Transactional(readOnly = true)
     public RecalcularFacturaResponseDTO recalcularFactura(RecalcularFacturaRequestDTO request) {
+        validarDescuentos(request.getDescuentoGlobal(), request.getDetalles());
+
         MetodoPago metodo = parseMetodoPago(request.getMetodoPago());
         boolean solicitaMayor = request.isUsaPrecioMayor();
         boolean esB01 = B01.equalsIgnoreCase(request.getTipoNcf());
@@ -107,6 +111,7 @@ public class VentaService {
         BigDecimal importeLineasTotal = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
         boolean huboRecalculo = false;
+        List<Long> idsCategorias = new ArrayList<>();
 
         for (DetalleVentaRequestDTO item : request.getDetalles()) {
             Producto producto = productoRepository.findById(item.getIdProducto())
@@ -124,24 +129,29 @@ public class VentaService {
             importeLineasTotal = importeLineasTotal.add(detalle.getImporte());
             descuentoTotal = descuentoTotal.add(
                     detalle.getDescuentoOferta() != null ? detalle.getDescuentoOferta() : BigDecimal.ZERO);
+            idsCategorias.add(producto.getCategoria().getIdCategoria());
 
             detallesRecalculados.add(detalle);
         }
 
-        BigDecimal descuentoGlobal = request.getDescuentoGlobal() != null
-                ? request.getDescuentoGlobal() : BigDecimal.ZERO;
-        BigDecimal totalVenta = normalizar(importeLineasTotal.subtract(descuentoGlobal).max(BigDecimal.ZERO));
-        BigDecimal subtotalSinItbis = totalVenta.divide(new BigDecimal("1.18"), 2, RoundingMode.HALF_UP);
-        BigDecimal itbisCalculado = totalVenta.subtract(subtotalSinItbis);
+        BigDecimal descuentoGlobal = valor(request.getDescuentoGlobal());
+        BigDecimal descuentoCupon = BigDecimal.ZERO;
+        if (request.getCodigoCupon() != null && !request.getCodigoCupon().isBlank()) {
+            CuponAplicadoDTO cupon = cuponService.previsualizarCupon(
+                    request.getCodigoCupon(), idsCategorias, importeLineasTotal);
+            descuentoCupon = cupon.getMontoDescontado();
+            response.setCodigoCupon(request.getCodigoCupon());
+            response.setDescuentoCupon(descuentoCupon);
+        }
+
+        TotalesVenta totales = calcularTotalesConItbisPorLinea(detallesRecalculados, descuentoGlobal, descuentoCupon);
 
         response.setDetalles(detallesRecalculados);
-        response.setSubtotal(subtotalSinItbis);
-        response.setDescuentoTotal(normalizar(descuentoTotal.add(descuentoGlobal)));
-        response.setItbis(itbisCalculado);
-        response.setTotal(totalVenta);
+        response.setSubtotal(totales.subtotal());
+        response.setDescuentoTotal(normalizar(descuentoTotal.add(descuentoGlobal).add(descuentoCupon)));
+        response.setItbis(totales.itbis());
+        response.setTotal(totales.total());
         response.setHuboRecalculo(huboRecalculo);
-
-
 
         return response;
     }
@@ -167,6 +177,11 @@ public class VentaService {
      */
     @Transactional
     public VentaResponseDTO procesarVenta(CrearVentaRequestDTO request, String username) {
+        // ── 0. Validar descuentos ─────────────────────────────────────────
+        // Antes de cualquier efecto secundario: una solicitud con descuento
+        // inválido no debe consumir NCF ni tocar stock o caja (ISSUE-008).
+        validarDescuentos(request.getDescuentoGlobal(), request.getDetalles());
+
         // ── 1. Validar turno abierto ─────────────────────────────────────
         if (request.getIdTurnoCaja() == null) {
             throw new BusinessException("No se puede procesar la venta: se requiere un turno de caja abierto.");
@@ -251,9 +266,10 @@ public class VentaService {
 
         // ── 6. Procesar líneas de detalle ────────────────────────────────
         BigDecimal subtotal = BigDecimal.ZERO;
-        BigDecimal itbisTotal = BigDecimal.ZERO;
         BigDecimal descuentoTotal = BigDecimal.ZERO;
         List<Long> idsCategorias = new ArrayList<>();
+        List<DetalleVenta> detallesEntidades = new ArrayList<>();
+        List<DetalleRecalculadoDTO> detallesCalculados = new ArrayList<>();
 
         for (DetalleVentaRequestDTO item : request.getDetalles()) {
             Producto producto = productoRepository.findById(item.getIdProducto())
@@ -268,7 +284,8 @@ public class VentaService {
                     producto, item.getCantidad(), item.getDescuentoLinea(),
                     request.isUsaPrecioMayor(), mayorPermitido);
 
-            // Crear entidad detalle
+            // Crear entidad detalle (base imponible/ITBIS de línea se
+            // completan más abajo, tras prorratear descuento global/cupón)
             DetalleVenta detalle = new DetalleVenta();
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
@@ -281,6 +298,8 @@ public class VentaService {
             detalle.setOfertaAplicada(calc.getOfertaAplicada());
             detalle.setImporte(calc.getImporte());
             venta.addDetalle(detalle);
+            detallesEntidades.add(detalle);
+            detallesCalculados.add(calc);
 
             subtotal = subtotal.add(calc.getImporte());
             descuentoTotal = descuentoTotal.add(
@@ -294,10 +313,7 @@ public class VentaService {
         }
 
         // ── 7. Descuento global ──────────────────────────────────────────
-        BigDecimal descuentoGlobal = request.getDescuentoGlobal() != null
-                ? request.getDescuentoGlobal() : BigDecimal.ZERO;
-        BigDecimal importeTotalConDescuento = subtotal.subtract(descuentoGlobal);
-        descuentoTotal = descuentoTotal.add(descuentoGlobal);
+        BigDecimal descuentoGlobal = valor(request.getDescuentoGlobal());
 
         // ── 8. Validar y aplicar cupón ───────────────────────────────────
         BigDecimal descuentoCupon = BigDecimal.ZERO;
@@ -307,20 +323,21 @@ public class VentaService {
             descuentoCupon = cupon.getMontoDescontado();
             venta.setCodigoCupon(request.getCodigoCupon());
             venta.setDescuentoCupon(descuentoCupon);
-            importeTotalConDescuento = importeTotalConDescuento.subtract(descuentoCupon);
-            descuentoTotal = descuentoTotal.add(descuentoCupon);
+        }
+        descuentoTotal = descuentoTotal.add(descuentoGlobal).add(descuentoCupon);
+
+        // ── 8b. Prorratear descuentos y calcular ITBIS por línea (ISSUE-008) ──
+        TotalesVenta totales = calcularTotalesConItbisPorLinea(detallesCalculados, descuentoGlobal, descuentoCupon);
+        for (int i = 0; i < detallesEntidades.size(); i++) {
+            detallesEntidades.get(i).setBaseImponible(detallesCalculados.get(i).getBaseImponible());
+            detallesEntidades.get(i).setItbisLinea(detallesCalculados.get(i).getItbisLinea());
         }
 
-        BigDecimal totalVenta = normalizar(importeTotalConDescuento.max(BigDecimal.ZERO));
-        BigDecimal subtotalSinItbis = totalVenta.divide(new BigDecimal("1.18"), 2, RoundingMode.HALF_UP);
-        BigDecimal itbisTotalCalculado = totalVenta.subtract(subtotalSinItbis);
-
-        venta.setSubtotal(subtotalSinItbis);
+        venta.setSubtotal(totales.subtotal());
         venta.setDescuentoTotal(normalizar(descuentoTotal));
-        venta.setItbis(itbisTotalCalculado);
-        venta.setTotal(totalVenta);
-
-
+        venta.setItbis(totales.itbis());
+        venta.setTotal(totales.total());
+        BigDecimal totalVenta = totales.total();
 
         // ── 9. Registrar ingresos (pagos) ────────────────────────────────
         BigDecimal totalPagado = BigDecimal.ZERO;
@@ -574,6 +591,122 @@ public class VentaService {
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    //  LÓGICA PRIVADA: ITBIS por línea (ISSUE-008)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Rechaza descuentos fuera de rango antes de cualquier efecto secundario
+     * (bloqueo de stock, generación de NCF, cuadre de caja).
+     */
+    private void validarDescuentos(BigDecimal descuentoGlobal, List<DetalleVentaRequestDTO> detalles) {
+        if (descuentoGlobal != null && descuentoGlobal.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException("El descuento global no puede ser negativo.");
+        }
+        for (DetalleVentaRequestDTO item : detalles) {
+            BigDecimal descuentoLinea = item.getDescuentoLinea();
+            if (descuentoLinea != null
+                    && (descuentoLinea.compareTo(BigDecimal.ZERO) < 0 || descuentoLinea.compareTo(CIEN) > 0)) {
+                throw new BusinessException(String.format(
+                        "El descuento de línea para el producto id %d debe estar entre 0 y 100.",
+                        item.getIdProducto()));
+            }
+        }
+    }
+
+    private record TotalesVenta(BigDecimal subtotal, BigDecimal itbis, BigDecimal total) {}
+
+    /**
+     * Prorratea el descuento global + cupón entre las líneas (método del
+     * mayor resto: la suma de descuentos por línea da exactamente el
+     * descuento total, sin perder ni ganar centavos) y calcula base
+     * imponible / ITBIS por línea usando la tasa propia de cada producto,
+     * bajo la convención de que {@code importe} ya incluye ITBIS. Escribe
+     * {@code baseImponible}/{@code itbisLinea} en cada DTO recibido.
+     * <p>
+     * {@code base_i + itbis_i == importeNeto_i} siempre, por construcción
+     * (itbis es el resto, nunca se redondea de forma independiente), así que
+     * {@code subtotal + itbis == total} reconcilia exacto al centavo.
+     */
+    private TotalesVenta calcularTotalesConItbisPorLinea(
+            List<DetalleRecalculadoDTO> detalles, BigDecimal descuentoGlobal, BigDecimal descuentoCupon) {
+
+        BigDecimal importeLineasTotal = detalles.stream()
+                .map(DetalleRecalculadoDTO::getImporte)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal descuentoSolicitado = valor(descuentoGlobal).add(valor(descuentoCupon));
+        BigDecimal descuentoProrrateable = descuentoSolicitado.min(importeLineasTotal).max(BigDecimal.ZERO);
+
+        BigDecimal[] descuentosLinea = prorratearPorMayorResto(detalles, importeLineasTotal, descuentoProrrateable);
+
+        BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal itbis = BigDecimal.ZERO;
+        for (int i = 0; i < detalles.size(); i++) {
+            DetalleRecalculadoDTO d = detalles.get(i);
+            BigDecimal importeNeto = d.getImporte().subtract(descuentosLinea[i]).max(BigDecimal.ZERO);
+            BigDecimal tasa = valor(d.getTasaItbis());
+            BigDecimal factor = BigDecimal.ONE.add(tasa.divide(CIEN, 10, RoundingMode.HALF_UP));
+            BigDecimal base = importeNeto.divide(factor, 2, RoundingMode.HALF_UP);
+            BigDecimal itbisLinea = importeNeto.subtract(base);
+
+            d.setBaseImponible(base);
+            d.setItbisLinea(itbisLinea);
+
+            subtotal = subtotal.add(base);
+            itbis = itbis.add(itbisLinea);
+        }
+
+        return new TotalesVenta(subtotal, itbis, subtotal.add(itbis));
+    }
+
+    /**
+     * Reparte {@code descuentoProrrateable} entre las líneas, proporcional al
+     * {@code importe} de cada una, usando el método del mayor resto: cada
+     * línea recibe el piso de su parte exacta y los centavos que sobran
+     * (siempre menos que el número de líneas) se entregan de a uno a las
+     * líneas con mayor resto fraccionario. Así la suma de los descuentos por
+     * línea es exactamente {@code descuentoProrrateable}.
+     */
+    private BigDecimal[] prorratearPorMayorResto(
+            List<DetalleRecalculadoDTO> detalles, BigDecimal importeLineasTotal, BigDecimal descuentoProrrateable) {
+
+        int n = detalles.size();
+        BigDecimal[] descuentosLinea = new BigDecimal[n];
+
+        if (importeLineasTotal.compareTo(BigDecimal.ZERO) == 0 || descuentoProrrateable.compareTo(BigDecimal.ZERO) == 0) {
+            Arrays.fill(descuentosLinea, BigDecimal.ZERO);
+            return descuentosLinea;
+        }
+
+        BigDecimal[] exactas = new BigDecimal[n];
+        BigDecimal[] restos = new BigDecimal[n];
+        BigDecimal sumaPisos = BigDecimal.ZERO;
+        for (int i = 0; i < n; i++) {
+            BigDecimal exacta = descuentoProrrateable.multiply(detalles.get(i).getImporte())
+                    .divide(importeLineasTotal, 10, RoundingMode.DOWN);
+            BigDecimal piso = exacta.setScale(2, RoundingMode.DOWN);
+            exactas[i] = exacta;
+            descuentosLinea[i] = piso;
+            restos[i] = exacta.subtract(piso);
+            sumaPisos = sumaPisos.add(piso);
+        }
+
+        int centavosRestantes = descuentoProrrateable.subtract(sumaPisos)
+                .movePointRight(2).setScale(0, RoundingMode.HALF_UP).intValueExact();
+
+        List<Integer> orden = IntStream.range(0, n).boxed()
+                .sorted((a, b) -> restos[b].compareTo(restos[a]))
+                .toList();
+
+        for (int i = 0; i < centavosRestantes && i < orden.size(); i++) {
+            int idx = orden.get(i);
+            descuentosLinea[idx] = descuentosLinea[idx].add(new BigDecimal("0.01"));
+        }
+
+        return descuentosLinea;
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     //  HELPERS
     // ═════════════════════════════════════════════════════════════════════
 
@@ -717,6 +850,8 @@ public class VentaService {
             det.setDescuentoOferta(d.getDescuentoOferta());
             det.setOfertaAplicada(d.getOfertaAplicada());
             det.setImporte(d.getImporte());
+            det.setBaseImponible(d.getBaseImponible());
+            det.setItbisLinea(d.getItbisLinea());
             return det;
         }).toList());
 

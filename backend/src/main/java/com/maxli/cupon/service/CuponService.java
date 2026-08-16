@@ -90,6 +90,31 @@ public class CuponService {
     public CuponAplicadoDTO validarYAplicarCupon(String codigoSecreto,
                                                   List<Long> idsCategorias,
                                                   BigDecimal subtotal) {
+        CuponResuelto resuelto = resolverCupon(codigoSecreto, idsCategorias, subtotal);
+
+        // Registrar uso — solo en la venta real, nunca en un preview.
+        resuelto.cupon().setUsosActuales(resuelto.cupon().getUsosActuales() + 1);
+        cuponRepository.save(resuelto.cupon());
+
+        return construirAplicadoDTO(resuelto);
+    }
+
+    /**
+     * Igual que {@link #validarYAplicarCupon}, pero de solo lectura: valida y
+     * calcula el descuento sin incrementar {@code usosActuales}. Se usa en el
+     * preview de factura, que puede ejecutarse muchas veces mientras el
+     * cajero arma el carrito y no debe consumir el límite de usos del cupón.
+     */
+    @Transactional(readOnly = true)
+    public CuponAplicadoDTO previsualizarCupon(String codigoSecreto,
+                                                List<Long> idsCategorias,
+                                                BigDecimal subtotal) {
+        return construirAplicadoDTO(resolverCupon(codigoSecreto, idsCategorias, subtotal));
+    }
+
+    private record CuponResuelto(Cupon cupon, BigDecimal montoDescontado) {}
+
+    private CuponResuelto resolverCupon(String codigoSecreto, List<Long> idsCategorias, BigDecimal subtotal) {
         Cupon cupon = cuponRepository.findByCodigoSecretoWithCategorias(codigoSecreto)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Cupón no encontrado. Verifica el código ingresado."));
@@ -142,17 +167,18 @@ public class CuponService {
             montoDescontado = cupon.getValorDescuento().min(subtotal);
         }
 
-        // 7. Registrar uso
-        cupon.setUsosActuales(cupon.getUsosActuales() + 1);
-        cuponRepository.save(cupon);
+        return new CuponResuelto(cupon, montoDescontado);
+    }
 
+    private CuponAplicadoDTO construirAplicadoDTO(CuponResuelto resuelto) {
+        Cupon cupon = resuelto.cupon();
         return new CuponAplicadoDTO(
                 cupon.getIdCupon(),
                 cupon.getCodigoInterno(),
                 cupon.getCodigoSecreto(),
                 cupon.getTipoDescuento().name(),
                 cupon.getValorDescuento(),
-                montoDescontado
+                resuelto.montoDescontado()
         );
     }
 

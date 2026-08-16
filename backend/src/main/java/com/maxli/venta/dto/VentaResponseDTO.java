@@ -66,6 +66,8 @@ public class VentaResponseDTO {
         private BigDecimal descuentoOferta;
         private String ofertaAplicada;
         private BigDecimal importe;
+        private BigDecimal baseImponible;
+        private BigDecimal itbisLinea;
     }
 
     @Getter

@@ -74,7 +74,10 @@ export default function CheckoutModal({
   // ── Totales calculados ──────────────────────────────────────────────
   const subtotalCarrito = cart.reduce((sum, item) => sum + item.importe, 0);
   const total = recalculo ? recalculo.total : Math.max(0, subtotalCarrito - descuentoGlobal);
-  const subtotalSinItbis = total / 1.18;
+  // Antes de la primera respuesta del backend (o carrito vacío) se usa una
+  // aproximación al 18%; en cuanto llega `recalculo`, se usan sus valores
+  // reales por línea (ISSUE-008 — la tasa ya no es uniforme).
+  const subtotalSinItbis = recalculo ? recalculo.subtotal : total / 1.18;
   const itbis = recalculo ? recalculo.itbis : (total - subtotalSinItbis);
   const cambio = parseFloat(montoRecibido || '0') - total;
 
@@ -122,6 +125,7 @@ export default function CheckoutModal({
         tipoNcf,
         usaPrecioMayor,
         descuentoGlobal,
+        codigoCupon: codigoCupon || undefined,
         detalles: cart.map((item) => ({
           idProducto: item.id,
           cantidad: item.cantidad,
@@ -135,7 +139,7 @@ export default function CheckoutModal({
     } finally {
       setRecalculando(false);
     }
-  }, [cart, metodoPago, tipoNcf, usaPrecioMayor, descuentoGlobal]);
+  }, [cart, metodoPago, tipoNcf, usaPrecioMayor, descuentoGlobal, codigoCupon]);
 
 
   useEffect(() => {
@@ -456,7 +460,7 @@ export default function CheckoutModal({
                 Subtotal sin ITBIS: <span className="text-foreground font-medium font-mono">RD${subtotalSinItbis.toFixed(2)}</span>
               </div>
               <div className="text-muted-foreground">
-                ITBIS (18%): <span className="text-foreground font-medium font-mono">RD${itbis.toFixed(2)}</span>
+                ITBIS: <span className="text-foreground font-medium font-mono">RD${itbis.toFixed(2)}</span>
               </div>
             </div>
             <div className="text-right">

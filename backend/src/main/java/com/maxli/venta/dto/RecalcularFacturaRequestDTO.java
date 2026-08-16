@@ -1,6 +1,7 @@
 package com.maxli.venta.dto;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -26,7 +27,12 @@ public class RecalcularFacturaRequestDTO {
 
     private boolean usaPrecioMayor;
 
+    @DecimalMin(value = "0.00", message = "El descuento global no puede ser negativo")
     private java.math.BigDecimal descuentoGlobal;
+
+    /** Código de cupón digitado (opcional) — se previsualiza sin consumir su límite de usos. */
+    @Size(max = 50)
+    private String codigoCupon;
 
     @NotEmpty(message = "Debe incluir al menos un producto")
     @Valid

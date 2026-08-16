@@ -68,4 +68,12 @@ public class DetalleVenta {
     /** Importe final = (precioUnitario × cantidad) - descuentos. */
     @Column(name = "importe", nullable = false, precision = 14, scale = 2)
     private BigDecimal importe;
+
+    /** Base imponible de la línea (importe neto de descuentos prorrateados, sin ITBIS). */
+    @Column(name = "base_imponible", nullable = false, precision = 14, scale = 2)
+    private BigDecimal baseImponible = BigDecimal.ZERO;
+
+    /** ITBIS de la línea, calculado con la tasa propia del producto (ISSUE-008). */
+    @Column(name = "itbis_linea", nullable = false, precision = 14, scale = 2)
+    private BigDecimal itbisLinea = BigDecimal.ZERO;
 }

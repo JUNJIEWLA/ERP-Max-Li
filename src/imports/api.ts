@@ -1305,6 +1305,7 @@ export interface RecalcularFacturaRequest {
   tipoNcf: string;
   usaPrecioMayor: boolean;
   descuentoGlobal?: number;
+  codigoCupon?: string;
   detalles: DetalleVentaRequest[];
 }
 
@@ -1322,6 +1323,8 @@ export interface DetalleRecalculado {
   descuentoOferta: number;
   ofertaAplicada: string | null;
   importe: number;
+  baseImponible: number;
+  itbisLinea: number;
   recalculado: boolean;
   mensajeRecalculo: string | null;
 }
@@ -1333,6 +1336,8 @@ export interface RecalcularFacturaResponse {
   itbis: number;
   total: number;
   huboRecalculo: boolean;
+  codigoCupon: string | null;
+  descuentoCupon: number;
 }
 
 export interface DetalleVentaResponse {
@@ -1349,6 +1354,8 @@ export interface DetalleVentaResponse {
   descuentoOferta: number;
   ofertaAplicada: string | null;
   importe: number;
+  baseImponible: number;
+  itbisLinea: number;
 }
 
 export interface IngresoVentaResponse {
