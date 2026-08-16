@@ -1,5 +1,7 @@
 package com.maxli.caja.service;
 
+import com.maxli.almacen.entity.Almacen;
+import com.maxli.almacen.repository.AlmacenRepository;
 import com.maxli.caja.dto.CajaRequestDTO;
 import com.maxli.caja.dto.CajaResponseDTO;
 import com.maxli.caja.entity.Caja;
@@ -27,6 +29,7 @@ class CajaServiceTest {
 
     @Mock private CajaRepository cajaRepository;
     @Mock private CajaMapper cajaMapper;
+    @Mock private AlmacenRepository almacenRepository;
     @InjectMocks private CajaService cajaService;
 
     @Test
@@ -43,15 +46,22 @@ class CajaServiceTest {
         CajaRequestDTO request = new CajaRequestDTO();
         request.setNombre("Caja Principal");
         request.setEstado("ACTIVO");
+        request.setIdAlmacen(5L);
 
         Caja entity = new Caja();
         entity.setNombre("Caja Principal");
         entity.setEstado("ACTIVO");
 
+        Almacen almacen = new Almacen();
+        almacen.setIdAlmacen(5L);
+        almacen.setNombre("Almacen Principal");
+        almacen.setEstado("ACTIVO");
+
         Caja saved = new Caja();
         saved.setIdCaja(1L);
         saved.setNombre("Caja Principal");
         saved.setEstado("ACTIVO");
+        saved.setAlmacen(almacen);
 
         CajaResponseDTO expectedDto = new CajaResponseDTO();
         expectedDto.setIdCaja(1L);
@@ -60,6 +70,7 @@ class CajaServiceTest {
 
         when(cajaRepository.existsByNombreAndEstado("Caja Principal", "ACTIVO")).thenReturn(false);
         when(cajaMapper.toEntity(request)).thenReturn(entity);
+        when(almacenRepository.findById(5L)).thenReturn(Optional.of(almacen));
         when(cajaRepository.save(entity)).thenReturn(saved);
         when(cajaMapper.toDto(saved)).thenReturn(expectedDto);
 

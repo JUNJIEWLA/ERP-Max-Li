@@ -38,32 +38,30 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Reproduce ISSUE-004: con 9 unidades en existencia, dos ventas simultáneas de
- * 9 unidades (una B01 y otra B02) confirmaban las dos y dejaban el inventario
- * sobrevendido.
+ * Reproduce ISSUE-007: con el mismo producto en dos almacenes, la venta
+ * tomaba "la primera" existencia (menor {@code id_existencia}) en vez de la
+ * del almacén real de la caja que cobra.
  * <p>
- * Es una prueba de concurrencia real: dos hilos, dos transacciones, un
- * PostgreSQL de verdad. No hay mocks — el bug vive en la interacción entre
- * transacciones, así que simularla no probaría nada.
+ * El almacén se deriva de {@code Caja.almacen}: cada caja registradora vive
+ * en un almacén, y la venta hereda ese almacén de su turno abierto.
  */
-@DisplayName("ISSUE-004 — Sobreventa concurrente en el POS")
-class VentaConcurrenciaTest extends PostgresIntegrationTest {
+@DisplayName("ISSUE-007 — La venta descuenta el almacén exacto de su caja")
+class VentaAlmacenTest extends PostgresIntegrationTest {
 
-    private static final int STOCK_INICIAL = 9;
-    private static final int CANTIDAD_SOLICITADA = 9;
     private static final BigDecimal PRECIO_VENTA = new BigDecimal("100.00");
 
     @Autowired private VentaService ventaService;
@@ -82,26 +80,22 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private Long idProducto;
+    private Long idAlmacenA;
+    private Long idAlmacenB;
     private Long idTurnoCaja;
-    private Long idResolucionB01;
     private Long idResolucionB02;
     private String username;
 
-    /**
-     * Siembra el escenario del auditor en una transacción que <b>commitea</b>:
-     * los dos hilos de la prueba corren en transacciones propias y no verían
-     * datos sin confirmar.
-     */
     @BeforeEach
     void sembrarEscenario() {
         transactionTemplate.executeWithoutResult(status -> {
             Rol rol = new Rol();
-            rol.setNombre("CAJERO_IT_" + System.nanoTime());
-            rol.setDescripcion("Rol de prueba de concurrencia");
+            rol.setNombre("CAJERO_ALM_" + System.nanoTime());
+            rol.setDescripcion("Rol de prueba de almacén de venta");
             rol = rolRepository.save(rol);
 
             Usuario usuario = new Usuario();
-            usuario.setUsername("cajero.it." + System.nanoTime());
+            usuario.setUsername("cajero.alm." + System.nanoTime());
             usuario.setEmail(usuario.getUsername() + "@maxli.test");
             usuario.setPasswordHash("$2a$10$hashDePruebaNoUsadoEnEsteTest");
             usuario.setEstado("ACTIVO");
@@ -109,15 +103,24 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             usuario = usuarioRepository.save(usuario);
             username = usuario.getUsername();
 
-            Almacen almacen = new Almacen();
-            almacen.setNombre("Almacen IT " + System.nanoTime());
-            almacen.setEstado("ACTIVO");
-            almacen = almacenRepository.save(almacen);
+            Almacen almacenA = new Almacen();
+            almacenA.setNombre("Almacen A " + System.nanoTime());
+            almacenA.setEstado("ACTIVO");
+            almacenA = almacenRepository.save(almacenA);
+            idAlmacenA = almacenA.getIdAlmacen();
 
+            Almacen almacenB = new Almacen();
+            almacenB.setNombre("Almacen B " + System.nanoTime());
+            almacenB.setEstado("ACTIVO");
+            almacenB = almacenRepository.save(almacenB);
+            idAlmacenB = almacenB.getIdAlmacen();
+
+            // La caja vive en el almacén A: toda venta de este turno debe
+            // descontar únicamente existencia de A, nunca de B.
             Caja caja = new Caja();
-            caja.setNombre("Caja IT " + System.nanoTime());
+            caja.setNombre("Caja Almacen A " + System.nanoTime());
             caja.setEstado("ACTIVO");
-            caja.setAlmacen(almacen);
+            caja.setAlmacen(almacenA);
             caja = cajaRepository.save(caja);
 
             TurnoCaja turno = new TurnoCaja();
@@ -129,18 +132,18 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             idTurnoCaja = turnoCajaRepository.save(turno).getIdTurnoCaja();
 
             Categoria categoria = new Categoria();
-            categoria.setNombre("Categoria IT " + System.nanoTime());
+            categoria.setNombre("Categoria Alm " + System.nanoTime());
             categoria.setEstado("ACTIVO");
             categoria = categoriaRepository.save(categoria);
 
             Marca marca = new Marca();
-            marca.setNombre("Marca IT " + System.nanoTime());
+            marca.setNombre("Marca Alm " + System.nanoTime());
             marca.setEstado("ACTIVO");
             marca = marcaRepository.save(marca);
 
             Producto producto = new Producto();
-            producto.setSku("SKU-IT-" + System.nanoTime());
-            producto.setNombre("Producto sobreventa");
+            producto.setSku("SKU-ALM-" + System.nanoTime());
+            producto.setNombre("Producto multi-almacen");
             producto.setPrecioVenta(PRECIO_VENTA);
             producto.setCosto(new BigDecimal("50.00"));
             producto.setEstado("ACTIVO");
@@ -148,16 +151,6 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             producto.setMarca(marca);
             idProducto = productoRepository.save(producto).getIdProducto();
 
-            Existencia existencia = new Existencia();
-            existencia.setProducto(producto);
-            existencia.setAlmacen(almacen);
-            existencia.setCantidadActual(STOCK_INICIAL);
-            existencia.setCantidadMinima(0);
-            existenciaRepository.save(existencia);
-
-            // Dos resoluciones activas: el bloqueo de NCF no serializa entre tipos
-            // distintos, que es justamente lo que destapó el hallazgo.
-            idResolucionB01 = crearResolucion("B01", "Crédito Fiscal").getIdResolucion();
             idResolucionB02 = crearResolucion("B02", "Consumo").getIdResolucion();
         });
     }
@@ -175,107 +168,150 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
         jdbcTemplate.update("DELETE FROM marca");
         jdbcTemplate.update("DELETE FROM almacen");
         jdbcTemplate.update("DELETE FROM resolucion_ncf");
-        jdbcTemplate.update("DELETE FROM usuario_rol WHERE id_usuario IN (SELECT id_usuario FROM usuario WHERE username LIKE 'cajero.it.%')");
-        jdbcTemplate.update("DELETE FROM usuario WHERE username LIKE 'cajero.it.%'");
-        jdbcTemplate.update("DELETE FROM rol WHERE nombre LIKE 'CAJERO_IT_%'");
+        jdbcTemplate.update("DELETE FROM usuario_rol WHERE id_usuario IN (SELECT id_usuario FROM usuario WHERE username LIKE 'cajero.alm.%')");
+        jdbcTemplate.update("DELETE FROM usuario WHERE username LIKE 'cajero.alm.%'");
+        jdbcTemplate.update("DELETE FROM rol WHERE nombre LIKE 'CAJERO_ALM_%'");
     }
 
     @Test
-    @DisplayName("con stock 9, dos ventas simultáneas de 9 unidades: solo una confirma")
-    void dosVentasSimultaneasNoPuedenSobrevenderElMismoStock() throws Exception {
+    @DisplayName("con el producto en dos almacenes, la venta descuenta únicamente el del almacén de la caja")
+    void ventaDescuentaUnicamenteElAlmacenDeLaCaja() {
+        sembrarExistencia(idAlmacenA, 5);
+        sembrarExistencia(idAlmacenB, 20);
+
+        VentaResponseDTO venta = ventaService.procesarVenta(construirRequest(3), username);
+
+        assertThat(venta.getIdAlmacen()).isEqualTo(idAlmacenA);
+
+        assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenA)
+                .orElseThrow().getCantidadActual())
+                .as("el almacén de la caja bajó exactamente lo vendido")
+                .isEqualTo(2);
+        assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenB)
+                .orElseThrow().getCantidadActual())
+                .as("el otro almacén no debe tocarse")
+                .isEqualTo(20);
+    }
+
+    @Test
+    @DisplayName("si el almacén de la caja no tiene existencia, la venta falla aunque otro almacén sí tenga stock")
+    void ventaFallaSiElAlmacenDeLaCajaNoTieneStockAunqueOtroSiTenga() {
+        // Solo B tiene existencia del producto; A (el de la caja) no tiene fila.
+        sembrarExistencia(idAlmacenB, 50);
+
+        assertThatThrownBy(() -> ventaService.procesarVenta(construirRequest(1), username))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No hay existencia registrada");
+
+        assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenB)
+                .orElseThrow().getCantidadActual())
+                .as("el almacén con stock que no corresponde a la caja queda intacto")
+                .isEqualTo(50);
+    }
+
+    @Test
+    @DisplayName("una venta rechazada por almacén no consume NCF ni deja cambios parciales")
+    void ventaNoConsumeNcfNiDejaCambiosParcialesSiFallaPorAlmacen() {
+        sembrarExistencia(idAlmacenB, 50);
+
+        assertThatThrownBy(() -> ventaService.procesarVenta(construirRequest(1), username))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(secuenciaActual(idResolucionB02))
+                .as("la resolución NCF no avanzó")
+                .isEqualTo(1L);
+        assertThat(ventaRepository.count())
+                .as("no se persistió ninguna venta")
+                .isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM detalle_venta", Long.class))
+                .as("no quedan detalles huérfanos")
+                .isZero();
+
+        TurnoCaja turnoFinal = turnoCajaRepository.findById(idTurnoCaja).orElseThrow();
+        assertThat(turnoFinal.getTotalVentasEfectivo())
+                .as("el cuadre del turno no se movió")
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("la venta concurrente del ISSUE-004 sigue protegida con el filtro de almacén explícito")
+    void ventaConcurrenteSigueBloqueadaConAlmacenExplicito() throws Exception {
+        sembrarExistencia(idAlmacenA, 9);
+        sembrarExistencia(idAlmacenB, 9);
+
         CyclicBarrier salidaSimultanea = new CyclicBarrier(2);
         ExecutorService pool = Executors.newFixedThreadPool(2);
 
-        Callable<VentaResponseDTO> ventaB01 = ventaConcurrente(salidaSimultanea, "B01");
-        Callable<VentaResponseDTO> ventaB02 = ventaConcurrente(salidaSimultanea, "B02");
+        Callable<VentaResponseDTO> venta1 = ventaConcurrente(salidaSimultanea);
+        Callable<VentaResponseDTO> venta2 = ventaConcurrente(salidaSimultanea);
 
         List<Future<VentaResponseDTO>> resultados;
         try {
-            resultados = pool.invokeAll(List.of(ventaB01, ventaB02));
+            resultados = pool.invokeAll(List.of(venta1, venta2));
         } finally {
             pool.shutdown();
             pool.awaitTermination(30, TimeUnit.SECONDS);
         }
 
-        List<VentaResponseDTO> exitosas = new ArrayList<>();
-        List<Throwable> fallidas = new ArrayList<>();
+        int exitosas = 0;
+        int fallidasPorStock = 0;
         for (Future<VentaResponseDTO> resultado : resultados) {
             try {
-                exitosas.add(resultado.get());
-            } catch (java.util.concurrent.ExecutionException e) {
-                fallidas.add(e.getCause());
+                resultado.get();
+                exitosas++;
+            } catch (ExecutionException e) {
+                assertThat(e.getCause())
+                        .isInstanceOf(BusinessException.class)
+                        .hasMessageContaining("Stock insuficiente");
+                fallidasPorStock++;
             }
         }
 
-        // 1 y 2. Una venta confirma; la otra falla con un error de negocio,
-        //        no con una violación de integridad ni un fallo de infraestructura.
-        assertThat(exitosas)
-                .as("exactamente una venta debe confirmarse")
-                .hasSize(1);
-        assertThat(fallidas)
-                .as("la otra venta debe fallar con BusinessException controlada")
-                .hasSize(1)
-                .allSatisfy(error -> assertThat(error)
-                        .isInstanceOf(BusinessException.class)
-                        .hasMessageContaining("Stock insuficiente"));
+        assertThat(exitosas).as("exactamente una venta debe confirmarse").isEqualTo(1);
+        assertThat(fallidasPorStock).as("la otra debe fallar por stock, no sobrevender").isEqualTo(1);
 
-        // 3. El stock final es correcto y nunca negativo.
-        Existencia existenciaFinal = existenciaRepository
-                .findFirstByProducto_IdProducto(idProducto)
-                .orElseThrow();
-        assertThat(existenciaFinal.getCantidadActual())
-                .as("stock final = 9 - 9")
+        assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenA)
+                .orElseThrow().getCantidadActual())
+                .as("el almacén de la caja queda en 0, nunca negativo")
                 .isZero();
-
-        // 4. Solo se persistió una venta, con su único detalle.
-        assertThat(ventaRepository.count())
-                .as("solo una venta persistida")
-                .isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM detalle_venta", Long.class))
-                .as("sin detalles huérfanos de la venta rechazada")
-                .isEqualTo(1);
-
-        // 5. Solo se consumió un NCF: la resolución perdedora queda intacta.
-        VentaResponseDTO ventaConfirmada = exitosas.get(0);
-        Long idResolucionGanadora = "B01".equals(ventaConfirmada.getTipoNcf()) ? idResolucionB01 : idResolucionB02;
-        Long idResolucionPerdedora = "B01".equals(ventaConfirmada.getTipoNcf()) ? idResolucionB02 : idResolucionB01;
-
-        assertThat(secuenciaActual(idResolucionGanadora))
-                .as("la resolución usada avanza exactamente un comprobante")
-                .isEqualTo(2L);
-        assertThat(secuenciaActual(idResolucionPerdedora))
-                .as("la resolución de la venta rechazada no consume NCF")
-                .isEqualTo(1L);
-        assertThat(ventaConfirmada.getNcf()).isNotBlank();
-
-        // 6. La caja refleja una sola venta.
-        TurnoCaja turnoFinal = turnoCajaRepository.findById(idTurnoCaja).orElseThrow();
-        assertThat(turnoFinal.getTotalVentasEfectivo())
-                .as("el cuadre del turno contiene una sola venta")
-                .isEqualByComparingTo(ventaConfirmada.getTotal());
+        assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenB)
+                .orElseThrow().getCantidadActual())
+                .as("el almacén B, ajeno a la caja, no debe tocarse")
+                .isEqualTo(9);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    private Callable<VentaResponseDTO> ventaConcurrente(CyclicBarrier barrera, String tipoNcf) {
+    private void sembrarExistencia(Long idAlmacen, int cantidad) {
+        transactionTemplate.executeWithoutResult(status -> {
+            Existencia existencia = new Existencia();
+            existencia.setProducto(productoRepository.findById(idProducto).orElseThrow());
+            existencia.setAlmacen(almacenRepository.findById(idAlmacen).orElseThrow());
+            existencia.setCantidadActual(cantidad);
+            existencia.setCantidadMinima(0);
+            existenciaRepository.save(existencia);
+        });
+    }
+
+    private Callable<VentaResponseDTO> ventaConcurrente(CyclicBarrier barrera) {
         return () -> {
             barrera.await(20, TimeUnit.SECONDS);
-            return ventaService.procesarVenta(construirRequest(tipoNcf), username);
+            return ventaService.procesarVenta(construirRequest(9), username);
         };
     }
 
-    private CrearVentaRequestDTO construirRequest(String tipoNcf) {
+    private CrearVentaRequestDTO construirRequest(int cantidad) {
         DetalleVentaRequestDTO detalle = new DetalleVentaRequestDTO();
         detalle.setIdProducto(idProducto);
-        detalle.setCantidad(CANTIDAD_SOLICITADA);
+        detalle.setCantidad(cantidad);
 
         IngresoVentaRequestDTO ingreso = new IngresoVentaRequestDTO();
         ingreso.setMetodoPago("EFECTIVO");
-        ingreso.setMonto(PRECIO_VENTA.multiply(BigDecimal.valueOf(CANTIDAD_SOLICITADA)));
+        ingreso.setMonto(PRECIO_VENTA.multiply(BigDecimal.valueOf(cantidad)));
 
         CrearVentaRequestDTO request = new CrearVentaRequestDTO();
         request.setIdTurnoCaja(idTurnoCaja);
-        request.setTipoNcf(tipoNcf);
+        request.setTipoNcf("B02");
         request.setMetodoPago("EFECTIVO");
         request.setDetalles(List.of(detalle));
         request.setIngresos(List.of(ingreso));
@@ -286,7 +322,7 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
         ResolucionNcf resolucion = new ResolucionNcf();
         resolucion.setTipoNcf(tipo);
         resolucion.setDescripcion(descripcion);
-        resolucion.setNumeroResolucion("RES-IT-" + tipo);
+        resolucion.setNumeroResolucion("RES-ALM-" + tipo);
         resolucion.setPrefijo(tipo);
         resolucion.setSecuenciaInicio(1L);
         resolucion.setSecuenciaFinal(1000L);

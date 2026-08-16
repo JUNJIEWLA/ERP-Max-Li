@@ -12,6 +12,8 @@ public class CajaResponseDTO {
     private Long idCaja;
     private String nombre;
     private String estado;
+    private Long idAlmacen;
+    private String almacenNombre;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaModificacion;
 }
