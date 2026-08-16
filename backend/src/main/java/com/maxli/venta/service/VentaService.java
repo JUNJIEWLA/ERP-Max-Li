@@ -195,6 +195,11 @@ public class VentaService {
             throw new BusinessException(
                     "La caja del turno no tiene un almacén asignado. Asígnelo desde Administración > Cajas antes de vender.");
         }
+        if (!ACTIVO.equals(almacen.getEstado())) {
+            throw new BusinessException(String.format(
+                    "El almacén '%s' asignado a esta caja está inactivo. No se puede vender hasta reasignarlo.",
+                    almacen.getNombre()));
+        }
 
         // ── 2. Parsear método de pago ────────────────────────────────────
         MetodoPago metodo = parseMetodoPago(request.getMetodoPago());

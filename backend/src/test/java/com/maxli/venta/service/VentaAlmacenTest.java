@@ -194,6 +194,25 @@ class VentaAlmacenTest extends PostgresIntegrationTest {
     }
 
     @Test
+    @DisplayName("si el almacén de la caja está inactivo, la venta se rechaza aunque tenga stock")
+    void ventaFallaSiElAlmacenDeLaCajaEstaInactivo() {
+        sembrarExistencia(idAlmacenA, 10);
+        desactivarAlmacen(idAlmacenA);
+
+        assertThatThrownBy(() -> ventaService.procesarVenta(construirRequest(1), username))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("inactivo");
+
+        assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenA)
+                .orElseThrow().getCantidadActual())
+                .as("con el almacén inactivo, no se toca la existencia")
+                .isEqualTo(10);
+        assertThat(ventaRepository.count())
+                .as("no se persistió ninguna venta")
+                .isZero();
+    }
+
+    @Test
     @DisplayName("si el almacén de la caja no tiene existencia, la venta falla aunque otro almacén sí tenga stock")
     void ventaFallaSiElAlmacenDeLaCajaNoTieneStockAunqueOtroSiTenga() {
         // Solo B tiene existencia del producto; A (el de la caja) no tiene fila.
@@ -290,6 +309,14 @@ class VentaAlmacenTest extends PostgresIntegrationTest {
             existencia.setCantidadActual(cantidad);
             existencia.setCantidadMinima(0);
             existenciaRepository.save(existencia);
+        });
+    }
+
+    private void desactivarAlmacen(Long idAlmacen) {
+        transactionTemplate.executeWithoutResult(status -> {
+            Almacen almacen = almacenRepository.findById(idAlmacen).orElseThrow();
+            almacen.setEstado("INACTIVO");
+            almacenRepository.save(almacen);
         });
     }
 
