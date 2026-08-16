@@ -1,6 +1,7 @@
 package com.maxli.caja.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -16,4 +17,7 @@ public class CajaRequestDTO {
 
     @Pattern(regexp = "^(ACTIVO|INACTIVO)$", message = "El estado debe ser ACTIVO o INACTIVO")
     private String estado = "ACTIVO";
+
+    @NotNull(message = "El almacén es obligatorio")
+    private Long idAlmacen;
 }

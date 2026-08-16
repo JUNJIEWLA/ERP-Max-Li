@@ -109,9 +109,15 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             usuario = usuarioRepository.save(usuario);
             username = usuario.getUsername();
 
+            Almacen almacen = new Almacen();
+            almacen.setNombre("Almacen IT " + System.nanoTime());
+            almacen.setEstado("ACTIVO");
+            almacen = almacenRepository.save(almacen);
+
             Caja caja = new Caja();
             caja.setNombre("Caja IT " + System.nanoTime());
             caja.setEstado("ACTIVO");
+            caja.setAlmacen(almacen);
             caja = cajaRepository.save(caja);
 
             TurnoCaja turno = new TurnoCaja();
@@ -141,11 +147,6 @@ class VentaConcurrenciaTest extends PostgresIntegrationTest {
             producto.setCategoria(categoria);
             producto.setMarca(marca);
             idProducto = productoRepository.save(producto).getIdProducto();
-
-            Almacen almacen = new Almacen();
-            almacen.setNombre("Almacen IT " + System.nanoTime());
-            almacen.setEstado("ACTIVO");
-            almacen = almacenRepository.save(almacen);
 
             Existencia existencia = new Existencia();
             existencia.setProducto(producto);

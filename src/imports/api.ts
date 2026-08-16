@@ -360,6 +360,8 @@ export interface Caja {
   idCaja: number;
   nombre: string;
   estado: string;
+  idAlmacen: number | null;
+  almacenNombre: string | null;
   fechaCreacion: string;
   fechaModificacion: string;
 }
@@ -394,6 +396,8 @@ export interface TurnoCaja {
   idTurnoCaja: number;
   idCaja: number;
   cajaNombre: string;
+  idAlmacen: number | null;
+  almacenNombre: string | null;
   idUsuarioApertura: number;
   usernameUsuarioApertura: string;
   idUsuarioCierre: number | null;
@@ -693,10 +697,10 @@ export const cajasApi = {
   buscarPorId: (id: number) =>
     get<Caja>(`/cajas/${id}`),
 
-  crear: (body: { nombre: string; estado?: string }) =>
+  crear: (body: { nombre: string; estado?: string; idAlmacen: number }) =>
     post<Caja>('/cajas', body),
 
-  actualizar: (id: number, body: { nombre: string; estado?: string }) =>
+  actualizar: (id: number, body: { nombre: string; estado?: string; idAlmacen: number }) =>
     put<Caja>(`/cajas/${id}`, body),
 
   desactivar: (id: number) =>

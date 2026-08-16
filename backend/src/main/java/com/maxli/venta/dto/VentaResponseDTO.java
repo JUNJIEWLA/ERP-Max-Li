@@ -14,6 +14,8 @@ public class VentaResponseDTO {
     private Long idVenta;
     private Long idTurnoCaja;
     private String cajeroNombre;
+    private Long idAlmacen;
+    private String almacenNombre;
 
     // Cliente
     private Long idCliente;

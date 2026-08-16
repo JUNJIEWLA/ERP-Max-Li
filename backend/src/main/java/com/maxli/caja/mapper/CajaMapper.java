@@ -20,6 +20,10 @@ public class CajaMapper {
         dto.setIdCaja(caja.getIdCaja());
         dto.setNombre(caja.getNombre());
         dto.setEstado(caja.getEstado());
+        if (caja.getAlmacen() != null) {
+            dto.setIdAlmacen(caja.getAlmacen().getIdAlmacen());
+            dto.setAlmacenNombre(caja.getAlmacen().getNombre());
+        }
         dto.setFechaCreacion(caja.getFechaCreacion());
         dto.setFechaModificacion(caja.getFechaModificacion());
         return dto;

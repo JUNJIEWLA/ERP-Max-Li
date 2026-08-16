@@ -1,10 +1,14 @@
 package com.maxli.caja.service;
 
+import com.maxli.almacen.entity.Almacen;
+import com.maxli.almacen.repository.AlmacenRepository;
 import com.maxli.caja.dto.CajaRequestDTO;
 import com.maxli.caja.dto.CajaResponseDTO;
 import com.maxli.caja.entity.Caja;
 import com.maxli.caja.mapper.CajaMapper;
 import com.maxli.caja.repository.CajaRepository;
+import com.maxli.caja.repository.TurnoCajaRepository;
+import com.maxli.exception.BusinessException;
 import com.maxli.exception.DuplicateResourceException;
 import com.maxli.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
@@ -18,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -27,6 +32,8 @@ class CajaServiceTest {
 
     @Mock private CajaRepository cajaRepository;
     @Mock private CajaMapper cajaMapper;
+    @Mock private AlmacenRepository almacenRepository;
+    @Mock private TurnoCajaRepository turnoCajaRepository;
     @InjectMocks private CajaService cajaService;
 
     @Test
@@ -43,15 +50,22 @@ class CajaServiceTest {
         CajaRequestDTO request = new CajaRequestDTO();
         request.setNombre("Caja Principal");
         request.setEstado("ACTIVO");
+        request.setIdAlmacen(5L);
 
         Caja entity = new Caja();
         entity.setNombre("Caja Principal");
         entity.setEstado("ACTIVO");
 
+        Almacen almacen = new Almacen();
+        almacen.setIdAlmacen(5L);
+        almacen.setNombre("Almacen Principal");
+        almacen.setEstado("ACTIVO");
+
         Caja saved = new Caja();
         saved.setIdCaja(1L);
         saved.setNombre("Caja Principal");
         saved.setEstado("ACTIVO");
+        saved.setAlmacen(almacen);
 
         CajaResponseDTO expectedDto = new CajaResponseDTO();
         expectedDto.setIdCaja(1L);
@@ -60,6 +74,7 @@ class CajaServiceTest {
 
         when(cajaRepository.existsByNombreAndEstado("Caja Principal", "ACTIVO")).thenReturn(false);
         when(cajaMapper.toEntity(request)).thenReturn(entity);
+        when(almacenRepository.findById(5L)).thenReturn(Optional.of(almacen));
         when(cajaRepository.save(entity)).thenReturn(saved);
         when(cajaMapper.toDto(saved)).thenReturn(expectedDto);
 
@@ -124,5 +139,139 @@ class CajaServiceTest {
 
         assertThatThrownBy(() -> cajaService.desactivar(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void actualizar_lanza_excepcion_si_cambia_almacen_con_turno_abierto() {
+        Almacen almacenActual = new Almacen();
+        almacenActual.setIdAlmacen(1L);
+        almacenActual.setNombre("Almacen A");
+        almacenActual.setEstado("ACTIVO");
+
+        Caja caja = new Caja();
+        caja.setIdCaja(10L);
+        caja.setNombre("Caja 1");
+        caja.setEstado("ACTIVO");
+        caja.setAlmacen(almacenActual);
+
+        CajaRequestDTO request = new CajaRequestDTO();
+        request.setNombre("Caja 1");
+        request.setEstado("ACTIVO");
+        request.setIdAlmacen(2L); // distinto al actual
+
+        when(cajaRepository.findById(10L)).thenReturn(Optional.of(caja));
+        when(cajaRepository.existsByNombreAndEstadoAndIdCajaNot("Caja 1", "ACTIVO", 10L)).thenReturn(false);
+        when(turnoCajaRepository.existsByCaja_IdCajaAndEstado(10L, "ABIERTO")).thenReturn(true);
+
+        assertThatThrownBy(() -> cajaService.actualizar(10L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("turno ABIERTO");
+
+        verifyNoInteractions(almacenRepository);
+        verify(cajaRepository, never()).save(any(Caja.class));
+    }
+
+    @Test
+    void actualizar_permite_mismo_almacen_aunque_haya_turno_abierto() {
+        Almacen almacenActual = new Almacen();
+        almacenActual.setIdAlmacen(1L);
+        almacenActual.setNombre("Almacen A");
+        almacenActual.setEstado("ACTIVO");
+
+        Caja caja = new Caja();
+        caja.setIdCaja(10L);
+        caja.setNombre("Caja 1");
+        caja.setEstado("ACTIVO");
+        caja.setAlmacen(almacenActual);
+
+        CajaRequestDTO request = new CajaRequestDTO();
+        request.setNombre("Caja 1");
+        request.setEstado("ACTIVO");
+        request.setIdAlmacen(1L); // mismo almacén: no es un cambio real
+
+        CajaResponseDTO expectedDto = new CajaResponseDTO();
+
+        when(cajaRepository.findById(10L)).thenReturn(Optional.of(caja));
+        when(cajaRepository.existsByNombreAndEstadoAndIdCajaNot("Caja 1", "ACTIVO", 10L)).thenReturn(false);
+        when(almacenRepository.findById(1L)).thenReturn(Optional.of(almacenActual));
+        when(cajaRepository.save(caja)).thenReturn(caja);
+        when(cajaMapper.toDto(caja)).thenReturn(expectedDto);
+
+        cajaService.actualizar(10L, request);
+
+        verify(turnoCajaRepository, never())
+                .existsByCaja_IdCajaAndEstado(any(), any());
+    }
+
+    @Test
+    void actualizar_permite_cambiar_almacen_sin_turno_abierto() {
+        Almacen almacenActual = new Almacen();
+        almacenActual.setIdAlmacen(1L);
+        almacenActual.setEstado("ACTIVO");
+
+        Almacen almacenNuevo = new Almacen();
+        almacenNuevo.setIdAlmacen(2L);
+        almacenNuevo.setNombre("Almacen B");
+        almacenNuevo.setEstado("ACTIVO");
+
+        Caja caja = new Caja();
+        caja.setIdCaja(10L);
+        caja.setNombre("Caja 1");
+        caja.setEstado("ACTIVO");
+        caja.setAlmacen(almacenActual);
+
+        CajaRequestDTO request = new CajaRequestDTO();
+        request.setNombre("Caja 1");
+        request.setEstado("ACTIVO");
+        request.setIdAlmacen(2L);
+
+        CajaResponseDTO expectedDto = new CajaResponseDTO();
+
+        when(cajaRepository.findById(10L)).thenReturn(Optional.of(caja));
+        when(cajaRepository.existsByNombreAndEstadoAndIdCajaNot("Caja 1", "ACTIVO", 10L)).thenReturn(false);
+        when(turnoCajaRepository.existsByCaja_IdCajaAndEstado(10L, "ABIERTO")).thenReturn(false);
+        when(almacenRepository.findById(2L)).thenReturn(Optional.of(almacenNuevo));
+        when(cajaRepository.save(caja)).thenReturn(caja);
+        when(cajaMapper.toDto(caja)).thenReturn(expectedDto);
+
+        cajaService.actualizar(10L, request);
+
+        assertThat(caja.getAlmacen()).isEqualTo(almacenNuevo);
+    }
+
+    @Test
+    void actualizar_permite_asignar_almacen_por_primera_vez_con_turno_abierto() {
+        Caja caja = new Caja();
+        caja.setIdCaja(10L);
+        caja.setNombre("Caja 1");
+        caja.setEstado("ACTIVO");
+        caja.setAlmacen(null); // nunca tuvo almacén asignado
+
+        Almacen almacenNuevo = new Almacen();
+        almacenNuevo.setIdAlmacen(2L);
+        almacenNuevo.setNombre("Almacen B");
+        almacenNuevo.setEstado("ACTIVO");
+
+        CajaRequestDTO request = new CajaRequestDTO();
+        request.setNombre("Caja 1");
+        request.setEstado("ACTIVO");
+        request.setIdAlmacen(2L);
+
+        CajaResponseDTO expectedDto = new CajaResponseDTO();
+
+        when(cajaRepository.findById(10L)).thenReturn(Optional.of(caja));
+        when(cajaRepository.existsByNombreAndEstadoAndIdCajaNot("Caja 1", "ACTIVO", 10L)).thenReturn(false);
+        when(almacenRepository.findById(2L)).thenReturn(Optional.of(almacenNuevo));
+        when(cajaRepository.save(caja)).thenReturn(caja);
+        when(cajaMapper.toDto(caja)).thenReturn(expectedDto);
+
+        // Un turno abierto sobre una caja que nunca tuvo almacén no pudo haber
+        // vendido nada todavía (VentaService lo bloquea), así que la primera
+        // asignación es segura aunque el turno siga abierto.
+        cajaService.actualizar(10L, request);
+
+        verify(turnoCajaRepository, never())
+                .existsByCaja_IdCajaAndEstado(any(), any());
+        assertThat(caja.getAlmacen()).isEqualTo(almacenNuevo);
     }
 }

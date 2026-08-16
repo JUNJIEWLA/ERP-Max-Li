@@ -12,16 +12,18 @@ import {
   ToggleRight,
   X,
 } from 'lucide-react';
-import { cajasApi, type Caja } from '../../imports/api';
+import { almacenesApi, cajasApi, type Almacen, type Caja } from '../../imports/api';
 
 interface CajaForm {
   nombre: string;
   estado: 'ACTIVO' | 'INACTIVO';
+  idAlmacen: number | null;
 }
 
 const EMPTY_FORM: CajaForm = {
   nombre: '',
   estado: 'ACTIVO',
+  idAlmacen: null,
 };
 
 const PAGE_SIZE = 10;
@@ -46,6 +48,13 @@ export default function Cajas() {
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<Caja | null>(null);
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
+
+  useEffect(() => {
+    almacenesApi.listar(0, 100)
+      .then((data) => setAlmacenes(data.content.filter((almacen) => almacen.estado === 'ACTIVO')))
+      .catch(() => setAlmacenes([]));
+  }, []);
 
   const cargarCajas = useCallback(async () => {
     setLoading(true);
@@ -76,6 +85,7 @@ export default function Cajas() {
     setForm({
       nombre: caja.nombre,
       estado: caja.estado === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO',
+      idAlmacen: caja.idAlmacen,
     });
     setFormError('');
     setShowModal(true);
@@ -91,6 +101,7 @@ export default function Cajas() {
   const validate = () => {
     if (!form.nombre.trim()) return 'El nombre es obligatorio';
     if (form.nombre.trim().length > 100) return 'El nombre no puede superar 100 caracteres';
+    if (!form.idAlmacen) return 'El almacén es obligatorio: las ventas de esta caja descontarán de ese almacén';
     return '';
   };
 
@@ -107,6 +118,7 @@ export default function Cajas() {
       const body = {
         nombre: form.nombre.trim(),
         estado: form.estado,
+        idAlmacen: form.idAlmacen as number,
       };
 
       if (editTarget) {
@@ -134,6 +146,7 @@ export default function Cajas() {
         await cajasApi.actualizar(confirmTarget.idCaja, {
           nombre: confirmTarget.nombre,
           estado: 'ACTIVO',
+          idAlmacen: confirmTarget.idAlmacen as number,
         });
       }
       setConfirmTarget(null);
@@ -243,6 +256,7 @@ export default function Cajas() {
               <tr>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">ID</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
+                <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Almacén</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Creación</th>
                 <th className="px-5 py-3 text-left font-semibold text-muted-foreground">Última modificación</th>
                 <th className="px-5 py-3 text-center font-semibold text-muted-foreground">Estado</th>
@@ -258,6 +272,7 @@ export default function Cajas() {
                     </span>
                   </td>
                   <td className="px-5 py-3 font-medium text-foreground">{caja.nombre}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{caja.almacenNombre ?? 'Sin asignar'}</td>
                   <td className="px-5 py-3 text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <CalendarDays size={14} />
@@ -354,6 +369,29 @@ export default function Cajas() {
                   placeholder="Ej: Caja Principal"
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+                  Almacén <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  id="input-caja-almacen"
+                  value={form.idAlmacen ?? ''}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    idAlmacen: event.target.value ? Number(event.target.value) : null,
+                  }))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="">Seleccione un almacén...</option>
+                  {almacenes.map((almacen) => (
+                    <option key={almacen.idAlmacen} value={almacen.idAlmacen}>{almacen.nombre}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Las ventas cobradas en esta caja descontarán existencia únicamente de este almacén.
+                </p>
               </div>
 
               {editTarget && (

@@ -112,9 +112,15 @@ class CuadreCajaEfectivoTest extends PostgresIntegrationTest {
             usuario = usuarioRepository.save(usuario);
             username = usuario.getUsername();
 
+            Almacen almacen = new Almacen();
+            almacen.setNombre("Almacen Cuadre " + System.nanoTime());
+            almacen.setEstado("ACTIVO");
+            almacen = almacenRepository.save(almacen);
+
             Caja caja = new Caja();
             caja.setNombre("Caja Cuadre " + System.nanoTime());
             caja.setEstado("ACTIVO");
+            caja.setAlmacen(almacen);
             caja = cajaRepository.save(caja);
 
             // Se abre por el servicio real: así el turno arranca con el mismo
@@ -144,11 +150,6 @@ class CuadreCajaEfectivoTest extends PostgresIntegrationTest {
             producto.setCategoria(categoria);
             producto.setMarca(marca);
             idProducto = productoRepository.save(producto).getIdProducto();
-
-            Almacen almacen = new Almacen();
-            almacen.setNombre("Almacen Cuadre " + System.nanoTime());
-            almacen.setEstado("ACTIVO");
-            almacen = almacenRepository.save(almacen);
 
             Existencia existencia = new Existencia();
             existencia.setProducto(producto);

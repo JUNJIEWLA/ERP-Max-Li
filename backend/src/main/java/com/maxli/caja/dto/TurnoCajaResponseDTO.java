@@ -13,6 +13,8 @@ public class TurnoCajaResponseDTO {
     private Long idTurnoCaja;
     private Long idCaja;
     private String cajaNombre;
+    private Long idAlmacen;
+    private String almacenNombre;
     private Long idUsuarioApertura;
     private String usernameUsuarioApertura;
     private Long idUsuarioCierre;

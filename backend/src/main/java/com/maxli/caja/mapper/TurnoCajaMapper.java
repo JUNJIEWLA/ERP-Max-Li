@@ -32,6 +32,10 @@ public class TurnoCajaMapper {
         if (caja != null) {
             dto.setIdCaja(caja.getIdCaja());
             dto.setCajaNombre(caja.getNombre());
+            if (caja.getAlmacen() != null) {
+                dto.setIdAlmacen(caja.getAlmacen().getIdAlmacen());
+                dto.setAlmacenNombre(caja.getAlmacen().getNombre());
+            }
         }
 
         Usuario usuarioApertura = turno.getUsuarioApertura();

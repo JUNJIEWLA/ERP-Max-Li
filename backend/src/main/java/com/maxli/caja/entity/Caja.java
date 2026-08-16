@@ -1,5 +1,6 @@
 package com.maxli.caja.entity;
 
+import com.maxli.almacen.entity.Almacen;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,6 +29,10 @@ public class Caja {
 
     @Column(name = "estado", nullable = false, length = 20)
     private String estado;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_almacen")
+    private Almacen almacen;
 
     @CreatedDate
     @Column(name = "fecha_creacion", updatable = false)

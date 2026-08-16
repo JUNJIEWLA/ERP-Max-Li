@@ -1,5 +1,6 @@
 package com.maxli.venta.service;
 
+import com.maxli.almacen.entity.Almacen;
 import com.maxli.caja.entity.TurnoCaja;
 import com.maxli.caja.repository.TurnoCajaRepository;
 import com.maxli.cliente.entity.Cliente;
@@ -185,6 +186,21 @@ public class VentaService {
             throw new BusinessException("El turno de caja no pertenece al usuario actual.");
         }
 
+        // El almacén de la venta se deriva de la caja del turno, nunca se
+        // adivina: sin este vínculo no hay forma confiable de saber de qué
+        // ubicación descontar existencia cuando el producto está en varios
+        // almacenes (ISSUE-007).
+        Almacen almacen = turno.getCaja().getAlmacen();
+        if (almacen == null) {
+            throw new BusinessException(
+                    "La caja del turno no tiene un almacén asignado. Asígnelo desde Administración > Cajas antes de vender.");
+        }
+        if (!ACTIVO.equals(almacen.getEstado())) {
+            throw new BusinessException(String.format(
+                    "El almacén '%s' asignado a esta caja está inactivo. No se puede vender hasta reasignarlo.",
+                    almacen.getNombre()));
+        }
+
         // ── 2. Parsear método de pago ────────────────────────────────────
         MetodoPago metodo = parseMetodoPago(request.getMetodoPago());
         boolean esB01 = B01.equalsIgnoreCase(request.getTipoNcf());
@@ -201,6 +217,7 @@ public class VentaService {
         Venta venta = new Venta();
         venta.setTurnoCaja(turno);
         venta.setUsuario(usuario);
+        venta.setAlmacen(almacen);
         venta.setMetodoPagoPrincipal(metodo);
         venta.setUsaPrecioMayor(request.isUsaPrecioMayor() && mayorPermitido);
         venta.setTipoNcf(request.getTipoNcf());
@@ -223,7 +240,8 @@ public class VentaService {
         // ── 4. Bloquear existencias y validar stock ──────────────────────
         // Antes de consumir el NCF: si el stock no alcanza, la venta se rechaza
         // sin haber tocado la secuencia fiscal.
-        Map<Long, Existencia> existenciasBloqueadas = bloquearYValidarStock(request.getDetalles());
+        Map<Long, Existencia> existenciasBloqueadas =
+                bloquearYValidarStock(request.getDetalles(), almacen.getIdAlmacen());
 
         // ── 5. Generar NCF ───────────────────────────────────────────────
         if (request.getTipoNcf() != null && !request.getTipoNcf().isBlank()) {
@@ -387,6 +405,13 @@ public class VentaService {
      * de la primera y luego re-lee la cantidad ya descontada, por lo que su
      * validación falla con un error de negocio en vez de sobrevender.
      * <p>
+     * Se bloquea la existencia exacta de {@code (idProducto, idAlmacen)}: el
+     * almacén viene fijo por venta (derivado de la caja del turno, ver
+     * {@link #procesarVenta}), así que nunca se toma "la primera" existencia
+     * del producto entre varios almacenes (ISSUE-007). Si el producto no tiene
+     * existencia registrada en ese almacén, la venta falla aunque otro almacén
+     * sí tenga stock.
+     * <p>
      * Los bloqueos se toman en orden ascendente de {@code idProducto} para que
      * todas las ventas los adquieran en la misma secuencia y no se produzcan
      * deadlocks entre carritos con los mismos productos en distinto orden. Las
@@ -395,7 +420,7 @@ public class VentaService {
      *
      * @return existencia bloqueada por id de producto, lista para decrementar
      */
-    private Map<Long, Existencia> bloquearYValidarStock(List<DetalleVentaRequestDTO> detalles) {
+    private Map<Long, Existencia> bloquearYValidarStock(List<DetalleVentaRequestDTO> detalles, Long idAlmacen) {
         Map<Long, Integer> cantidadPorProducto = new TreeMap<>();
         for (DetalleVentaRequestDTO item : detalles) {
             cantidadPorProducto.merge(item.getIdProducto(), item.getCantidad(), Integer::sum);
@@ -410,11 +435,11 @@ public class VentaService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Producto no encontrado con id: " + idProducto));
 
-            Existencia existencia = existenciaRepository.bloquearPorProductoParaActualizar(idProducto)
-                    .stream()
-                    .findFirst()
-                    .orElseThrow(() -> new BusinessException(
-                            "No hay registro de existencia para el producto: " + producto.getNombre()));
+            Existencia existencia = existenciaRepository
+                    .bloquearPorProductoYAlmacenParaActualizar(idProducto, idAlmacen)
+                    .orElseThrow(() -> new BusinessException(String.format(
+                            "No hay existencia registrada para '%s' en el almacén de esta caja.",
+                            producto.getNombre())));
 
             if (existencia.getCantidadActual() < cantidadSolicitada) {
                 throw new BusinessException(String.format(
@@ -652,6 +677,10 @@ public class VentaService {
         dto.setIdVenta(venta.getIdVenta());
         dto.setIdTurnoCaja(venta.getTurnoCaja().getIdTurnoCaja());
         dto.setCajeroNombre(venta.getUsuario().getUsername());
+        if (venta.getAlmacen() != null) {
+            dto.setIdAlmacen(venta.getAlmacen().getIdAlmacen());
+            dto.setAlmacenNombre(venta.getAlmacen().getNombre());
+        }
         dto.setIdCliente(venta.getCliente() != null ? venta.getCliente().getIdCliente() : null);
         dto.setClienteNombre(venta.getCliente() != null ? venta.getCliente().getNombreCompleto() : null);
         dto.setNombreClienteTemporal(venta.getNombreClienteTemporal());

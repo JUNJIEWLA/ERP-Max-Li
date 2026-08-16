@@ -1,5 +1,6 @@
 package com.maxli.venta.entity;
 
+import com.maxli.almacen.entity.Almacen;
 import com.maxli.caja.entity.TurnoCaja;
 import com.maxli.cliente.entity.Cliente;
 import com.maxli.usuario.entity.Usuario;
@@ -49,6 +50,12 @@ public class Venta {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_usuario", nullable = false)
     private Usuario usuario;
+
+    // Almacén del que se descontó existencia (derivado de la caja del turno).
+    // Nullable en BD para no reescribir ventas históricas anteriores a ISSUE-007.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_almacen")
+    private Almacen almacen;
 
     // ── Cliente registrado (opcional) ────────────────────────────────────
 
