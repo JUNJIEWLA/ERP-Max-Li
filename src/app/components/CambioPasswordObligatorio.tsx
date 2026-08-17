@@ -76,6 +76,7 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
               <label className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Contraseña Temporal / Actual</label>
               <input 
                 type="password" 
+                autoComplete="current-password"
                 required 
                 value={passwordActual} 
                 onChange={e => setPasswordActual(e.target.value)} 
@@ -88,6 +89,7 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
               <label className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Nueva Contraseña</label>
               <input 
                 type="password" 
+                autoComplete="new-password"
                 required 
                 value={passwordNueva} 
                 onChange={e => setPasswordNueva(e.target.value)} 
@@ -100,6 +102,7 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
               <label className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Confirmar Nueva Contraseña</label>
               <input 
                 type="password" 
+                autoComplete="new-password"
                 required 
                 value={confirmarPassword} 
                 onChange={e => setConfirmarPassword(e.target.value)} 

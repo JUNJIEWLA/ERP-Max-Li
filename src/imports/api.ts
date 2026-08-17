@@ -6,60 +6,38 @@
 
 const BASE_URL = '/api';
 
-// ── Manejo del token JWT ─────────────────────────────────
+// ── Sesión ───────────────────────────────────────────────
+//
+//  El JWT vive en una cookie HttpOnly emitida por el backend: este código no
+//  puede leerlo ni guardarlo, que es justamente el objetivo (un XSS ya no puede
+//  robar la sesión). En consecuencia:
+//    · toda petición viaja con `credentials: 'include'` para que el navegador
+//      adjunte la cookie;
+//    · quién es el usuario y qué permisos tiene se preguntan a /auth/me, no a
+//      localStorage;
+//    · las peticiones mutantes llevan el token CSRF que acompaña a la cookie.
 
-const TOKEN_KEY = 'maxli_token';
 export const AUTH_EXPIRED_EVENT = 'maxli-auth-expired';
 
-export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
-export const setToken = (token: string): void => localStorage.setItem(TOKEN_KEY, token);
-export const clearToken = (): void => localStorage.removeItem(TOKEN_KEY);
+/** Cookie legible por el SPA que Spring Security emite junto a la sesión. */
+const CSRF_COOKIE = 'XSRF-TOKEN';
+const CSRF_HEADER = 'X-XSRF-TOKEN';
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  const payload = token.split('.')[1];
-  if (!payload) return null;
-
-  try {
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
+function leerCookie(nombre: string): string | null {
+  const encontrada = document.cookie
+    .split('; ')
+    .find(entrada => entrada.startsWith(`${nombre}=`));
+  return encontrada ? decodeURIComponent(encontrada.slice(nombre.length + 1)) : null;
 }
 
-export const isTokenExpired = (token: string | null = getToken()): boolean => {
-  if (!token) return true;
-  const payload = decodeJwtPayload(token);
-  const exp = payload?.exp;
-  if (typeof exp !== 'number') return true;
-  return Date.now() >= exp * 1000;
-};
-
-export const hasValidToken = (): boolean => {
-  const token = getToken();
-  if (!token) return false;
-  if (isTokenExpired(token)) {
-    clearToken();
-    return false;
-  }
-  return true;
-};
-
 function expireSession(): void {
-  clearToken();
-  localStorage.removeItem('maxli_user');
   window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
 
-function authHeaders(): HeadersInit {
-  const token = getToken();
-  if (!token) return {};
-  if (isTokenExpired(token)) {
-    expireSession();
-    return {};
-  }
-  return { Authorization: `Bearer ${token}` };
+/** Cabeceras para peticiones que modifican estado. */
+function csrfHeaders(): HeadersInit {
+  const token = leerCookie(CSRF_COOKIE);
+  return token ? { [CSRF_HEADER]: token } : {};
 }
 
 // ── Tipos genéricos ──────────────────────────────────────
@@ -77,14 +55,18 @@ export interface PageResponse<T> {
 async function buildErrorMessage(res: Response): Promise<string> {
   const fallback = `Error ${res.status}: ${res.statusText || 'Error'}`;
 
-  // Only treat a 401 as "session expired" if the user was actually logged in (had a token).
-  // A 401 on /auth/login means bad credentials — show the real backend message instead.
-  if (res.status === 401 || (res.status === 403 && isTokenExpired())) {
-    if (getToken()) {
-      expireSession();
-      return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    }
-    // No token = wrong credentials on login. Fall through to show backend message.
+  // Un 401 en /auth/login es "credenciales incorrectas", no "sesión expirada":
+  // ese caso lo trata authApi.login y aquí solo se propaga el mensaje del backend.
+  if (res.status === 401 && !res.url.includes('/auth/login')) {
+    expireSession();
+    return 'Tu sesión expiró. Inicia sesión nuevamente.';
+  }
+
+  if (res.status === 429) {
+    const espera = res.headers.get('Retry-After');
+    return espera
+      ? `Demasiados intentos. Vuelve a intentarlo en ${espera} segundos.`
+      : 'Demasiados intentos. Vuelve a intentarlo más tarde.';
   }
 
   if (res.status === 403) {
@@ -121,7 +103,7 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   }
-  const res = await fetch(url.toString(), { headers: authHeaders() });
+  const res = await fetch(url.toString(), { credentials: 'include' });
   if (!res.ok) throw new Error(await buildErrorMessage(res));
   return res.json();
 }
@@ -129,7 +111,8 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
 async function post<T>(url: string, data: any): Promise<T> {
   const res = await fetch(BASE_URL + url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
     body: JSON.stringify(data),
   });
   // /auth/login returning 401 = wrong credentials, NOT an expired session.
@@ -147,7 +130,8 @@ async function post<T>(url: string, data: any): Promise<T> {
 async function put<T>(url: string, data: any): Promise<T> {
   const res = await fetch(BASE_URL + url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
     body: JSON.stringify(data),
   });
   if (res.status === 401) {
@@ -160,14 +144,18 @@ async function put<T>(url: string, data: any): Promise<T> {
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(BASE_URL + path, { method: 'DELETE', headers: authHeaders() });
+  const res = await fetch(BASE_URL + path, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: csrfHeaders(),
+  });
   if (!res.ok) throw new Error(await buildErrorMessage(res));
 }
 
 // ── API: Auth ────────────────────────────────────────────
 
+/** Respuesta del login. Ya no trae `token`: el JWT queda en la cookie HttpOnly. */
 export interface AuthResponse {
-  token: string;
   username: string;
   email: string;
   roles: string[];
@@ -177,16 +165,21 @@ export interface AuthResponse {
 }
 
 export interface MeResponse {
+  username: string;
+  email: string;
   permisos: string[];
   roles: string[];
   tokenVersion: number;
+  requiereCambioPassword: boolean;
 }
 
 export const authApi = {
   login: (username: string, password: string) =>
-    // login no pasa por el helper para evitar el header de token
+    // No pasa por el helper `post` para que un 401 se lea como "credenciales
+    // incorrectas" y no dispare el evento de sesión expirada.
     fetch(BASE_URL + '/auth/login', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }).then(async res => {
@@ -194,10 +187,26 @@ export const authApi = {
       return res.json() as Promise<AuthResponse>;
     }),
 
+  /** Borra la cookie de sesión en el servidor: el cliente no puede tocarla. */
+  logout: () => post<void>('/auth/logout', {}),
+
   cambiarPassword: (passwordActual: string, passwordNueva: string) =>
     post<void>('/auth/cambiar-password', { passwordActual, passwordNueva }),
 
   me: () => get<MeResponse>('/auth/me'),
+
+  /**
+   * Recupera la sesión al cargar la aplicación. Con el token fuera del alcance
+   * del script, la única forma de saber si hay sesión viva es preguntárselo al
+   * backend; `null` significa que no la hay.
+   */
+  recuperarSesion: async (): Promise<MeResponse | null> => {
+    try {
+      return await get<MeResponse>('/auth/me');
+    } catch {
+      return null;
+    }
+  },
 };
 
 // ── Tipos del dominio ────────────────────────────────────
@@ -1054,7 +1063,8 @@ export const alertasRetrasoOcApi = {
   marcarLeidasMasivo: (ids: number[]) =>
     fetch('/api/alertas-retraso-oc/marcar-leidas', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
       body: JSON.stringify({ ids }),
     }).then(res => { if (!res.ok && res.status !== 204) throw new Error('Error al marcar alertas'); }),
 };

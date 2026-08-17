@@ -27,7 +27,7 @@ import Roles from './components/Roles';
 import CambioPasswordObligatorio from './components/CambioPasswordObligatorio';
 import NcfDashboard from './components/NcfDashboard';
 import Cupones from './components/Cupones';
-import { AUTH_EXPIRED_EVENT, authApi, setToken, clearToken, hasValidToken } from '../imports/api';
+import { AUTH_EXPIRED_EVENT, authApi } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -61,48 +61,56 @@ const viewTitles: Record<string, string> = {
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [loginNotice, setLoginNotice] = useState('');
-  // Inicializar sesión desde localStorage si ya hay token guardado
-  const [isAuthenticated, setIsAuthenticated] = useState(() => hasValidToken());
-  const [username, setUsername] = useState(() => (hasValidToken() ? localStorage.getItem('maxli_user') || '' : ''));
-  const [userRoles, setUserRoles] = useState<string[]>(() => {
-    const rolesStr = localStorage.getItem('maxli_roles');
-    return rolesStr ? JSON.parse(rolesStr) : [];
-  });
-  const [userPermisos, setUserPermisos] = useState<string[]>(() => {
-    const permStr = localStorage.getItem('maxli_permisos');
-    return permStr ? JSON.parse(permStr) : [];
-  });
-  const [requiresPasswordChange, setRequiresPasswordChange] = useState(() => localStorage.getItem('maxli_pwd_change') === 'true');
+  // La sesión vive en una cookie HttpOnly: este código no puede inspeccionarla,
+  // así que arranca sin sesión y se la pregunta al backend en el primer efecto.
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [username, setUsername] = useState('');
+  const [userRoles, setUserRoles] = useState<string[]>([]);
+  const [userPermisos, setUserPermisos] = useState<string[]>([]);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
 
   // Ref to track active view for use inside polling callback
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
 
+  const clearSessionState = useCallback(() => {
+    setIsAuthenticated(false);
+    setUsername('');
+    setUserRoles([]);
+    setUserPermisos([]);
+    setRequiresPasswordChange(false);
+    setActiveView('dashboard');
+  }, []);
+
   useEffect(() => {
-    const handleExpiredSession = () => {
-      setIsAuthenticated(false);
-      setUsername('');
-      setUserRoles([]);
-      setUserPermisos([]);
-      setRequiresPasswordChange(false);
-      setActiveView('dashboard');
-    };
+    const handleExpiredSession = () => clearSessionState();
 
     window.addEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+  }, [clearSessionState]);
+
+  // ── Recuperación de sesión al cargar o recargar la página ──
+  useEffect(() => {
+    let cancelado = false;
+
+    authApi.recuperarSesion().then(sesion => {
+      if (cancelado) return;
+      if (sesion) {
+        setUsername(sesion.username);
+        setUserRoles(sesion.roles ?? []);
+        setUserPermisos(sesion.permisos ?? []);
+        setRequiresPasswordChange(sesion.requiereCambioPassword);
+        setIsAuthenticated(true);
+      }
+      setSessionChecked(true);
+    });
+
+    return () => { cancelado = true; };
   }, []);
 
-  const handleLogin = (token: string, user: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => {
+  const handleLogin = (user: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => {
     setLoginNotice('');
-    setToken(token);
-    localStorage.setItem('maxli_user', user);
-    localStorage.setItem('maxli_roles', JSON.stringify(roles));
-    localStorage.setItem('maxli_permisos', JSON.stringify(permisos));
-    if (requiresPwdChange) {
-      localStorage.setItem('maxli_pwd_change', 'true');
-    } else {
-      localStorage.removeItem('maxli_pwd_change');
-    }
     setUsername(user);
     setUserRoles(roles);
     setUserPermisos(permisos);
@@ -112,80 +120,64 @@ export default function App() {
 
   const handleLogout = () => {
     setLoginNotice('');
-    clearToken();
-    localStorage.removeItem('maxli_user');
-    localStorage.removeItem('maxli_roles');
-    localStorage.removeItem('maxli_permisos');
-    localStorage.removeItem('maxli_pwd_change');
-    setIsAuthenticated(false);
-    setUsername('');
-    setUserRoles([]);
-    setUserPermisos([]);
-    setRequiresPasswordChange(false);
-    setActiveView('dashboard');
+    // El backend es quien borra la cookie; si la llamada falla igualmente se
+    // limpia la pantalla para no dejar una sesión aparente sin respaldo.
+    authApi.logout().catch(() => undefined).finally(clearSessionState);
   };
 
   const handlePasswordChangeSuccess = () => {
-    clearToken();
-    localStorage.removeItem('maxli_user');
-    localStorage.removeItem('maxli_roles');
-    localStorage.removeItem('maxli_permisos');
-    localStorage.removeItem('maxli_pwd_change');
-    setIsAuthenticated(false);
-    setUsername('');
-    setUserRoles([]);
-    setUserPermisos([]);
-    setRequiresPasswordChange(false);
-    setActiveView('dashboard');
+    // El cambio de contraseña invalida el token en curso y borra la cookie.
+    clearSessionState();
     setLoginNotice('Contraseña actualizada. Inicia sesión nuevamente con tu contraseña nueva.');
   };
 
   // ── Polling de permisos cada 30s para actualización en tiempo real ──
   const pollPermisos = useCallback(async () => {
-    if (!hasValidToken()) return;
     try {
       const data = await authApi.me();
-      const newPermisos = Array.isArray(data.permisos) ? data.permisos.sort() : [];
-      const currentPermisos = JSON.parse(localStorage.getItem('maxli_permisos') || '[]').sort();
+      const newPermisos = Array.isArray(data.permisos) ? [...data.permisos].sort() : [];
 
-      // Compare permissions
-      const changed = newPermisos.length !== currentPermisos.length ||
-        newPermisos.some((p: string, i: number) => p !== currentPermisos[i]);
-
-      if (changed) {
-        localStorage.setItem('maxli_permisos', JSON.stringify(newPermisos));
-        setUserPermisos(newPermisos);
+      setUserPermisos(actuales => {
+        const ordenados = [...actuales].sort();
+        const changed = newPermisos.length !== ordenados.length ||
+          newPermisos.some((p, i) => p !== ordenados[i]);
+        if (!changed) return actuales;
 
         // If the user is on a view they no longer have access to, redirect to dashboard
-        const currentView = activeViewRef.current;
-        const requiredPerm = PERMISSION_MAP[currentView];
+        const requiredPerm = PERMISSION_MAP[activeViewRef.current];
         if (requiredPerm && !newPermisos.includes(requiredPerm)) {
           setActiveView('dashboard');
         }
-      }
+        return newPermisos;
+      });
 
-      // Also update roles if changed
-      const newRoles = Array.isArray(data.roles) ? data.roles.sort() : [];
-      const currentRoles = JSON.parse(localStorage.getItem('maxli_roles') || '[]').sort();
-      const rolesChanged = newRoles.length !== currentRoles.length ||
-        newRoles.some((r: string, i: number) => r !== currentRoles[i]);
-      if (rolesChanged) {
-        localStorage.setItem('maxli_roles', JSON.stringify(newRoles));
-        setUserRoles(newRoles);
-      }
+      const newRoles = Array.isArray(data.roles) ? [...data.roles].sort() : [];
+      setUserRoles(actuales => {
+        const ordenados = [...actuales].sort();
+        const changed = newRoles.length !== ordenados.length ||
+          newRoles.some((r, i) => r !== ordenados[i]);
+        return changed ? newRoles : actuales;
+      });
     } catch {
       // Silently ignore polling errors (e.g., network issues)
-      // If token expired, the 401 handler will fire AUTH_EXPIRED_EVENT
+      // If the session expired, the 401 handler fires AUTH_EXPIRED_EVENT
     }
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated || requiresPasswordChange) return;
-    // Poll immediately on mount, then every 30 seconds
-    pollPermisos();
     const interval = setInterval(pollPermisos, 30_000);
     return () => clearInterval(interval);
   }, [isAuthenticated, requiresPasswordChange, pollPermisos]);
+
+  // ── Comprobación inicial de sesión en curso ─────────────
+  if (!sessionChecked) {
+    return (
+      <div className="size-full flex items-center justify-center bg-background">
+        <span className="login-spinner" />
+      </div>
+    );
+  }
 
   // ── Pantalla de login ───────────────────────────────────
   if (!isAuthenticated) {
@@ -202,7 +194,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard />;
       case 'pos':
-        return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} />;
+        return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} userRoles={userRoles} />;
       case 'ventas-historial':
         return <Ventas />;
       case 'productos':

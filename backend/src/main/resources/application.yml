@@ -1,6 +1,8 @@
+# No se declara `spring.profiles.active` a propósito: GuardaPerfilObligatorio
+# aborta el arranque si no llega SPRING_PROFILES_ACTIVE. Antes había un
+# `${SPRING_PROFILES_ACTIVE:dev}` que hacía caer en dev —secreto de ejemplo,
+# CORS a localhost, sin HTTPS— a cualquier despliegue que lo olvidara.
 spring:
-  profiles:
-    active: dev
   jpa:
     hibernate:
       ddl-auto: validate
@@ -11,12 +13,90 @@ spring:
     locations: classpath:db/migration
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 jwt:
-  secret: ${JWT_SECRET:maxli-dev-secret-key-minimo-256-bits-no-usar-en-prod}
-  expiration: ${JWT_EXPIRATION:86400000}
+  # Sin valor por defecto a propósito: un despliegue productivo debe fallar al
+  # arrancar si no se le entrega un secreto propio (GuardaSeguridadProduccion).
+  secret: ${JWT_SECRET:}
+  # 8 h cubren un turno completo de caja. Fuente única: la consumen el token,
+  # el campo expiresIn del login y el Max-Age de la cookie de sesión.
+  expiration: ${JWT_EXPIRATION:8h}
+
+cors:
+  # Lista separada por comas de los orígenes del frontend. Sin comodines:
+  # la sesión viaja en cookie y la API responde con allowCredentials=true.
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+maxli:
+  security:
+    login:
+      max-intentos: ${LOGIN_MAX_INTENTOS:5}
+      ventana: ${LOGIN_VENTANA:10m}
+      bloqueo: ${LOGIN_BLOQUEO:15m}
+    bootstrap:
+      # Credencial administrativa inicial. Solo se consume una vez, sobre una
+      # base recién migrada. Nunca se escribe en logs.
+      admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
 logging:
   level:
     com.maxli: INFO
+
+---
+# ── Desarrollo local ────────────────────────────────────────────────
+# localhost vive únicamente aquí: nunca es un valor productivo silencioso.
+# Los valores laxos (sin HTTPS, cookie sin Secure) se piden explícitamente;
+# los seguros son los que trae SecurityProperties por defecto.
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+jwt:
+  secret: ${JWT_SECRET:maxli-dev-secret-key-minimo-256-bits-no-usar-en-prod}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
+
+maxli:
+  security:
+    # http://localhost no es HTTPS; con estos en true el navegador descartaría
+    # la cookie y no se podría iniciar sesión en local.
+    require-https: false
+    cookie:
+      secure: false
+      same-site: Lax
+
+---
+# ── Producción ──────────────────────────────────────────────────────
+# Contrato de despliegue: la aplicación queda detrás de un reverse proxy que
+# termina TLS y reenvía X-Forwarded-Proto / X-Forwarded-For.
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    # Sin valores por defecto: un despliegue sin base declarada debe fallar al
+    # arrancar, no caer en una conexión local imprevista.
+    url: ${DB_URL:}
+    username: ${DB_USER:}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+server:
+  # Honra las cabeceras del proxy confiable: sin esto toda petición parecería
+  # http y la exigencia de HTTPS entraría en un bucle de redirecciones.
+  forward-headers-strategy: framework
+
+maxli:
+  security:
+    require-https: true
+    cookie:
+      secure: true
+      same-site: Lax
+
+logging:
+  level:
+    com.maxli: INFO
+    org.springframework.security: WARN

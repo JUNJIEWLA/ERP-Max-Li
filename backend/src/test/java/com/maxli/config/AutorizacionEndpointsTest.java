@@ -35,6 +35,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -56,12 +57,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * mediante permisos reales (GrantedAuthority), no solo el nombre del rol
  * ni lo que oculta el frontend. Cubre el hallazgo ISSUE-011.
  */
+@ActiveProfiles("test")   // el perfil es obligatorio desde ISSUE-010
 @WebMvcTest(controllers = {ProveedorController.class, GastoController.class, NcfController.class,
         AuthController.class, TurnoCajaController.class})
-@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class, JsonAuthResponseHandler.class})
+@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class,
+        JsonAuthResponseHandler.class, SessionCookieService.class, ClockConfig.class,
+        com.maxli.auth.service.LoginAttemptService.class,
+        com.maxli.exception.GlobalExceptionHandler.class})
 @TestPropertySource(properties = {
         "jwt.secret=test-secret-key-minimo-256-bits-para-pruebas-de-autorizacion-backend",
-        "jwt.expiration=86400000"
+        "jwt.expiration=86400000",
+        "cors.allowed-origins=http://localhost:5173",
+        // Este slice habla HTTP en claro; la exigencia de HTTPS se prueba
+        // aparte, en TransporteHttpsProduccionTest.
+        "maxli.security.require-https=false"
 })
 class AutorizacionEndpointsTest {
 

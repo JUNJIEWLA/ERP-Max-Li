@@ -4,7 +4,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
@@ -21,11 +20,19 @@ public class JwtUtil {
     private final SecretKey secretKey;
     private final long expirationMs;
 
-    public JwtUtil(
-            @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration:86400000}") long expirationMs) {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        this.expirationMs = expirationMs;
+    public JwtUtil(JwtProperties propiedades) {
+        this.secretKey = Keys.hmacShaKeyFor(
+                propiedades.getSecret().getBytes(StandardCharsets.UTF_8));
+        this.expirationMs = propiedades.getExpirationMs();
+    }
+
+    /**
+     * Vigencia configurada del token. Es la fuente única que consumen la
+     * respuesta de login y el {@code Max-Age} de la cookie de sesión, para que
+     * nunca contradigan la expiración real del JWT.
+     */
+    public long getExpirationMs() {
+        return expirationMs;
     }
 
     /** Genera un token JWT con username, roles y tokenVersion como claims. */

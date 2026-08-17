@@ -1,0 +1,5 @@
+# El perfil de ejecución se valida durante la preparación del entorno, antes de
+# crear ningún bean, para que un despliegue sin SPRING_PROFILES_ACTIVE reciba un
+# mensaje operativo y no un fallo colateral de otro componente.
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.maxli.config.PerfilEnvironmentPostProcessor

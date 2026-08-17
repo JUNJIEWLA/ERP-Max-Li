@@ -1,7 +1,9 @@
 package com.maxli.exception;
 
+import com.maxli.auth.LoginBloqueadoException;
 import jakarta.persistence.NonUniqueResultException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -29,6 +31,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusiness(BusinessException ex) {
         return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+    }
+
+    /**
+     * Login frenado por intentos fallidos: 429 con Retry-After, en el mismo
+     * formato JSON que los 401/403 para que el frontend maneje un solo contrato.
+     */
+    @ExceptionHandler(LoginBloqueadoException.class)
+    public ResponseEntity<Map<String, Object>> handleLoginBloqueado(LoginBloqueadoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
+        body.put("error", ex.getMessage());
+        body.put("retryAfter", ex.segundosRestantes());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.segundosRestantes()))
+                .body(body);
     }
 
     @ExceptionHandler(NonUniqueResultException.class)
