@@ -10,7 +10,7 @@ import {
 import {
   Plus, X, Loader2, ShoppingCart, Search, ChevronDown, ChevronRight,
   Send, Ban, CheckCircle2, PackageCheck, Trash2,
-  MoreVertical, Eye, Pencil, AlertCircle, Clock,
+  MoreVertical, Eye, AlertCircle, Clock,
   ChevronLeft, LayoutGrid, ShieldCheck, DollarSign, Save, RotateCcw,
   Calendar, Building2, Package
 } from 'lucide-react';
@@ -53,13 +53,12 @@ function RetrasoOcBadge({ diasRetraso }: { diasRetraso: number | null }) {
 interface RowMenuProps {
   orden: OrdenCompra;
   onVerDetalles: () => void;
-  onEditar: () => void;
   onEnviar: () => void;
   onForzarCierre: () => void;
   onAnular: () => void;
 }
 
-function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onAnular }: RowMenuProps) {
+function RowMenu({ orden, onVerDetalles, onEnviar, onForzarCierre, onAnular }: RowMenuProps) {
   const [open, setOpen] = useState(false);
 
   const { refs, floatingStyles, update } = useFloating({
@@ -119,7 +118,6 @@ function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onA
     );
   };
 
-  const canEdit   = orden.estado === 'ENVIADA';
   const canEnviar = orden.estado === 'BORRADOR';
   const canForzar = ['ENVIADA', 'RECEPCION_PARCIAL'].includes(orden.estado);
   const canAnular = ['BORRADOR', 'ENVIADA'].includes(orden.estado);
@@ -140,7 +138,6 @@ function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onA
       </div>
 
       {menuItem(<Eye size={14} />,      'Ver detalles',    onVerDetalles)}
-      {canEdit && menuItem(<Pencil size={14} />, 'Editar orden', onEditar, 'info')}
 
       {hasActions && <div className="my-1.5 border-t border-border" />}
       {hasActions && (
@@ -494,7 +491,6 @@ export default function OrdenesCompra() {
                           <RowMenu
                             orden={o}
                             onVerDetalles={() => setDetalleOrden(o)}
-                            onEditar={() => {}}
                             onEnviar={() => handleEstado(o.idOrdenCompra, 'enviar')}
 
                             onForzarCierre={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'forzar-cierre' })}
