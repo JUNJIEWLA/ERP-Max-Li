@@ -162,7 +162,7 @@ class TurnoCajaServiceTest {
         Usuario supervisor = usuarioActivo("supervisor");
         turno.setUsuarioApertura(supervisor);
 
-        when(turnoCajaRepository.findById(10L)).thenReturn(Optional.of(turno));
+        when(turnoCajaRepository.bloquearPorId(10L)).thenReturn(Optional.of(turno));
         when(usuarioRepository.findByUsername("supervisor")).thenReturn(Optional.of(supervisor));
         when(turnoCajaRepository.save(turno)).thenReturn(turno);
         when(turnoCajaMapper.toDto(turno)).thenReturn(response(10L, "CERRADO"));
@@ -186,7 +186,7 @@ class TurnoCajaServiceTest {
         TurnoCaja turno = turnoAbierto();
         Usuario supervisor = usuarioActivo("supervisor");
 
-        when(turnoCajaRepository.findById(10L)).thenReturn(Optional.of(turno));
+        when(turnoCajaRepository.bloquearPorId(10L)).thenReturn(Optional.of(turno));
         when(usuarioRepository.findByUsername("supervisor")).thenReturn(Optional.of(supervisor));
 
         assertThatThrownBy(() -> turnoCajaService.cerrar(10L, cerrarRequest(), "supervisor"))
@@ -200,7 +200,7 @@ class TurnoCajaServiceTest {
         Usuario administrador = usuarioActivo("admin");
         agregarPermiso(administrador, "CAJA_GESTIONAR");
 
-        when(turnoCajaRepository.findById(10L)).thenReturn(Optional.of(turno));
+        when(turnoCajaRepository.bloquearPorId(10L)).thenReturn(Optional.of(turno));
         when(usuarioRepository.findByUsername("admin")).thenReturn(Optional.of(administrador));
         when(turnoCajaRepository.save(turno)).thenReturn(turno);
         when(turnoCajaMapper.toDto(turno)).thenReturn(response(10L, "CERRADO"));
@@ -238,7 +238,7 @@ class TurnoCajaServiceTest {
         TurnoCaja turno = turnoAbierto();
         turno.setEstado("CERRADO");
 
-        when(turnoCajaRepository.findById(10L)).thenReturn(Optional.of(turno));
+        when(turnoCajaRepository.bloquearPorId(10L)).thenReturn(Optional.of(turno));
 
         assertThatThrownBy(() -> turnoCajaService.cerrar(10L, cerrarRequest(), "supervisor"))
                 .isInstanceOf(BusinessException.class)
