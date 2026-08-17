@@ -10,6 +10,8 @@ interface EmpaqueModalProps {
   selectedId: number | null;
   onSelect: (empaque: Empaque) => void;
   onClose: () => void;
+  /** Roles del usuario en sesión, provistos por App desde /auth/me. */
+  userRoles: string[];
 }
 
 type Mode = 'select' | 'crud';
@@ -23,27 +25,23 @@ interface FormState {
 
 const EMPTY_FORM: FormState = { nombre: '', cantidad: '1', descripcion: '', estado: 'ACTIVO' };
 
-// Check if user is admin/supervisor for CRUD access
-function isSupervisorOrAdmin(): boolean {
-  try {
-    const raw = localStorage.getItem('maxli_roles');
-    if (!raw) return false;
-    const roles: string[] = JSON.parse(raw);
-    return roles.some((r) => {
-      const u = r.toUpperCase();
-      return u.includes('ADMIN') || u.includes('SUPERVISOR');
-    });
-  } catch {
-    return false;
-  }
+// Muestra u oculta el CRUD según el rol. Los roles ya no se leen de
+// localStorage —la sesión vive en una cookie HttpOnly—, así que llegan por
+// props desde App, que los obtiene de /auth/me. Esto es solo presentación:
+// quien decide de verdad es la matriz de permisos del backend.
+function esSupervisorOAdmin(roles: string[]): boolean {
+  return roles.some((rol) => {
+    const normalizado = rol.toUpperCase();
+    return normalizado.includes('ADMIN') || normalizado.includes('SUPERVISOR');
+  });
 }
 
-export default function EmpaqueModal({ selectedId, onSelect, onClose }: EmpaqueModalProps) {
+export default function EmpaqueModal({ selectedId, onSelect, onClose, userRoles }: EmpaqueModalProps) {
   const [mode, setMode] = useState<Mode>('select');
   const [empaques, setEmpaques] = useState<Empaque[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const canManage = isSupervisorOrAdmin();
+  const canManage = esSupervisorOAdmin(userRoles);
 
   // Form state
   const [editingId, setEditingId] = useState<number | null>(null);

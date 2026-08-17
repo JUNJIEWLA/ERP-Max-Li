@@ -27,9 +27,10 @@ const tiposNCF = [
 interface SaleScreenProps {
   username: string;
   canOpenTurno: boolean;
+  userRoles: string[];
 }
 
-export default function SaleScreen({ username, canOpenTurno }: SaleScreenProps) {
+export default function SaleScreen({ username, canOpenTurno, userRoles }: SaleScreenProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [holdList, setHoldList] = useState<HeldSale[]>([]);
   const [selectedRowIndex, setSelectedRowIndex] = useState(-1);
@@ -571,6 +572,7 @@ export default function SaleScreen({ username, canOpenTurno }: SaleScreenProps) 
             }
           }}
           onClose={() => setShowEmpaqueModal(false)}
+          userRoles={userRoles}
         />
       )}
 

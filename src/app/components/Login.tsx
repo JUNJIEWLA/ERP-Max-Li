@@ -2,7 +2,8 @@ import { useState, FormEvent } from 'react';
 import { authApi } from '../../imports/api';
 
 interface LoginProps {
-  onLogin: (token: string, username: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => void;
+  // Sin token: el backend lo deja en una cookie HttpOnly que este código no ve.
+  onLogin: (username: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => void;
   notice?: string;
 }
 
@@ -18,7 +19,7 @@ export default function Login({ onLogin, notice }: LoginProps) {
     setLoading(true);
     try {
       const data = await authApi.login(username.trim(), password);
-      onLogin(data.token, data.username, data.roles, data.permisos, data.requiereCambioPassword);
+      onLogin(data.username, data.roles, data.permisos, data.requiereCambioPassword);
     } catch (err: any) {
       if (err.message === 'Failed to fetch') {
         setError('No se pudo conectar con el servidor.');
