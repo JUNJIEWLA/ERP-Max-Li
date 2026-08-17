@@ -125,3 +125,55 @@ o reenviar `X-Forwarded-Proto: https`, o leerá un `302` como si fuera una caíd
 Los tres primeros reutilizan `DB_URL`, `DB_USER` y `DB_PASSWORD`. La contraseña
 viaja por el entorno, nunca como argumento. **Los dumps no entran en Git**:
 contienen datos de clientes y hashes de contraseña.
+
+---
+
+## E2E del flujo principal (Task 5)
+
+Un único E2E recorre en el navegador, contra backend y base reales, el flujo que
+sostiene el piloto: **login → apertura de turno → venta con NCF → cierre
+cuadrado**. Lo ejecuta también GitHub Actions (`.github/workflows/ci.yml`) en
+cada PR hacia `main`.
+
+> ⚠️ **Nunca se ejecuta contra `maxli_db`.** El E2E borra ventas, movimientos y
+> turnos. Solo puede correr sobre la base exclusiva **`maxli_e2e`**: el fixture
+> aborta con error si `current_database()` no es exactamente ese nombre.
+
+### Prerrequisitos
+
+Java 21, Maven 3.9+, Node 20+, PostgreSQL 15+ con `psql` en el `PATH`, y el
+navegador de Playwright: `npx playwright install chromium`.
+
+### Puesta en marcha
+
+```bash
+# 1. Base exclusiva del E2E (una sola vez)
+createdb maxli_e2e
+
+# 2. Backend contra esa base: Flyway aplica las migraciones reales.
+#    SPRING_DATASOURCE_URL gana sobre cualquier application-dev.yml local,
+#    así que la sesión de E2E no puede acabar apuntando a maxli_db.
+cd backend
+SPRING_PROFILES_ACTIVE=dev \
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/maxli_e2e \
+SPRING_DATASOURCE_USERNAME="$USER" \
+BOOTSTRAP_ADMIN_PASSWORD='E2eBootstrap#2026' \
+CORS_ALLOWED_ORIGINS=http://127.0.0.1:5173 \
+mvn spring-boot:run
+
+# 3. Fixture determinista (almacén, caja, producto RD$118.00 con stock 10,
+#    resolución NCF B02). Repetible: limpia lo transaccional en cada pasada.
+npm run e2e:fixture
+
+# 4. Frontend
+npx vite --host 127.0.0.1 --port 5173
+
+# 5. E2E
+npm run test:e2e
+```
+
+La contraseña inicial de `admin` se cambia en el primer inicio de sesión; el
+E2E la cambia a `E2eFlujoPrincipal#2026` y reutiliza esa credencial en las
+ejecuciones siguientes sobre la misma base. Ambas contraseñas son exclusivas de
+la base efímera de pruebas y se pueden fijar con `BOOTSTRAP_ADMIN_PASSWORD` y
+`E2E_ADMIN_NEW_PASSWORD`.

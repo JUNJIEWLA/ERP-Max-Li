@@ -122,13 +122,16 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
     await page.getByRole('button', { name: 'Cobrar (ESC)' }).click();
 
     await expect(page.getByRole('heading', { name: 'Cobro de Venta' })).toBeVisible();
-    // El total lo fija el backend (/ventas/recalcular): se espera a que el
-    // botón de cobro deje de decir «Recalculando…» y muestre el importe real.
+    // El total lo fija el backend (/ventas/recalcular): que el botón muestre
+    // el importe —y no «Recalculando…»— es la señal de que ya respondió.
     const botonCobrar = page.getByRole('button', { name: `Cobrar RD$${PRECIO}` });
-    await expect(botonCobrar).toBeEnabled({ timeout: 20_000 });
+    await expect(botonCobrar).toBeVisible();
 
+    // El botón sigue deshabilitado hasta que el efectivo recibido cubre el
+    // total: primero se declara el monto, después se habilita el cobro.
     await page.locator('#input-monto-recibido').fill(EFECTIVO_RECIBIDO);
     await expect(page.locator('#checkout-cambio')).toHaveText(`RD$${CAMBIO_ESPERADO}`);
+    await expect(botonCobrar).toBeEnabled();
 
     const respuesta = page.waitForResponse(
       (r) => new URL(r.url()).pathname === '/api/ventas' && r.request().method() === 'POST',

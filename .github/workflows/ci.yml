@@ -133,6 +133,15 @@ jobs:
           echo "El backend no alcanzó readiness."
           exit 1
 
+      # Solo sobre maxli_e2e: el propio SQL aborta si la base conectada es otra.
+      - name: Preparar el fixture E2E
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: ${{ env.DB_USER }}
+          PGPASSWORD: ${{ env.DB_PASSWORD }}
+        run: npm run e2e:fixture
+
       - name: Arrancar el frontend (Vite)
         run: |
           nohup npx vite --host 127.0.0.1 --port 5173 --strictPort > vite-e2e.log 2>&1 &
