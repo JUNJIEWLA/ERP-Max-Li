@@ -8,9 +8,9 @@
 
 ## Seguridad y despliegue (ISSUE-010)
 
-Esta sección cubre el contrato mínimo de autenticación y transporte. El paquete
-operativo completo —contenedores, healthcheck, backup/restore, runbook— sigue
-siendo ISSUE-015 y no forma parte de este documento.
+Esta sección cubre el contrato mínimo de autenticación y transporte. La
+operación del piloto —healthchecks, backup/restore y rollback— está en
+**[`docs/RUNBOOK_PILOTO.md`](docs/RUNBOOK_PILOTO.md)** (ISSUE-015).
 
 ### Variables de entorno
 
@@ -91,3 +91,37 @@ el SPA lo reenvía en `X-XSRF-TOKEN` en toda petición que modifique estado.
 
 Cambiar la contraseña, resetearla, suspender la cuenta o alterar roles/permisos
 incrementa `token_version` e invalida de inmediato los tokens ya emitidos.
+
+---
+
+## Operación del piloto (ISSUE-015)
+
+El procedimiento completo —backup diario, restauración, despliegue, criterios de
+fallo y rollback— está en **[`docs/RUNBOOK_PILOTO.md`](docs/RUNBOOK_PILOTO.md)**.
+Resumen de lo que este repositorio aporta:
+
+### Healthchecks
+
+| Ruta | Responde por |
+|---|---|
+| `GET /actuator/health` | Estado agregado. Solo para diagnóstico manual: con PostgreSQL caído espera al timeout de conexión en vez de responder rápido. |
+| `GET /actuator/health/liveness` | El proceso. **No** consulta PostgreSQL: si la base se cae, reiniciar la aplicación no arregla nada. |
+| `GET /actuator/health/readiness` | El proceso **y** PostgreSQL. Es la que debe usar el proxy para sacar de rotación. |
+
+Las tres son públicas —el proxy no tiene sesión— y devuelven solo el estado, sin
+componentes ni datos de conexión. Cualquier otro endpoint de Actuator responde
+`401`. En `prod` siguen exigiendo HTTPS: el proxy debe consultarlas por `https://`
+o reenviar `X-Forwarded-Proto: https`, o leerá un `302` como si fuera una caída.
+
+### Scripts de operación
+
+| Script | Qué hace |
+|---|---|
+| `ops/backup-postgres.sh` | Dump en formato custom, publicado solo tras verificarlo con `pg_restore --list`, con checksum SHA-256. |
+| `ops/restore-postgres.sh` | Restauración que exige nombrar la base destino en la confirmación y que esa base esté **vacía**; verifica checksum y dump antes de tocar nada. |
+| `ops/ensayo-backup-restore.sh` | Ensayo completo backup→restore sobre bases desechables. Correr antes de cada despliegue con migraciones. |
+| `ops/verificar-scripts.sh` | Comprueba la sintaxis y la validación de entrada de los tres anteriores. |
+
+Los tres primeros reutilizan `DB_URL`, `DB_USER` y `DB_PASSWORD`. La contraseña
+viaja por el entorno, nunca como argumento. **Los dumps no entran en Git**:
+contienen datos de clientes y hashes de contraseña.

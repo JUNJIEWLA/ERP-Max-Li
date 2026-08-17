@@ -1,2 +1,10 @@
 node_modules/
 dist/
+
+# Copias de seguridad (ISSUE-015). Un dump del piloto contiene datos de
+# clientes, ventas y hashes de contraseña: no entra en Git bajo ningún nombre.
+ops/backups/
+*.dump
+*.dump.parcial
+*.dump.sha256
+*.sql.gz

@@ -39,6 +39,40 @@ maxli:
       # base recién migrada. Nunca se escribe en logs.
       admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
+# ── Sondas de salud (ISSUE-015) ─────────────────────────────────────
+# Actuator está en el classpath únicamente por estas tres sondas. Todo lo
+# demás —env, beans, metrics, loggers, heapdump— queda sin exponer: son
+# endpoints públicos para el proxy, y cualquier extra sería inventario
+# gratis para quien los sondee sin credenciales.
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        # Lista blanca de un solo elemento. No usar «*» jamás.
+        include: health
+      discovery:
+        # Sin índice en /actuator: nada que enumerar.
+        enabled: false
+  endpoint:
+    health:
+      # El cuerpo se reduce a {"status":"UP"}: ni componentes, ni versiones,
+      # ni la URL de la base.
+      show-details: never
+      show-components: never
+      # Habilita los grupos liveness/readiness fuera de Kubernetes.
+      probes:
+        enabled: true
+      group:
+        # Liveness responde por el proceso: si la base se cae, el proceso
+        # sigue vivo y reiniciarlo no arreglaría nada.
+        liveness:
+          include: livenessState
+        # Readiness sí exige PostgreSQL: sin base la aplicación no puede
+        # atender tráfico y el proxy debe sacarla de rotación.
+        readiness:
+          include: readinessState,db
+
 logging:
   level:
     com.maxli: INFO
