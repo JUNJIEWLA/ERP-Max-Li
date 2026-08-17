@@ -113,6 +113,14 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await expect(page.getByRole('heading', { name: 'Punto de Venta', exact: true })).toBeVisible();
   });
 
+  await test.step(`el producto parte con ${STOCK_INICIAL} unidades`, async () => {
+    // Se comprueba el punto de partida en vez de darlo por supuesto: así el
+    // recorrido 10 → 9 → 10 se sostiene solo, sin depender de que el fixture
+    // siga diciendo lo mismo.
+    await expect(await stockEnPantalla(page)).toHaveText(STOCK_INICIAL);
+    await abrirVista(page, 'Ventas', 'Punto de Venta');
+  });
+
   let idTurno;
   let ventaCreada;
 
