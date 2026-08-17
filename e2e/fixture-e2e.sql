@@ -10,7 +10,9 @@
 --    · una categoría y una marca;
 --    · un producto activo con SKU estable, RD$118.00 (base 100 + 18 %
 --      de ITBIS) y 10 unidades de existencia en ese almacén;
---    · una resolución NCF B02 activa, vigente y con secuencia libre.
+--    · una resolución NCF B02 activa, vigente y con secuencia libre;
+--    · una resolución NCF B04 (nota de crédito) en las mismas
+--      condiciones, para que la devolución pueda emitir su comprobante.
 --
 --  Ningún id se escribe a mano: todo se resuelve por subconsulta sobre
 --  los nombres/SKU del fixture.
@@ -131,21 +133,25 @@ ON CONFLICT (id_producto, id_almacen) DO UPDATE
         cantidad_minima = 1,
         fecha_modificacion = NOW();
 
--- ── 7. Resolución NCF B02 ───────────────────────────────────────────
+-- ── 7. Resoluciones NCF: B02 de venta y B04 de nota de crédito ──────
 --  Un índice único parcial impide dos resoluciones ACTIVO del mismo
---  tipo: se reemplaza la de B02 en lugar de acumular otra.
-DELETE FROM resolucion_ncf WHERE tipo_ncf = 'B02';
+--  tipo: se reemplazan en lugar de acumular otra.
+--  El B04 es lo que permite que una devolución emita su comprobante:
+--  sin resolución vigente el servicio revierte la operación completa.
+DELETE FROM resolucion_ncf WHERE tipo_ncf IN ('B02', 'B04');
 
 INSERT INTO resolucion_ncf (
     tipo_ncf, descripcion, numero_resolucion, prefijo,
     secuencia_inicio, secuencia_final, secuencia_actual,
     fecha_vencimiento, estado, fecha_creacion
 )
-VALUES (
-    'B02', 'Consumidor Final (E2E)', 'E2E-B02-001', 'B02',
-    1, 10000, 1,
-    CURRENT_DATE + INTERVAL '365 days', 'ACTIVO', NOW()
-);
+VALUES
+    ('B02', 'Consumidor Final (E2E)', 'E2E-B02-001', 'B02',
+     1, 10000, 1,
+     CURRENT_DATE + INTERVAL '365 days', 'ACTIVO', NOW()),
+    ('B04', 'Nota de Crédito (E2E)', 'E2E-B04-001', 'B04',
+     1, 10000, 1,
+     CURRENT_DATE + INTERVAL '365 days', 'ACTIVO', NOW());
 
 COMMIT;
 
@@ -161,4 +167,4 @@ SELECT 'existencia', 'stock=' || cantidad_actual, 'ACTIVO'
  WHERE p.sku = 'E2E-PROD-001'
 UNION ALL
 SELECT 'ncf', prefijo || ' desde ' || secuencia_actual || ' hasta ' || secuencia_final, estado
-  FROM resolucion_ncf WHERE tipo_ncf = 'B02';
+  FROM resolucion_ncf WHERE tipo_ncf IN ('B02', 'B04');

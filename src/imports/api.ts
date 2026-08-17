@@ -52,6 +52,23 @@ export interface PageResponse<T> {
   last: boolean;
 }
 
+/**
+ * Error de una respuesta HTTP, con el código que la produjo.
+ *
+ * Sigue siendo un `Error` con el mensaje del backend en `.message`, así que
+ * todo el código que solo lee `e.message` no cambia; quien necesita distinguir
+ * un 409 (operación ya registrada) de un 422 (regla de negocio) lee `.status`.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function buildErrorMessage(res: Response): Promise<string> {
   const fallback = `Error ${res.status}: ${res.statusText || 'Error'}`;
 
@@ -104,7 +121,7 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   }
   const res = await fetch(url.toString(), { credentials: 'include' });
-  if (!res.ok) throw new Error(await buildErrorMessage(res));
+  if (!res.ok) throw new ApiError(res.status, await buildErrorMessage(res));
   return res.json();
 }
 
@@ -119,9 +136,9 @@ async function post<T>(url: string, data: any): Promise<T> {
   // Only dispatch AUTH_EXPIRED_EVENT for protected endpoints.
   if (res.status === 401 && !url.includes('/auth/login')) {
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-    throw new Error('Sesión expirada');
+    throw new ApiError(401, 'Sesión expirada');
   }
-  if (!res.ok) throw new Error(await buildErrorMessage(res));
+  if (!res.ok) throw new ApiError(res.status, await buildErrorMessage(res));
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -136,9 +153,9 @@ async function put<T>(url: string, data: any): Promise<T> {
   });
   if (res.status === 401) {
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-    throw new Error('Sesión expirada');
+    throw new ApiError(401, 'Sesión expirada');
   }
-  if (!res.ok) throw new Error(await buildErrorMessage(res));
+  if (!res.ok) throw new ApiError(res.status, await buildErrorMessage(res));
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -149,7 +166,7 @@ async function del(path: string): Promise<void> {
     credentials: 'include',
     headers: csrfHeaders(),
   });
-  if (!res.ok) throw new Error(await buildErrorMessage(res));
+  if (!res.ok) throw new ApiError(res.status, await buildErrorMessage(res));
 }
 
 // ── API: Auth ────────────────────────────────────────────
@@ -183,7 +200,7 @@ export const authApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }).then(async res => {
-      if (!res.ok) throw new Error(await buildErrorMessage(res));
+      if (!res.ok) throw new ApiError(res.status, await buildErrorMessage(res));
       return res.json() as Promise<AuthResponse>;
     }),
 
@@ -435,6 +452,8 @@ export interface CuadreTurnoCaja {
   totalVentasTransferencia: number;
   totalOtrosIngresos: number;
   totalEgresos: number;
+  /** Efectivo devuelto por notas de crédito durante el turno. Resta del cajón. */
+  totalDevolucionesEfectivo: number;
   montoEsperado: number;
   montoFinalDeclarado: number | null;
   diferencia: number | null;
@@ -1459,6 +1478,149 @@ export const ventasApi = {
   /** Obtener el siguiente número de control. */
   siguienteNumero: () =>
     get<{ numeroControl: string }>('/ventas/siguiente-numero'),
+};
+
+// ── Tipos: Devoluciones y Notas de Crédito ───────────────
+//
+//  Los importes fiscales (base imponible, ITBIS, total acreditado) los calcula
+//  el backend a partir de los snapshots de la venta original. Aquí solo se
+//  transportan: el cliente nunca los reconstruye.
+
+/** Métodos de reembolso que el backend acepta en una devolución. */
+export const METODOS_REEMBOLSO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'CHEQUE'] as const;
+
+export type MetodoReembolso = typeof METODOS_REEMBOLSO[number];
+
+/** Fila del historial de devoluciones. El detalle completo se pide por ID. */
+export interface DevolucionResumen {
+  idDevolucion: number;
+  numeroControl: string;
+  referenciaOperacion: string;
+  fechaDevolucion: string;
+  ncf: string;
+  ncfAfectado: string | null;
+  idVenta: number;
+  numeroControlVenta: string;
+  cajeroNombre: string;
+  metodoReembolso: string;
+  total: number;
+  estado: string;
+}
+
+export interface DetalleDevolucionResponse {
+  idDetalleDevolucion: number;
+  idDetalleVenta: number;
+  idProducto: number;
+  skuProducto: string;
+  nombreProducto: string;
+  cantidad: number;
+  precioUnitario: number;
+  tasaItbis: number;
+  descuentoAcreditado: number;
+  importeAcreditado: number;
+  baseImponibleAcreditada: number;
+  itbisAcreditado: number;
+}
+
+export interface DevolucionResponse {
+  idDevolucion: number;
+  numeroControl: string;
+  referenciaOperacion: string;
+  motivo: string;
+  estado: string;
+  metodoReembolso: string;
+  fechaDevolucion: string;
+
+  ncf: string;
+  tipoNcf: string;
+  ncfAfectado: string | null;
+  tipoNcfAfectado: string | null;
+
+  idVenta: number;
+  numeroControlVenta: string;
+  /** Estado en que quedó la venta: PARCIALMENTE_DEVUELTA o DEVUELTA. */
+  estadoVenta: string;
+  clienteNombre: string | null;
+  clienteRncCedula: string | null;
+
+  idTurnoCaja: number;
+  cajeroNombre: string;
+  idAlmacen: number;
+  almacenNombre: string;
+
+  baseImponible: number;
+  itbis: number;
+  total: number;
+
+  detalles: DetalleDevolucionResponse[];
+}
+
+export interface LineaDevoluble {
+  idDetalleVenta: number;
+  idProducto: number;
+  skuProducto: string;
+  nombreProducto: string;
+  cantidadVendida: number;
+  cantidadDevuelta: number;
+  cantidadDisponible: number;
+  precioUnitario: number;
+  tasaItbis: number;
+  importe: number;
+}
+
+export interface VentaDevoluble {
+  idVenta: number;
+  numeroControl: string;
+  ncf: string | null;
+  tipoNcf: string | null;
+  estado: string;
+  fechaVenta: string;
+  idAlmacen: number | null;
+  almacenNombre: string | null;
+  clienteNombre: string | null;
+  /** false cuando la venta ya no admite devoluciones (estado o datos fiscales). */
+  devolvible: boolean;
+  lineas: LineaDevoluble[];
+}
+
+export interface DetalleDevolucionRequest {
+  idDetalleVenta: number;
+  cantidad: number;
+}
+
+export interface CrearDevolucionRequest {
+  idVenta: number;
+  idTurnoCaja: number;
+  motivo: string;
+  metodoReembolso: MetodoReembolso;
+  /**
+   * Llave de idempotencia generada por el cliente. Repetirla responde 409 sin
+   * reponer stock, ajustar caja ni consumir otro comprobante.
+   */
+  referenciaOperacion: string;
+  detalles: DetalleDevolucionRequest[];
+}
+
+// ── API: Devoluciones y Notas de Crédito ─────────────────
+
+export const devolucionesApi = {
+  /** Historial paginado, opcionalmente acotado a una venta. Exige VENTA_VER. */
+  listar: (idVenta?: number, page = 0, size = 20) => {
+    const params: Record<string, string | number> = { page, size };
+    if (idVenta != null) params.idVenta = idVenta;
+    return get<PageResponse<DevolucionResumen>>('/devoluciones', params);
+  },
+
+  buscarPorId: (id: number) =>
+    get<DevolucionResponse>(`/devoluciones/${id}`),
+
+  /** Líneas de la venta con cantidad vendida, ya devuelta y disponible. */
+  consultarDisponible: (idVenta: number) =>
+    get<VentaDevoluble>(`/devoluciones/ventas/${idVenta}/disponible`),
+
+  /** Confirma la devolución y emite la Nota de Crédito. Exige DEVOLUCION_CREAR. */
+  crear: (request: CrearDevolucionRequest) =>
+    post<DevolucionResponse>('/devoluciones', request),
 };
 
 // ── Tipos: Empaques ──────────────────────────────────────

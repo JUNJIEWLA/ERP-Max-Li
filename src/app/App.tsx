@@ -8,6 +8,7 @@ import CajaChica from './components/CajaChica';
 import Cajas from './components/Cajas';
 import SaleScreen from './components/pos/SaleScreen';
 import Ventas from './components/Ventas';
+import Devoluciones from './components/Devoluciones';
 import Almacenes from './components/Almacenes';
 import MovimientosInventario from './components/MovimientosInventario';
 import ConteoFisico from './components/ConteoFisico';
@@ -30,6 +31,7 @@ import { AUTH_EXPIRED_EVENT, authApi } from '../imports/api';
 const viewTitles: Record<string, string> = {
   pos: 'Punto de Venta',
   'ventas-historial': 'Historial de Ventas',
+  devoluciones: 'Devoluciones y Notas de Crédito',
   clientes: 'Gestión de Clientes',
   productos: 'Catálogo de Productos',
   existencias: 'Control de Existencias',
@@ -198,6 +200,8 @@ export default function App() {
         return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} userRoles={userRoles} />;
       case 'ventas-historial':
         return <Ventas />;
+      case 'devoluciones':
+        return <Devoluciones userPermisos={userPermisos} />;
       case 'productos':
         return <Productos />;
       case 'existencias':

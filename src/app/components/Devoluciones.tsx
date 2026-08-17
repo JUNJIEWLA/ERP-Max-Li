@@ -1,475 +1,1006 @@
-import { useState } from 'react';
-import { Plus, Search, Eye, FileText, X, CheckCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle, CheckCircle2, Eye, Loader2, Plus, RotateCcw, Search, Undo2, X,
+} from 'lucide-react';
+import {
+  ApiError, devolucionesApi, turnosCajaApi, ventasApi,
+  METODOS_REEMBOLSO,
+  type DevolucionResponse, type DevolucionResumen, type MetodoReembolso,
+  type TurnoCaja, type VentaDevoluble, type VentaResumen,
+} from '../../imports/api';
 
-interface DetalleDevolucion {
-  idDetalleVenta: number;
-  producto: string;
-  codigo: string;
-  cantidadOriginal: number;
-  cantidadDevolver: number;
-  precioUnitario: number;
-  subtotal: number;
-}
+// ── Formato ──────────────────────────────────────────────
 
-const devolucionesData = [
-  {
-    idDevolucion: 'DEV-2026-001',
-    idVenta: 'VT-2026-001',
-    idNotaCredito: 'NC-B04-00000123',
-    cliente: 'Juan Pérez',
-    fecha: '01/05/2026 14:30',
-    motivo: 'Producto defectuoso',
-    total: 'RD$ 2,450.00',
-    estado: 'Aprobada',
-    usuario: 'Admin'
-  },
-  {
-    idDevolucion: 'DEV-2026-002',
-    idVenta: 'VT-2026-005',
-    idNotaCredito: 'NC-B04-00000124',
-    cliente: 'Luis Fernández',
-    fecha: '30/04/2026 11:20',
-    motivo: 'Cliente insatisfecho',
-    total: 'RD$ 1,200.00',
-    estado: 'Aprobada',
-    usuario: 'Gerente'
-  },
-  {
-    idDevolucion: 'DEV-2026-003',
-    idVenta: 'VT-2026-003',
-    idNotaCredito: 'Pendiente',
-    cliente: 'Carlos Rodríguez',
-    fecha: '01/05/2026 16:00',
-    motivo: 'Error en pedido',
-    total: 'RD$ 850.00',
-    estado: 'Pendiente',
-    usuario: 'Vendedor 2'
-  },
-];
+const monedaDO = new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' });
 
-const ventaEjemplo = {
-  id: 'VT-2026-001',
-  cliente: 'Juan Pérez',
-  fecha: '28/04/2026 10:30',
-  comprobante: 'B01-00001234',
-  total: 'RD$ 2,450.00',
-  detalles: [
-    {
-      idDetalleVenta: 1,
-      codigo: 'PROD-001',
-      producto: 'Laptop Dell Inspiron 15',
-      cantidad: 1,
-      precioUnitario: 32500,
-      subtotal: 32500
-    },
-    {
-      idDetalleVenta: 2,
-      codigo: 'PROD-045',
-      producto: 'Mouse Inalámbrico',
-      cantidad: 2,
-      precioUnitario: 450,
-      subtotal: 900
-    }
-  ]
-};
+const fmtMoneda = (v: number | null | undefined) => monedaDO.format(v ?? 0);
 
-export default function Devoluciones() {
-  const [showModal, setShowModal] = useState(false);
-  const [paso, setPaso] = useState(1);
-  const [ventaBuscada, setVentaBuscada] = useState('');
-  const [ventaSeleccionada, setVentaSeleccionada] = useState<typeof ventaEjemplo | null>(null);
-  const [productosDevolver, setProductosDevolver] = useState<DetalleDevolucion[]>([]);
-  const [motivo, setMotivo] = useState('');
-  const [ncfSecuencia, setNcfSecuencia] = useState('NC-B04-00000125');
+const fmtFechaHora = (iso: string) =>
+  new Date(iso).toLocaleString('es-DO', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 
-  const buscarVenta = () => {
-    setVentaSeleccionada(ventaEjemplo);
-    setProductosDevolver(ventaEjemplo.detalles.map(d => ({
-      idDetalleVenta: d.idDetalleVenta,
-      producto: d.producto,
-      codigo: d.codigo,
-      cantidadOriginal: d.cantidad,
-      cantidadDevolver: 0,
-      precioUnitario: d.precioUnitario,
-      subtotal: 0
-    })));
-    setPaso(2);
-  };
+/** Una venta sin cliente identificado es, fiscalmente, consumidor final. */
+const nombreCliente = (nombre: string | null) => nombre || 'Consumidor Final';
 
-  const actualizarCantidad = (idDetalle: number, cantidad: number) => {
-    setProductosDevolver(prev => prev.map(p =>
-      p.idDetalleVenta === idDetalle
-        ? { ...p, cantidadDevolver: cantidad, subtotal: cantidad * p.precioUnitario }
-        : p
-    ));
-  };
+const PAGE_SIZE = 15;
 
-  const calcularTotal = () => {
-    return productosDevolver.reduce((sum, p) => sum + p.subtotal, 0);
-  };
+// ─────────────────────────────────────────────────────────
+//  Detalle de una devolución ya registrada
+// ─────────────────────────────────────────────────────────
 
-  const procesarDevolucion = () => {
-    setPaso(3);
-  };
+function DetalleDevolucionModal({ idDevolucion, onClose }: { idDevolucion: number; onClose: () => void }) {
+  const [devolucion, setDevolucion] = useState<DevolucionResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const confirmarNotaCredito = () => {
-    alert('Nota de Crédito ' + ncfSecuencia + ' generada exitosamente');
-    setShowModal(false);
-    setPaso(1);
-    setVentaSeleccionada(null);
-    setProductosDevolver([]);
-    setMotivo('');
-  };
+  const cargar = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    devolucionesApi.buscarPorId(idDevolucion)
+      .then(setDevolucion)
+      .catch((e: any) => setError(e.message || 'No se pudo cargar el detalle de la devolución.'))
+      .finally(() => setLoading(false));
+  }, [idDevolucion]);
 
-  const resetModal = () => {
-    setShowModal(false);
-    setPaso(1);
-    setVentaSeleccionada(null);
-    setProductosDevolver([]);
-    setMotivo('');
-    setVentaBuscada('');
-  };
+  useEffect(() => { cargar(); }, [cargar]);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2>Devoluciones y Notas de Crédito</h2>
-          <p className="text-muted-foreground mt-1">Gestiona devoluciones y emisión de notas de crédito fiscales</p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Undo2 size={17} className="text-amber-600" />
+            <h2 className="text-base font-semibold">Detalle de la devolución</h2>
+          </div>
+          <button onClick={onClose} title="Cerrar" className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X size={15} />
+          </button>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-primary text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
-        >
-          <Plus size={20} />
-          Nueva Devolución
-        </button>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-muted-foreground text-sm">Devoluciones Hoy</p>
-          <p className="text-2xl mt-1">3</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-muted-foreground text-sm">Total Devuelto Hoy</p>
-          <p className="text-2xl mt-1">RD$ 4,500</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-muted-foreground text-sm">NC Emitidas</p>
-          <p className="text-2xl mt-1">124</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-muted-foreground text-sm">Pendientes</p>
-          <p className="text-2xl mt-1 text-yellow-600">1</p>
-        </div>
-      </div>
+        {loading && (
+          <div className="py-20 text-center text-muted-foreground">
+            <Loader2 size={26} className="animate-spin mx-auto mb-2" />
+            Cargando el detalle…
+          </div>
+        )}
 
-      <div className="bg-card border border-border rounded-lg p-6">
-        <h3 className="mb-4">Historial de Devoluciones</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 text-muted-foreground">ID Devolución</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Venta Original</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Nota de Crédito</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Cliente</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Fecha</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Motivo</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Total</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Estado</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {devolucionesData.map((dev) => (
-                <tr key={dev.idDevolucion} className="border-b border-border hover:bg-accent transition-colors">
-                  <td className="py-3 px-4">{dev.idDevolucion}</td>
-                  <td className="py-3 px-4 text-blue-600">{dev.idVenta}</td>
-                  <td className="py-3 px-4">
-                    <span className={dev.idNotaCredito === 'Pendiente' ? 'text-yellow-600' : 'text-green-600'}>
-                      {dev.idNotaCredito}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">{dev.cliente}</td>
-                  <td className="py-3 px-4 text-sm text-muted-foreground">{dev.fecha}</td>
-                  <td className="py-3 px-4 text-sm">{dev.motivo}</td>
-                  <td className="py-3 px-4">{dev.total}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-3 py-1 rounded-full text-sm ${
-                      dev.estado === 'Aprobada'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {dev.estado}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <button className="p-1 hover:bg-accent rounded" title="Ver">
-                        <Eye size={18} className="text-muted-foreground" />
-                      </button>
-                      <button className="p-1 hover:bg-accent rounded" title="Imprimir NC">
-                        <FileText size={18} className="text-muted-foreground" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {!loading && error && (
+          <div className="p-6 space-y-3">
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-2 text-sm">
+              <AlertTriangle size={16} /> {error}
+            </div>
+            <button
+              id="btn-reintentar-detalle-devolucion"
+              onClick={cargar}
+              className="w-full py-2 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-background border-b border-border p-6 flex items-center justify-between">
-              <div>
-                <h3>Nueva Devolución</h3>
-                <div className="flex items-center gap-4 mt-3">
-                  <div className={`flex items-center gap-2 ${paso >= 1 ? 'text-primary' : 'text-muted-foreground'}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${paso >= 1 ? 'bg-primary text-white' : 'bg-muted'}`}>1</div>
-                    <span className="text-sm">Buscar Venta</span>
-                  </div>
-                  <div className="w-12 h-0.5 bg-border"></div>
-                  <div className={`flex items-center gap-2 ${paso >= 2 ? 'text-primary' : 'text-muted-foreground'}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${paso >= 2 ? 'bg-primary text-white' : 'bg-muted'}`}>2</div>
-                    <span className="text-sm">Seleccionar Productos</span>
-                  </div>
-                  <div className="w-12 h-0.5 bg-border"></div>
-                  <div className={`flex items-center gap-2 ${paso >= 3 ? 'text-primary' : 'text-muted-foreground'}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${paso >= 3 ? 'bg-primary text-white' : 'bg-muted'}`}>3</div>
-                    <span className="text-sm">Nota de Crédito</span>
-                  </div>
+        {!loading && !error && devolucion && (
+          <>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Nota de crédito</p>
+                  <p id="detalle-devolucion-b04" className="font-bold mt-0.5 font-mono">{devolucion.ncf}</p>
+                  <p className="text-xs text-muted-foreground">{devolucion.tipoNcf}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">NCF afectado</p>
+                  <p id="detalle-devolucion-ncf-afectado" className="font-bold mt-0.5 font-mono">
+                    {devolucion.ncfAfectado || 'Sin NCF'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{devolucion.tipoNcfAfectado || '—'}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">N° devolución</p>
+                  <p className="font-bold mt-0.5 font-mono">{devolucion.numeroControl}</p>
+                  <p className="text-xs text-muted-foreground">{devolucion.estado}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Venta original</p>
+                  <p id="detalle-devolucion-venta" className="font-bold mt-0.5 font-mono">
+                    {devolucion.numeroControlVenta}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{devolucion.estadoVenta}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Cliente</p>
+                  <p className="font-semibold mt-0.5">{nombreCliente(devolucion.clienteNombre)}</p>
+                  {devolucion.clienteRncCedula && (
+                    <p className="text-xs text-muted-foreground">RNC/Cédula: {devolucion.clienteRncCedula}</p>
+                  )}
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Cajero</p>
+                  <p className="font-semibold mt-0.5">{devolucion.cajeroNombre}</p>
+                  <p className="text-xs text-muted-foreground">TURNO #{devolucion.idTurnoCaja}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Almacén</p>
+                  <p className="font-semibold mt-0.5">{devolucion.almacenNombre}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Fecha</p>
+                  <p className="font-semibold mt-0.5 text-xs">{fmtFechaHora(devolucion.fechaDevolucion)}</p>
                 </div>
               </div>
-              <button onClick={resetModal} className="p-2 hover:bg-accent rounded-lg">
-                <X size={24} />
-              </button>
+
+              <div className="grid md:grid-cols-2 gap-3 text-sm">
+                <div className="border border-border rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Motivo</p>
+                  <p id="detalle-devolucion-motivo" className="mt-0.5">{devolucion.motivo}</p>
+                </div>
+                <div className="border border-border rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Método de reembolso</p>
+                  <p className="mt-0.5 font-semibold">{devolucion.metodoReembolso}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Productos acreditados ({devolucion.detalles.length})
+                </p>
+                <div className="border border-border rounded-xl overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/40 border-b border-border">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">SKU</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Producto</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Cant.</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Precio</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Base acred.</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">ITBIS acred.</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Importe</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {devolucion.detalles.map(d => (
+                        <tr key={d.idDetalleDevolucion} className="border-b border-border/50">
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{d.skuProducto}</td>
+                          <td className="px-3 py-2">{d.nombreProducto}</td>
+                          <td className="px-3 py-2 text-right">{d.cantidad}</td>
+                          <td className="px-3 py-2 text-right">{fmtMoneda(d.precioUnitario)}</td>
+                          <td className="px-3 py-2 text-right">{fmtMoneda(d.baseImponibleAcreditada)}</td>
+                          <td className="px-3 py-2 text-right">{fmtMoneda(d.itbisAcreditado)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{fmtMoneda(d.importeAcreditado)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="border border-border rounded-xl p-4 text-sm space-y-1 md:max-w-xs md:ml-auto">
+                <div className="flex justify-between">
+                  <span>Base imponible</span>
+                  <span id="detalle-devolucion-base">{fmtMoneda(devolucion.baseImponible)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>ITBIS</span>
+                  <span id="detalle-devolucion-itbis">{fmtMoneda(devolucion.itbis)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-base border-t border-border pt-1 mt-1">
+                  <span>Total acreditado</span>
+                  <span id="detalle-devolucion-total">{fmtMoneda(devolucion.total)}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="p-6">
-              {paso === 1 && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block mb-2">Buscar Venta por ID o Comprobante</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={ventaBuscada}
-                        onChange={(e) => setVentaBuscada(e.target.value)}
-                        placeholder="Ej: VT-2026-001 o B01-00001234"
-                        className="flex-1 px-4 py-2 bg-input-background border border-border rounded-lg"
-                      />
+            <div className="px-5 py-4 border-t border-border bg-muted/10 flex-shrink-0">
+              <button
+                id="btn-cerrar-detalle-devolucion"
+                onClick={onClose}
+                className="w-full py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+//  Nueva devolución
+// ─────────────────────────────────────────────────────────
+
+function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
+  /** `true` cuando queda algo nuevo que leer del backend. */
+  onCerrar: (refrescarHistorial: boolean) => void;
+  onRefrescar: () => void;
+}) {
+  // Paso 0: turno abierto del usuario. Sin él el backend rechaza el reembolso.
+  const [turno, setTurno] = useState<TurnoCaja | null>(null);
+  const [turnoError, setTurnoError] = useState<string | null>(null);
+  const [cargandoTurno, setCargandoTurno] = useState(true);
+
+  // Paso 1: localizar la venta. La búsqueda la resuelve el backend.
+  const [busqueda, setBusqueda] = useState('');
+  const [resultados, setResultados] = useState<VentaResumen[] | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [errorBusqueda, setErrorBusqueda] = useState<string | null>(null);
+
+  // Paso 2: líneas devolvibles de la venta elegida.
+  const [venta, setVenta] = useState<VentaDevoluble | null>(null);
+  const [cargandoVenta, setCargandoVenta] = useState(false);
+  const [errorVenta, setErrorVenta] = useState<string | null>(null);
+  const [cantidades, setCantidades] = useState<Record<number, number>>({});
+
+  // Paso 3: confirmación.
+  const [motivo, setMotivo] = useState('');
+  const [metodo, setMetodo] = useState<MetodoReembolso>('EFECTIVO');
+  const [enviando, setEnviando] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState<{ mensaje: string; yaRegistrada: boolean } | null>(null);
+  const [resultado, setResultado] = useState<DevolucionResponse | null>(null);
+
+  /**
+   * Llave de idempotencia del intento en curso.
+   *
+   * Se crea la primera vez que hace falta y sobrevive a los reintentos: si el
+   * primer POST se perdió en la red pero el servidor lo procesó, repetirlo con
+   * la misma referencia devuelve 409 en lugar de emitir un segundo B04. Solo se
+   * descarta al empezar una devolución distinta.
+   */
+  /**
+   * Hay algo confirmado en el servidor que el historial de detrás todavía no
+   * refleja. Lo levanta tanto un 201 como un 409 —que significa que la
+   * operación ya se registró, quizá en un envío anterior que se perdió— y lo
+   * consume una única recarga, salga el usuario por donde salga.
+   */
+  const debeRefrescar = useRef(false);
+
+  const referenciaRef = useRef<string | null>(null);
+  const referenciaDelIntento = () => {
+    if (referenciaRef.current === null) {
+      referenciaRef.current = crypto.randomUUID();
+    }
+    return referenciaRef.current;
+  };
+
+  const cargarTurno = useCallback(() => {
+    setCargandoTurno(true);
+    setTurnoError(null);
+    turnosCajaApi.abiertoActual()
+      .then(setTurno)
+      .catch((e: any) => {
+        setTurno(null);
+        setTurnoError(e.message || 'No tienes un turno de caja abierto: no se puede entregar el reembolso.');
+      })
+      .finally(() => setCargandoTurno(false));
+  }, []);
+
+  useEffect(() => { cargarTurno(); }, [cargarTurno]);
+
+  const buscarVentas = () => {
+    const q = busqueda.trim();
+    if (!q || buscando) return;
+    setBuscando(true);
+    setErrorBusqueda(null);
+    ventasApi.listar({ q }, 0, 10)
+      .then(pagina => setResultados(pagina.content))
+      .catch((e: any) => {
+        setResultados([]);
+        setErrorBusqueda(e.message || 'No se pudo buscar la venta.');
+      })
+      .finally(() => setBuscando(false));
+  };
+
+  const seleccionarVenta = (idVenta: number) => {
+    setCargandoVenta(true);
+    setErrorVenta(null);
+    setVenta(null);
+    setCantidades({});
+    devolucionesApi.consultarDisponible(idVenta)
+      .then(setVenta)
+      .catch((e: any) => setErrorVenta(e.message || 'No se pudo consultar lo devolvible de esta venta.'))
+      .finally(() => setCargandoVenta(false));
+  };
+
+  const volverABuscar = () => {
+    setVenta(null);
+    setCantidades({});
+    setErrorVenta(null);
+  };
+
+  const cambiarCantidad = (idDetalleVenta: number, disponible: number, valor: string) => {
+    setCantidades(previas => {
+      const siguientes = { ...previas };
+      const numero = Number.parseInt(valor, 10);
+      if (!Number.isFinite(numero) || numero <= 0) {
+        delete siguientes[idDetalleVenta];
+      } else {
+        siguientes[idDetalleVenta] = Math.min(numero, disponible);
+      }
+      return siguientes;
+    });
+  };
+
+  const detalles = (venta?.lineas ?? [])
+    .filter(linea => (cantidades[linea.idDetalleVenta] ?? 0) > 0)
+    .map(linea => ({ idDetalleVenta: linea.idDetalleVenta, cantidad: cantidades[linea.idDetalleVenta] }));
+
+  const unidades = detalles.reduce((suma, linea) => suma + linea.cantidad, 0);
+
+  // Tras un 409 el intento está cerrado: repetirlo con la misma referencia
+  // volvería a chocar, y generar otra duplicaría la nota de crédito.
+  const puedeConfirmar = !!turno && !!venta && venta.devolvible
+    && detalles.length > 0 && motivo.trim().length > 0 && !enviando
+    && !errorEnvio?.yaRegistrada;
+
+  const confirmar = () => {
+    if (!puedeConfirmar || !turno || !venta) return;
+    setEnviando(true);
+    setErrorEnvio(null);
+    devolucionesApi.crear({
+      idVenta: venta.idVenta,
+      idTurnoCaja: turno.idTurnoCaja,
+      motivo: motivo.trim(),
+      metodoReembolso: metodo,
+      referenciaOperacion: referenciaDelIntento(),
+      detalles,
+    })
+      .then(devolucion => {
+        debeRefrescar.current = true;
+        setResultado(devolucion);
+      })
+      .catch((e: any) => {
+        const yaRegistrada = e instanceof ApiError && e.status === 409;
+        // El 409 no confirma nada nuevo, pero sí que algo se confirmó antes:
+        // el historial es la única forma de saber qué quedó registrado.
+        if (yaRegistrada) debeRefrescar.current = true;
+        setErrorEnvio({
+          mensaje: e.message || 'No se pudo registrar la devolución.',
+          yaRegistrada,
+        });
+      })
+      .finally(() => setEnviando(false));
+  };
+
+  /** Deja el formulario listo para una devolución distinta, con otra llave. */
+  const registrarOtra = () => {
+    referenciaRef.current = null;
+    setResultado(null);
+    setErrorEnvio(null);
+    setBusqueda('');
+    setResultados(null);
+    setVenta(null);
+    setCantidades({});
+    setMotivo('');
+    setMetodo('EFECTIVO');
+    // El historial de detrás se pone al día aquí y ya no vuelve a pedirse al
+    // cerrar: una sola carga por operación registrada.
+    if (debeRefrescar.current) {
+      debeRefrescar.current = false;
+      onRefrescar();
+    }
+    cargarTurno();
+  };
+
+  /** Única salida del modal: la X, el fondo y los botones pasan por aquí. */
+  const cerrar = () => onCerrar(debeRefrescar.current);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
+      onClick={(e) => { if (e.target === e.currentTarget && !enviando) cerrar(); }}
+    >
+      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl mx-4 overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Undo2 size={17} className="text-amber-600" />
+            <h2 className="text-base font-semibold">Nueva devolución</h2>
+          </div>
+          <button
+            id="btn-cerrar-modal-devolucion"
+            onClick={cerrar}
+            disabled={enviando}
+            title="Cerrar"
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* ── Resultado del servidor ─────────────────────── */}
+        {resultado ? (
+          <>
+            <div id="resultado-devolucion" className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm">
+                <CheckCircle2 size={17} />
+                <span>
+                  Devolución <span className="font-mono font-semibold">{resultado.numeroControl}</span> registrada.
+                  La venta {resultado.numeroControlVenta} quedó {resultado.estadoVenta}.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Nota de crédito</p>
+                  <p id="resultado-b04" className="font-bold mt-0.5 font-mono">{resultado.ncf}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">NCF afectado</p>
+                  <p id="resultado-ncf-afectado" className="font-bold mt-0.5 font-mono">
+                    {resultado.ncfAfectado || 'Sin NCF'}
+                  </p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Base imponible</p>
+                  <p id="resultado-base" className="font-semibold mt-0.5">{fmtMoneda(resultado.baseImponible)}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">ITBIS</p>
+                  <p id="resultado-itbis" className="font-semibold mt-0.5">{fmtMoneda(resultado.itbis)}</p>
+                </div>
+              </div>
+
+              <div className="border border-border rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Total acreditado</p>
+                  <p id="resultado-total" className="text-lg font-bold">{fmtMoneda(resultado.total)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">A reembolsar al cliente</p>
+                  <p id="resultado-reembolso" className="font-semibold">
+                    {fmtMoneda(resultado.total)} en {resultado.metodoReembolso}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 px-5 py-4 border-t border-border bg-muted/10 flex-shrink-0">
+              <button
+                id="btn-otra-devolucion"
+                onClick={registrarOtra}
+                className="flex-1 py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
+              >
+                Registrar otra devolución
+              </button>
+              <button
+                id="btn-cerrar-resultado-devolucion"
+                onClick={cerrar}
+                className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="p-5 space-y-5 overflow-y-auto flex-1">
+              {/* ── Turno ────────────────────────────────── */}
+              <div className={`rounded-xl px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2 border ${
+                turno ? 'bg-muted/30 border-border' : 'bg-red-50 border-red-200 text-red-700'
+              }`}>
+                <span id="devolucion-turno" className="flex items-center gap-2">
+                  {cargandoTurno && <Loader2 size={14} className="animate-spin" />}
+                  {cargandoTurno
+                    ? 'Comprobando tu turno de caja…'
+                    : turno
+                      ? `Turno abierto: TURNO #${turno.idTurnoCaja} · ${turno.cajaNombre}`
+                      : turnoError}
+                </span>
+                {!cargandoTurno && !turno && (
+                  <button
+                    id="btn-reintentar-turno-devolucion"
+                    onClick={cargarTurno}
+                    className="px-3 py-1.5 text-xs border border-red-300 rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    Reintentar
+                  </button>
+                )}
+              </div>
+
+              {/* ── 1. Venta ─────────────────────────────── */}
+              <section className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  1 · Venta a devolver
+                </p>
+
+                {venta ? (
+                  <div className="border border-border rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div>
+                      <p className="font-mono font-semibold">{venta.numeroControl}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {venta.ncf || 'Sin NCF'} · {fmtFechaHora(venta.fechaVenta)} ·{' '}
+                        {nombreCliente(venta.clienteNombre)} · {venta.almacenNombre || 'Sin almacén'}
+                      </p>
+                    </div>
+                    <button
+                      id="btn-cambiar-venta-devolucion"
+                      onClick={volverABuscar}
+                      className="px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted transition-colors flex items-center gap-1.5"
+                    >
+                      <RotateCcw size={13} /> Elegir otra venta
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="flex-1 min-w-[220px]">
+                        <label htmlFor="input-buscar-venta-devolucion" className="sr-only">
+                          Número de control o NCF de la venta
+                        </label>
+                        <div className="relative">
+                          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          <input
+                            id="input-buscar-venta-devolucion"
+                            type="text"
+                            placeholder="N° de control o NCF…"
+                            value={busqueda}
+                            onChange={e => setBusqueda(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') buscarVentas(); }}
+                            className="w-full pl-9 pr-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+                          />
+                        </div>
+                      </div>
                       <button
-                        onClick={buscarVenta}
-                        className="px-6 py-2 bg-primary text-primary-foreground rounded-lg flex items-center gap-2"
+                        id="btn-buscar-venta-devolucion"
+                        onClick={buscarVentas}
+                        disabled={buscando || busqueda.trim().length === 0}
+                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center gap-2 disabled:opacity-40"
                       >
-                        <Search size={20} />
+                        {buscando ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
                         Buscar
                       </button>
                     </div>
-                  </div>
 
-                  <div className="bg-muted/50 border border-border rounded-lg p-4 mt-6">
-                    <p className="text-sm text-muted-foreground">
-                      <strong>Nota:</strong> Ingresa el ID de la venta o número de comprobante fiscal para iniciar el proceso de devolución.
-                      La venta debe estar completada y dentro del período permitido para devoluciones.
-                    </p>
-                  </div>
-                </div>
-              )}
+                    {errorBusqueda && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
+                        <AlertTriangle size={15} /> {errorBusqueda}
+                      </div>
+                    )}
 
-              {paso === 2 && ventaSeleccionada && (
-                <div className="space-y-4">
-                  <div className="bg-muted/50 border border-border rounded-lg p-4">
-                    <h4 className="mb-3">Información de la Venta</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">ID Venta</p>
-                        <p className="mt-1">{ventaSeleccionada.id}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Cliente</p>
-                        <p className="mt-1">{ventaSeleccionada.cliente}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Fecha</p>
-                        <p className="mt-1">{ventaSeleccionada.fecha}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Comprobante</p>
-                        <p className="mt-1">{ventaSeleccionada.comprobante}</p>
-                      </div>
-                    </div>
-                  </div>
+                    {resultados !== null && resultados.length === 0 && !buscando && !errorBusqueda && (
+                      <p className="text-sm text-muted-foreground px-1">
+                        Ninguna venta coincide con esa búsqueda.
+                      </p>
+                    )}
 
-                  <div>
-                    <label className="block mb-2">Motivo de la Devolución</label>
-                    <select
-                      value={motivo}
-                      onChange={(e) => setMotivo(e.target.value)}
-                      className="w-full px-4 py-2 bg-input-background border border-border rounded-lg"
-                    >
-                      <option value="">Seleccione un motivo...</option>
-                      <option value="Producto defectuoso">Producto defectuoso</option>
-                      <option value="Error en pedido">Error en pedido</option>
-                      <option value="Cliente insatisfecho">Cliente insatisfecho</option>
-                      <option value="Cambio de producto">Cambio de producto</option>
-                      <option value="Garantía">Garantía</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <h4 className="mb-3">Productos a Devolver</h4>
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-muted">
-                          <tr>
-                            <th className="text-left py-3 px-4 text-muted-foreground">Código</th>
-                            <th className="text-left py-3 px-4 text-muted-foreground">Producto</th>
-                            <th className="text-left py-3 px-4 text-muted-foreground">Cant. Original</th>
-                            <th className="text-left py-3 px-4 text-muted-foreground">Cant. a Devolver</th>
-                            <th className="text-left py-3 px-4 text-muted-foreground">Precio Unit.</th>
-                            <th className="text-left py-3 px-4 text-muted-foreground">Subtotal</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {productosDevolver.map((prod) => (
-                            <tr key={prod.idDetalleVenta} className="border-t border-border">
-                              <td className="py-3 px-4">{prod.codigo}</td>
-                              <td className="py-3 px-4">{prod.producto}</td>
-                              <td className="py-3 px-4">{prod.cantidadOriginal}</td>
-                              <td className="py-3 px-4">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={prod.cantidadOriginal}
-                                  value={prod.cantidadDevolver}
-                                  onChange={(e) => actualizarCantidad(prod.idDetalleVenta, parseInt(e.target.value) || 0)}
-                                  className="w-20 px-3 py-1 bg-input-background border border-border rounded"
-                                />
-                              </td>
-                              <td className="py-3 px-4">RD$ {prod.precioUnitario.toLocaleString()}</td>
-                              <td className="py-3 px-4">RD$ {prod.subtotal.toLocaleString()}</td>
+                    {resultados !== null && resultados.length > 0 && (
+                      <div className="border border-border rounded-xl overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-muted/40 border-b border-border">
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">N° Control</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">NCF</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Fecha</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Cliente</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total</th>
+                              <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Estado</th>
+                              <th className="px-3 py-2" />
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-muted border-t-2 border-border">
-                          <tr>
-                            <td colSpan={5} className="py-3 px-4 text-right">
-                              <strong>Total a Devolver:</strong>
+                          </thead>
+                          <tbody>
+                            {resultados.map(v => (
+                              <tr key={v.idVenta} className="border-b border-border/50">
+                                <td className="px-3 py-2 font-mono text-xs font-semibold">{v.numeroControl}</td>
+                                <td className="px-3 py-2 font-mono text-xs">{v.ncf || 'Sin NCF'}</td>
+                                <td className="px-3 py-2 text-xs text-muted-foreground">{fmtFechaHora(v.fechaVenta)}</td>
+                                <td className="px-3 py-2">{nombreCliente(v.clienteNombre)}</td>
+                                <td className="px-3 py-2 text-right font-semibold">{fmtMoneda(v.total)}</td>
+                                <td className="px-3 py-2 text-center text-xs">{v.estado}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <button
+                                    id={`btn-seleccionar-venta-${v.idVenta}`}
+                                    onClick={() => seleccionarVenta(v.idVenta)}
+                                    className="px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted transition-colors"
+                                  >
+                                    Seleccionar
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {cargandoVenta && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2 px-1">
+                    <Loader2 size={14} className="animate-spin" /> Consultando lo devolvible…
+                  </p>
+                )}
+
+                {errorVenta && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
+                    <AlertTriangle size={15} /> {errorVenta}
+                  </div>
+                )}
+              </section>
+
+              {/* ── 2. Líneas ────────────────────────────── */}
+              {venta && (
+                <section className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    2 · Unidades a devolver
+                  </p>
+
+                  {!venta.devolvible && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
+                      <AlertTriangle size={15} />
+                      Esta venta ({venta.estado}) no admite devoluciones.
+                    </div>
+                  )}
+
+                  <div className="border border-border rounded-xl overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/40 border-b border-border">
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">SKU</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Producto</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Precio</th>
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Vendida</th>
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Devuelta</th>
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Disponible</th>
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">A devolver</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {venta.lineas.map(linea => (
+                          <tr id={`linea-devolucion-${linea.idDetalleVenta}`} key={linea.idDetalleVenta} className="border-b border-border/50">
+                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{linea.skuProducto}</td>
+                            <td className="px-3 py-2">{linea.nombreProducto}</td>
+                            <td className="px-3 py-2 text-right">{fmtMoneda(linea.precioUnitario)}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{linea.cantidadVendida}</td>
+                            <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{linea.cantidadDevuelta}</td>
+                            <td className="px-3 py-2 text-center tabular-nums font-semibold">
+                              <span id={`disponible-linea-${linea.idDetalleVenta}`}>{linea.cantidadDisponible}</span>
                             </td>
-                            <td className="py-3 px-4">
-                              <strong>RD$ {calcularTotal().toLocaleString()}</strong>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                id={`input-cantidad-devolver-${linea.idDetalleVenta}`}
+                                type="number"
+                                min={0}
+                                max={linea.cantidadDisponible}
+                                step={1}
+                                inputMode="numeric"
+                                value={cantidades[linea.idDetalleVenta] ?? ''}
+                                disabled={!venta.devolvible || linea.cantidadDisponible === 0 || enviando}
+                                onChange={e => cambiarCantidad(linea.idDetalleVenta, linea.cantidadDisponible, e.target.value)}
+                                className="w-20 px-2 py-1.5 border border-border rounded-lg bg-background text-sm text-center tabular-nums focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-40"
+                              />
                             </td>
                           </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-4">
-                    <button
-                      onClick={() => setPaso(1)}
-                      className="px-6 py-2 bg-secondary text-secondary-foreground rounded-lg"
-                    >
-                      Anterior
-                    </button>
-                    <button
-                      onClick={procesarDevolucion}
-                      disabled={calcularTotal() === 0 || !motivo}
-                      className="px-6 py-2 bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
-                    >
-                      Continuar
-                    </button>
-                  </div>
-                </div>
+                  <p className="text-xs text-muted-foreground px-1">
+                    El importe acreditado lo calcula el backend con los precios y el ITBIS que la venta
+                    guardó: aquí solo se indican unidades.
+                  </p>
+                </section>
               )}
 
-              {paso === 3 && (
-                <div className="space-y-4">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-                    <CheckCircle size={48} className="text-green-600 mx-auto mb-3" />
-                    <h4 className="text-green-800 mb-2">Devolución Procesada</h4>
-                    <p className="text-sm text-green-700">La devolución ha sido aprobada. Proceda a generar la Nota de Crédito.</p>
-                  </div>
+              {/* ── 3. Confirmación ──────────────────────── */}
+              {venta && (
+                <section className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    3 · Motivo y reembolso
+                  </p>
 
-                  <div className="bg-card border-2 border-primary rounded-lg p-6">
-                    <h4 className="mb-4">Emisión de Nota de Crédito (NCF)</h4>
-
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tipo de Comprobante</p>
-                        <p className="mt-1">B04 - Nota de Crédito</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Secuencia NCF</p>
-                        <p className="mt-1 text-primary">{ncfSecuencia}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Comprobante Original</p>
-                        <p className="mt-1">{ventaSeleccionada?.comprobante}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Fecha Emisión</p>
-                        <p className="mt-1">{new Date().toLocaleDateString('es-DO')}</p>
-                      </div>
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="md:col-span-2">
+                      <label htmlFor="input-motivo-devolucion" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+                        Motivo
+                      </label>
+                      <textarea
+                        id="input-motivo-devolucion"
+                        rows={2}
+                        maxLength={300}
+                        value={motivo}
+                        disabled={enviando}
+                        onChange={e => setMotivo(e.target.value)}
+                        placeholder="Por qué el cliente devuelve la mercancía…"
+                        className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm resize-none focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-40"
+                      />
                     </div>
-
-                    <div className="bg-muted rounded-lg p-4 mb-4">
-                      <h5 className="text-sm mb-3">Resumen de la Devolución</h5>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span>Cliente:</span>
-                          <span>{ventaSeleccionada?.cliente}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Motivo:</span>
-                          <span>{motivo}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Productos devueltos:</span>
-                          <span>{productosDevolver.filter(p => p.cantidadDevolver > 0).length}</span>
-                        </div>
-                        <div className="flex justify-between border-t border-border pt-2">
-                          <span><strong>Total NC:</strong></span>
-                          <span><strong>RD$ {calcularTotal().toLocaleString()}</strong></span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-blue-800">
-                        <strong>Información Fiscal:</strong> Esta Nota de Crédito será reportada a la DGII según la normativa
-                        vigente. El NCF {ncfSecuencia} quedará asociado a esta transacción y el inventario será ajustado automáticamente.
+                    <div>
+                      <label htmlFor="select-metodo-reembolso" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+                        Método de reembolso
+                      </label>
+                      <select
+                        id="select-metodo-reembolso"
+                        value={metodo}
+                        disabled={enviando}
+                        onChange={e => setMetodo(e.target.value as MetodoReembolso)}
+                        className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-40"
+                      >
+                        {METODOS_REEMBOLSO.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Solo EFECTIVO reduce el efectivo esperado del turno.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-4">
-                    <button
-                      onClick={() => setPaso(2)}
-                      className="px-6 py-2 bg-secondary text-secondary-foreground rounded-lg"
+                  {errorEnvio && (
+                    <div
+                      id="error-devolucion"
+                      className={`rounded-xl px-4 py-3 text-sm border flex flex-wrap items-center justify-between gap-2 ${
+                        errorEnvio.yaRegistrada
+                          ? 'bg-amber-50 border-amber-200 text-amber-800'
+                          : 'bg-red-50 border-red-200 text-red-700'
+                      }`}
                     >
-                      Anterior
-                    </button>
-                    <button
-                      onClick={confirmarNotaCredito}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"
-                    >
-                      <FileText size={20} />
-                      Generar Nota de Crédito
-                    </button>
-                  </div>
-                </div>
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle size={15} />
+                        {errorEnvio.yaRegistrada
+                          ? `Esta operación ya quedó registrada; búscala en el historial antes de repetirla. ${errorEnvio.mensaje}`
+                          : errorEnvio.mensaje}
+                      </span>
+                      {errorEnvio.yaRegistrada ? (
+                        <button
+                          id="btn-ver-historial-devolucion"
+                          onClick={cerrar}
+                          className="px-3 py-1.5 text-xs border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors"
+                        >
+                          Ver el historial
+                        </button>
+                      ) : (
+                        <button
+                          id="btn-reintentar-devolucion"
+                          onClick={confirmar}
+                          disabled={enviando}
+                          className="px-3 py-1.5 text-xs border border-red-300 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-40"
+                        >
+                          Reintentar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </section>
               )}
             </div>
-          </div>
+
+            <div className="flex flex-wrap items-center gap-2 px-5 py-4 border-t border-border bg-muted/10 flex-shrink-0">
+              <span className="text-xs text-muted-foreground mr-auto">
+                {unidades > 0
+                  ? `${unidades} unidad${unidades !== 1 ? 'es' : ''} en ${detalles.length} línea${detalles.length !== 1 ? 's' : ''}`
+                  : 'Indica al menos una unidad'}
+              </span>
+              <button
+                id="btn-cerrar-devolucion"
+                onClick={cerrar}
+                disabled={enviando}
+                className="px-4 py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-confirmar-devolucion"
+                onClick={confirmar}
+                disabled={!puedeConfirmar}
+                className="px-4 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold flex items-center gap-2 hover:bg-blue-700 transition-colors disabled:opacity-40"
+              >
+                {enviando ? <Loader2 size={15} className="animate-spin" /> : <Undo2 size={15} />}
+                {enviando ? 'Registrando…' : 'Confirmar devolución'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+//  Historial de devoluciones
+// ─────────────────────────────────────────────────────────
+
+interface DevolucionesProps {
+  userPermisos?: string[];
+}
+
+export default function Devoluciones({ userPermisos = [] }: DevolucionesProps) {
+  // El backend es la autoridad: esto solo evita ofrecer un botón que acabaría
+  // en 403.
+  const puedeCrear = userPermisos.includes('DEVOLUCION_CREAR');
+
+  const [devoluciones, setDevoluciones] = useState<DevolucionResumen[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [idDetalle, setIdDetalle] = useState<number | null>(null);
+  const [creando, setCreando] = useState(false);
+
+  const cargar = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    devolucionesApi.listar(undefined, page, PAGE_SIZE)
+      .then(pagina => {
+        setDevoluciones(pagina.content);
+        setTotalPages(pagina.totalPages);
+        setTotalElements(pagina.totalElements);
+      })
+      .catch((e: any) => {
+        setDevoluciones([]);
+        setError(e.message || 'No se pudo cargar el historial de devoluciones.');
+      })
+      .finally(() => setLoading(false));
+  }, [page]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  // Una devolución nueva es siempre la más reciente: la primera página es la
+  // que la contiene.
+  const refrescarDesdeElPrincipio = () => {
+    if (page === 0) cargar();
+    else setPage(0);
+  };
+
+  return (
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Undo2 size={22} className="text-amber-600" />
+            Devoluciones y Notas de Crédito
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Devoluciones confirmadas y el comprobante B04 que acredita cada una.
+          </p>
         </div>
+        {puedeCrear && (
+          <button
+            id="btn-nueva-devolucion"
+            onClick={() => setCreando(true)}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center gap-2"
+          >
+            <Plus size={15} /> Nueva devolución
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="flex items-center gap-2"><AlertTriangle size={16} /> {error}</span>
+          <button
+            id="btn-reintentar-devoluciones"
+            onClick={cargar}
+            className="px-3 py-1.5 border border-red-300 rounded-lg hover:bg-red-100 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      <div className="border border-border rounded-xl overflow-hidden bg-background">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">N° Devolución</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Venta</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">B04</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">NCF afectado</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fecha</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cajero</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reembolso</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estado</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="py-20 text-center text-muted-foreground">
+                    <Loader2 size={26} className="animate-spin mx-auto mb-2" />
+                    Cargando devoluciones…
+                  </td>
+                </tr>
+              ) : error ? (
+                // Una consulta que falló no dice nada sobre cuántas
+                // devoluciones hay: anunciar aquí que no hay ninguna sería
+                // confundir una avería con una base vacía.
+                <tr>
+                  <td colSpan={10} className="py-20 text-center text-muted-foreground">
+                    <AlertTriangle size={36} className="mx-auto mb-2 opacity-30" />
+                    <p>No se pudo consultar el historial.</p>
+                    <p className="text-xs mt-1">Usa «Reintentar» para volver a pedirlo.</p>
+                  </td>
+                </tr>
+              ) : devoluciones.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-20 text-center text-muted-foreground">
+                    <Undo2 size={36} className="mx-auto mb-2 opacity-30" />
+                    <p>Todavía no hay devoluciones registradas.</p>
+                  </td>
+                </tr>
+              ) : (
+                devoluciones.map(d => (
+                  <tr key={d.idDevolucion} className="border-b border-border/60 transition-colors hover:bg-muted/20">
+                    <td className="px-3 py-3 font-mono text-xs font-semibold">{d.numeroControl}</td>
+                    <td className="px-3 py-3 font-mono text-xs">{d.numeroControlVenta}</td>
+                    <td className="px-3 py-3 font-mono text-xs">{d.ncf}</td>
+                    <td className="px-3 py-3 font-mono text-xs">{d.ncfAfectado || 'Sin NCF'}</td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">{fmtFechaHora(d.fechaDevolucion)}</td>
+                    <td className="px-3 py-3 text-sm">{d.cajeroNombre}</td>
+                    <td className="px-3 py-3 text-xs">{d.metodoReembolso}</td>
+                    <td className="px-3 py-3 text-right font-semibold">{fmtMoneda(d.total)}</td>
+                    <td className="px-3 py-3 text-center">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-amber-100 text-amber-700 border-amber-200">
+                        {d.estado}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <button
+                        id={`btn-detalle-devolucion-${d.idDevolucion}`}
+                        onClick={() => setIdDetalle(d.idDevolucion)}
+                        title="Ver detalle"
+                        className="p-1.5 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors text-muted-foreground"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {!loading && !error && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
+            <span>
+              {totalElements} devoluci{totalElements !== 1 ? 'ones' : 'ón'}
+              {totalPages > 0 ? ` · Página ${page + 1} de ${totalPages}` : ''}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                id="btn-devoluciones-pagina-anterior"
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="px-3 py-1.5 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                ← Anterior
+              </button>
+              <button
+                id="btn-devoluciones-pagina-siguiente"
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages - 1}
+                className="px-3 py-1.5 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                Siguiente →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {idDetalle !== null && (
+        <DetalleDevolucionModal idDevolucion={idDetalle} onClose={() => setIdDetalle(null)} />
+      )}
+
+      {creando && (
+        <NuevaDevolucionModal
+          onCerrar={(refrescarHistorial) => {
+            setCreando(false);
+            if (refrescarHistorial) refrescarDesdeElPrincipio();
+          }}
+          onRefrescar={refrescarDesdeElPrincipio}
+        />
       )}
     </div>
   );

@@ -1152,11 +1152,22 @@ export default function TurnosCaja({ username, userPermisos }: TurnosCajaProps) 
                         <span className="text-muted-foreground">Egresos:</span>
                         <p className="font-semibold text-rose-600 font-mono">-{fmtMoney(cuadrePreview.totalEgresos)}</p>
                       </div>
+                      {/* El efectivo reembolsado por notas de crédito sale del
+                          cajón: se muestra como resta propia, no mezclado con
+                          los egresos de caja chica. */}
+                      <div>
+                        <span className="text-muted-foreground">Devoluciones en Efectivo:</span>
+                        <p id="cierre-devoluciones-efectivo" className="font-semibold text-rose-600 font-mono">
+                          -{fmtMoney(cuadrePreview.totalDevolucionesEfectivo)}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="pt-2 border-t border-border flex justify-between items-center font-semibold text-sm">
                       <span>Efectivo Esperado:</span>
-                      <span className="font-bold font-mono text-foreground">{fmtMoney(cuadrePreview.montoEsperado)}</span>
+                      <span id="cierre-monto-esperado" className="font-bold font-mono text-foreground">
+                        {fmtMoney(cuadrePreview.montoEsperado)}
+                      </span>
                     </div>
                   </>
                 ) : (

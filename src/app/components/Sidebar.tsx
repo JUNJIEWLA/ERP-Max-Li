@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronRight,
   UserCircle,
+  Undo2,
   ClipboardList,
   ClipboardCheck,
   Archive,
@@ -54,6 +55,7 @@ interface MenuSection {
 export const PERMISSION_MAP: Record<string, string> = {
   pos: 'VENTA_CREAR',
   'ventas-historial': 'VENTA_VER',
+  devoluciones: 'VENTA_VER',
   clientes: 'CLIENTE_GESTIONAR',
   productos: 'PRODUCTO_VER',
   existencias: 'INVENTARIO_VER',
@@ -84,6 +86,7 @@ const menuSections: MenuSection[] = [
     items: [
       { id: 'pos', label: 'Punto de Venta', icon: Monitor, requiredPermission: 'VENTA_CREAR' },
       { id: 'ventas-historial', label: 'Historial de Ventas', icon: Receipt, requiredPermission: 'VENTA_VER' },
+      { id: 'devoluciones', label: 'Devoluciones y Notas de Crédito', icon: Undo2, requiredPermission: 'VENTA_VER' },
     ]
   },
   {
