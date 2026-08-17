@@ -11,7 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,17 +24,37 @@ const Sidebar = read('src/app/components/Sidebar.tsx');
 const Header = read('src/app/components/Header.tsx');
 const NotasRecepcion = read('src/app/components/NotasRecepcion.tsx');
 
-/** Todos los .ts/.tsx bajo src/, excluyendo los primitivos de shadcn/ui. */
-function sourceFiles(dir = src, out = []) {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (full.endsWith(join('components', 'ui'))) continue;
-      sourceFiles(full, out);
-    } else if (/\.tsx?$/.test(entry)) {
-      out.push([full.slice(root.length + 1), readFileSync(full, 'utf8')]);
+/**
+ * Vistas retiradas de la navegación que siguen en el repo como código
+ * inaccesible, a la espera de implementarse de verdad. Nada las importa ni las
+ * renderiza, así que sus controles internos no son superficie del piloto.
+ */
+const VISTAS_INACCESIBLES = [
+  'src/app/components/Dashboard.tsx',
+  'src/app/components/Devoluciones.tsx',
+  'src/app/components/Ventas.tsx',
+];
+
+/**
+ * Todos los .ts/.tsx bajo src/, excluyendo los primitivos de shadcn/ui.
+ * Con `soloAlcanzables` se omiten además las vistas inaccesibles.
+ */
+function sourceFiles({ soloAlcanzables = false } = {}) {
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        if (full.endsWith(join('components', 'ui'))) continue;
+        walk(full);
+      } else if (/\.tsx?$/.test(entry)) {
+        const rel = full.slice(root.length + 1).split(sep).join('/');
+        if (soloAlcanzables && VISTAS_INACCESIBLES.includes(rel)) continue;
+        out.push([rel, readFileSync(full, 'utf8')]);
+      }
     }
-  }
+  };
+  walk(src);
   return out;
 }
 
@@ -67,8 +87,7 @@ test('App no importa ni renderiza Dashboard', () => {
 });
 
 test('no existe redirección ni fallback hacia dashboard', () => {
-  for (const [path, content] of sourceFiles()) {
-    if (path.endsWith('components/Dashboard.tsx')) continue; // código inaccesible, permitido
+  for (const [path, content] of sourceFiles({ soloAlcanzables: true })) {
     assert.ok(
       !/'dashboard'/.test(content),
       `${path} todavía referencia la vista 'dashboard'`
@@ -96,6 +115,31 @@ test('App no importa ni renderiza Devoluciones', () => {
   );
 });
 
+// ─── 2 bis. Historial de Ventas (datos estáticos y controles sin efecto) ──
+test('el Sidebar no ofrece Historial de Ventas', () => {
+  assert.ok(
+    !sidebarItemIds().includes('ventas-historial'),
+    "Sidebar todavía expone 'ventas-historial'"
+  );
+  assert.ok(
+    !/'ventas-historial'/.test(Sidebar),
+    "Sidebar todavía referencia 'ventas-historial' (p. ej. en PERMISSION_MAP)"
+  );
+});
+
+test('App no importa ni renderiza el Historial de Ventas', () => {
+  assert.ok(!/import\s+Ventas\s+from/.test(App), 'App.tsx todavía importa Ventas');
+  assert.ok(!/<Ventas\s*\/>/.test(App), 'App.tsx todavía renderiza <Ventas />');
+  assert.ok(
+    !appViewCases().includes('ventas-historial'),
+    "App.tsx todavía tiene la ruta 'ventas-historial'"
+  );
+  assert.ok(
+    !/'ventas-historial'/.test(App),
+    "App.tsx todavía referencia 'ventas-historial' (p. ej. en viewTitles)"
+  );
+});
+
 // ─── 3. Vista inicial y fallback ──────────────────────────────────────────
 test('cada opción navegable del menú tiene una vista real', () => {
   const cases = appViewCases();
@@ -108,7 +152,7 @@ test('cada opción navegable del menú tiene una vista real', () => {
 });
 
 test('no existe el fallback genérico "en desarrollo"', () => {
-  for (const [path, content] of sourceFiles()) {
+  for (const [path, content] of sourceFiles({ soloAlcanzables: true })) {
     assert.ok(
       !/en desarrollo/i.test(content),
       `${path} todavía muestra un placeholder "en desarrollo"`
@@ -136,16 +180,29 @@ test('las búsquedas reales de los módulos siguen conectadas', () => {
 
 // ─── 5. Reportes simulados ────────────────────────────────────────────────
 test('no queda ninguna acción "Generar reporte" simulada', () => {
-  for (const [path, content] of sourceFiles()) {
+  for (const [path, content] of sourceFiles({ soloAlcanzables: true })) {
     assert.ok(!/Generar reporte/.test(content), `${path} todavía ofrece "Generar reporte"`);
     assert.ok(!/Generando reporte/.test(content), `${path} todavía simula "Generando reporte"`);
     assert.ok(!/onGenerarReporte/.test(content), `${path} todavía cablea onGenerarReporte`);
   }
 });
 
-test('el botón Exportar sin funcionalidad desaparece del historial de ventas', () => {
-  const Ventas = read('src/app/components/Ventas.tsx');
-  assert.ok(!/>\s*Exportar\s*</.test(Ventas), 'Ventas.tsx todavía ofrece un Exportar no-op');
+// ─── 5 bis. Acciones visibles cableadas a un callback vacío ───────────────
+test('no queda la acción "Editar orden" con callback vacío', () => {
+  const OrdenesCompra = read('src/app/components/OrdenesCompra.tsx');
+  assert.ok(!/Editar orden/.test(OrdenesCompra), 'OrdenesCompra todavía ofrece "Editar orden"');
+  assert.ok(!/onEditar/.test(OrdenesCompra), 'OrdenesCompra todavía cablea onEditar');
+});
+
+test('ninguna acción visible se cablea a un callback vacío', () => {
+  for (const [path, content] of sourceFiles({ soloAlcanzables: true })) {
+    const vacios = [...content.matchAll(/^.*=>\s*\{\s*\}\}.*$/gm)].map((m) => m[0].trim());
+    assert.deepEqual(
+      vacios,
+      [],
+      `${path} pasa callbacks vacíos: ${vacios.join(' | ')}`
+    );
+  }
 });
 
 test('la exportación CSV real de Inventario se conserva', () => {
