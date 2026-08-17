@@ -187,8 +187,10 @@ if [[ "$OBJETOS_PREVIOS" != "0" ]]; then
        tablas de migraciones posteriores al backup sobrevivirían junto a un
        flyway_schema_history viejo.
 
-       Restaure en una base nueva y vacía:
-           createdb ${BASE_DESTINO}_restaurada
+       Restaure en una base nueva y vacía, propiedad de \$DB_USER —desde
+       PostgreSQL 15 el esquema public no deja crear tablas a quien no sea
+       dueño de la base:
+           createdb --owner='$DB_USER' ${BASE_DESTINO}_restaurada
            $NOMBRE_SCRIPT --dump '$ARCHIVO_DUMP' --base ${BASE_DESTINO}_restaurada \\
                           --confirmar RESTAURAR:${BASE_DESTINO}_restaurada
 

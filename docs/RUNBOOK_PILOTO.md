@@ -206,12 +206,23 @@ la de producción.
 > — y eso es peor que no restaurar, porque el esquema resultante no lo describe
 > nadie. **El script se niega** si el destino tiene objetos.
 
-Siempre en una base nueva, y el cambio se hace renombrando:
+Siempre en una base nueva, y el cambio se hace renombrando.
+
+> En los ejemplos, **`maxli` es el valor de `DB_USER`** y `postgres` el
+> superusuario que administra el clúster; sustitúyalos por los de la
+> instalación. La base nueva debe crearse **con `--owner` igual a `DB_USER`**:
+> desde PostgreSQL 15 el esquema `public` ya no concede `CREATE` a `PUBLIC`, así
+> que si la base pertenece a `postgres`, el usuario de la aplicación no puede
+> crear las tablas y la restauración falla a mitad.
 
 ```bash
 sudo systemctl stop maxli                      # 1. detener la aplicación
 
-createdb -U postgres maxli_restaurada          # 2. base NUEVA y vacía
+# 2. Base NUEVA y vacía, propiedad de DB_USER.
+#    El --owner no es cosmético: desde PostgreSQL 15 el esquema public ya no
+#    concede CREATE a PUBLIC, así que una base de 'postgres' no deja a 'maxli'
+#    crear las tablas y la restauración muere a mitad.
+createdb -U postgres --owner=maxli maxli_restaurada
 
 DB_URL='jdbc:postgresql://localhost:5432/maxli_db' \
 DB_USER='maxli' DB_PASSWORD='...' \
@@ -390,7 +401,7 @@ sudo systemctl stop maxli
 # 2. Restaurar el backup previo al despliegue en una base NUEVA (§4).
 #    No sobre maxli_db: las tablas de las migraciones que acaban de aplicarse
 #    sobrevivirían al --clean y quedarían junto a un historial Flyway viejo.
-createdb -U postgres maxli_rollback
+createdb -U postgres --owner=maxli maxli_rollback
 
 DB_URL='jdbc:postgresql://localhost:5432/maxli_db' \
 DB_USER='maxli' DB_PASSWORD='...' \
