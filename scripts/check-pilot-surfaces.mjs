@@ -31,7 +31,6 @@ const NotasRecepcion = read('src/app/components/NotasRecepcion.tsx');
  */
 const VISTAS_INACCESIBLES = [
   'src/app/components/Dashboard.tsx',
-  'src/app/components/Devoluciones.tsx',
 ];
 
 /**
@@ -94,23 +93,87 @@ test('no existe redirección ni fallback hacia dashboard', () => {
   }
 });
 
-// ─── 2. Devoluciones y Notas de Crédito ───────────────────────────────────
-test('el Sidebar no ofrece Devoluciones ni Notas de Crédito', () => {
-  const ids = sidebarItemIds();
-  assert.ok(!ids.includes('devoluciones'), "Sidebar todavía expone 'devoluciones'");
-  assert.ok(!ids.includes('notas-credito'), "Sidebar todavía expone 'notas-credito'");
-  assert.ok(!/Notas de Crédito/.test(Sidebar), 'Sidebar todavía rotula Notas de Crédito');
+// ─── 2. Devoluciones y Notas de Crédito (vista real) ──────────────────────
+//  La pantalla dejó de ser una maqueta: se exige lo contrario que antes, que
+//  esté en el menú, protegida por VENTA_VER y conectada al backend real.
+test('el Sidebar ofrece Devoluciones y Notas de Crédito tras VENTA_VER', () => {
+  assert.ok(
+    sidebarItemIds().includes('devoluciones'),
+    "Sidebar no expone 'devoluciones'"
+  );
+  assert.match(
+    Sidebar,
+    /'devoluciones': 'VENTA_VER'/,
+    "PERMISSION_MAP no protege 'devoluciones' con VENTA_VER"
+  );
+  assert.match(
+    Sidebar,
+    /id: 'devoluciones'[^}]*requiredPermission: 'VENTA_VER'/,
+    'el item del menú no exige VENTA_VER'
+  );
+  assert.match(
+    Sidebar,
+    /id: 'devoluciones', label: 'Devoluciones y Notas de Crédito'/,
+    'el item del menú no se rotula «Devoluciones y Notas de Crédito»'
+  );
 });
 
-test('App no importa ni renderiza Devoluciones', () => {
-  assert.ok(
-    !/import\s+Devoluciones\s+from/.test(App),
-    'App.tsx todavía importa Devoluciones'
+test('App importa y renderiza Devoluciones con los permisos del usuario', () => {
+  assert.match(App, /import\s+Devoluciones\s+from/, 'App.tsx no importa Devoluciones');
+  assert.match(
+    App,
+    /<Devoluciones\s+userPermisos=\{userPermisos\}\s*\/>/,
+    'App.tsx no pasa userPermisos a <Devoluciones />'
   );
-  assert.ok(!/<Devoluciones\s*\/>/.test(App), 'App.tsx todavía renderiza <Devoluciones />');
   assert.ok(
-    !appViewCases().includes('devoluciones'),
-    "App.tsx todavía tiene la ruta 'devoluciones'"
+    appViewCases().includes('devoluciones'),
+    "App.tsx no tiene la ruta 'devoluciones'"
+  );
+  assert.match(
+    App,
+    /devoluciones: 'Devoluciones y Notas de Crédito'/,
+    'viewTitles no rotula la vista de devoluciones'
+  );
+});
+
+test('Devoluciones lee del backend, no de datos ficticios', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  assert.match(Devoluciones, /devolucionesApi/, 'Devoluciones.tsx no consulta devolucionesApi');
+  assert.ok(
+    !/const\s+devolucionesData\s*=/.test(Devoluciones),
+    'Devoluciones.tsx todavía define devolucionesData estático'
+  );
+  assert.ok(
+    !/const\s+ventaEjemplo\s*=/.test(Devoluciones),
+    'Devoluciones.tsx todavía define la venta de ejemplo simulada'
+  );
+});
+
+test('Devoluciones solo ofrece las operaciones que el backend implementa', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  for (const prohibido of ['Anular', 'Imprimir', 'Editar', 'Eliminar', 'Exportar', 'Aprobar']) {
+    assert.ok(
+      !new RegExp(prohibido).test(Devoluciones),
+      `Devoluciones.tsx ofrece una acción que el backend no expone: "${prohibido}"`
+    );
+  }
+});
+
+test('el botón de crear devolución exige DEVOLUCION_CREAR', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  assert.match(
+    Devoluciones,
+    /DEVOLUCION_CREAR/,
+    'Devoluciones.tsx no condiciona la creación a DEVOLUCION_CREAR'
+  );
+});
+
+test('la referencia de operación es una llave de idempotencia del cliente', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  assert.match(
+    Devoluciones,
+    /crypto\.randomUUID\(\)/,
+    'Devoluciones.tsx no genera referenciaOperacion con crypto.randomUUID()'
   );
 });
 
