@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Sidebar, { PERMISSION_MAP, primeraVistaPermitida } from './components/Sidebar';
 import Header from './components/Header';
-import Ventas from './components/Ventas';
 import Productos from './components/Productos';
 import Inventario from './components/Inventario';
 import TurnosCaja from './components/TurnosCaja';
@@ -29,7 +28,6 @@ import { AUTH_EXPIRED_EVENT, authApi } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
   pos: 'Punto de Venta',
-  'ventas-historial': 'Historial de Ventas',
   clientes: 'Gestión de Clientes',
   productos: 'Catálogo de Productos',
   existencias: 'Control de Existencias',
@@ -196,8 +194,6 @@ export default function App() {
     switch (activeView) {
       case 'pos':
         return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} userRoles={userRoles} />;
-      case 'ventas-historial':
-        return <Ventas />;
       case 'productos':
         return <Productos />;
       case 'existencias':
