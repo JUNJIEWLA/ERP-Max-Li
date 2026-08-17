@@ -24,6 +24,10 @@ siendo ISSUE-015 y no forma parte de este documento.
 | `SPRING_PROFILES_ACTIVE` | prod | **Sí** | Debe valer `prod`. El perfil por defecto es `dev`, que relaja HTTPS y admite localhost. |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | todos | No | Freno de fuerza bruta. Por defecto 5 intentos por usuario+IP en 10 min y 15 min de bloqueo. |
 
+> **Si ya tenía un `application-dev.yml` local**, borre de él los bloques `jwt:`
+> y `cors:`. Ese archivo gana sobre `application.yml`, así que los valores
+> antiguos siguen fijando la expiración en 24 h y anulan las 8 h del proyecto.
+
 ### Credencial administrativa inicial
 
 La migración `V35` deja la cuenta `admin` **sin contraseña utilizable**: la

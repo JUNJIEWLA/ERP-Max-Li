@@ -3,6 +3,11 @@
 #
 # Los valores de JWT y CORS para desarrollo ya vienen en el documento `dev`
 # de application.yml; aquí solo hace falta la conexión a la base local.
+#
+# SI YA TIENE UN application-dev.yml DE ANTES: borre de él los bloques `jwt:`
+# y `cors:`. Un application-dev.yml gana sobre application.yml, así que esos
+# bloques antiguos siguen fijando la expiración en 24 h y anulan el valor de
+# 8 h que trae ahora el proyecto.
 spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/maxli_db}
