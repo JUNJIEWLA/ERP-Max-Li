@@ -144,11 +144,16 @@ respaldo detrás.
 
 ### Retención
 
-Sugerencia para el piloto: 7 diarios + 4 semanales. Purga con `find`:
+Para el piloto, **siete días**. Purga con `find`:
 
 ```bash
 find /var/backups/maxli -name '*.dump*' -mtime +7 -delete
 ```
+
+Siete días y nada más: cualquier esquema con semanales o mensuales necesita un
+comando que los distinga, y una retención que la documentación promete pero el
+`cron` no aplica es peor que ninguna. Si el negocio pide conservar más, la copia
+off-host es el sitio para hacerlo, con su propia política.
 
 ### Copia fuera del servidor — responsabilidad operativa
 
@@ -190,14 +195,23 @@ la de producción.
 ## 4. Restauración
 
 > **La aplicación debe estar detenida, o al menos sin escrituras, durante toda
-> la restauración.** `pg_restore --clean` borra y recrea cada objeto: una
-> aplicación viva escribiendo en medio deja la base inconsistente y la venta que
-> estuviera en curso se pierde sin dejar rastro claro.
+> la restauración.** Una aplicación viva escribiendo en medio deja la base
+> inconsistente y la venta que estuviera en curso se pierde sin dejar rastro
+> claro.
+
+> **Nunca se restaura encima de una base con datos.** `pg_restore --clean` solo
+> borra los objetos que el dump contiene: todo lo creado *después* del backup
+> sobrevive. Restaurar un backup viejo sobre `maxli_db` dejaría las tablas de
+> las migraciones posteriores en pie junto a un `flyway_schema_history` antiguo
+> — y eso es peor que no restaurar, porque el esquema resultante no lo describe
+> nadie. **El script se niega** si el destino tiene objetos.
+
+Siempre en una base nueva, y el cambio se hace renombrando:
 
 ```bash
-sudo systemctl stop maxli                     # 1. detener la aplicación
+sudo systemctl stop maxli                      # 1. detener la aplicación
 
-createdb -U postgres maxli_restaurada          # 2. base destino (no la viva)
+createdb -U postgres maxli_restaurada          # 2. base NUEVA y vacía
 
 DB_URL='jdbc:postgresql://localhost:5432/maxli_db' \
 DB_USER='maxli' DB_PASSWORD='...' \
@@ -205,19 +219,45 @@ ops/restore-postgres.sh \
     --dump /var/backups/maxli/maxli_db-20260817T012948Z.dump \
     --base maxli_restaurada \
     --confirmar RESTAURAR:maxli_restaurada     # 3. restaurar
+
+# 4. Poner la base restaurada en su sitio, con la aplicación aún detenida.
+#    La vieja se conserva con fecha: es la única prueba de lo que pasó y puede
+#    hacer falta para reconstruir las operaciones perdidas.
+psql -U postgres -d postgres <<'SQL'
+ALTER DATABASE maxli_db RENAME TO maxli_db_fallida_20260817;
+ALTER DATABASE maxli_restaurada RENAME TO maxli_db;
+SQL
+
+sudo systemctl start maxli                     # 5. arrancar y verificar (§6)
 ```
 
-El script **no tiene base por defecto** y exige que la confirmación repita el
-nombre del destino: es lo que impide vaciar la base equivocada por un copiar y
-pegar. Antes de tocar nada verifica el `.sha256` y que el dump se deje leer; si
-falla, la base queda intacta. La restauración va en una sola transacción, así
-que un error a mitad no deja una base a medias. Al terminar comprueba
-conectividad, `flyway_schema_history` y el número de tablas.
+Si algún `RENAME` se queja de conexiones abiertas, cerrarlas antes:
+
+```sql
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+ WHERE datname IN ('maxli_db', 'maxli_restaurada') AND pid <> pg_backend_pid();
+```
+
+Como alternativa al renombrado, apuntar `DB_URL` a `maxli_restaurada` en el
+`EnvironmentFile` y reiniciar. Es igual de válido y evita tocar nombres, pero
+deja la configuración divergiendo de la convención; conviene volver a
+normalizarla en la siguiente ventana.
+
+Qué hace el script por su cuenta:
+
+- **No tiene base por defecto** y exige que la confirmación repita el nombre del
+  destino: es lo que impide vaciar la base equivocada por un copiar y pegar.
+- **Verifica el `.sha256` y que el dump se deje leer antes de tocar nada.** Si
+  falta el checksum, falla; para una recuperación de emergencia con un dump
+  traído a mano existe `--permitir-sin-checksum`, que hay que pedir por su
+  nombre.
+- **Exige un destino vacío**, por lo dicho arriba.
+- Restaura **en una sola transacción**: un error a mitad no deja una base a
+  medias.
+- Al terminar comprueba conectividad, `flyway_schema_history` y el número de
+  tablas.
 
 `DB_URL` solo aporta host y puerto: la base la manda `--base`.
-
-Para volver a operar sobre la base restaurada, apuntar `DB_URL` a ella y
-arrancar; o renombrar (`ALTER DATABASE`) con la aplicación detenida.
 
 ---
 
@@ -231,12 +271,18 @@ migraciones.
 # 1. Backup y anotar el archivo resultante
 ops/backup-postgres.sh /var/backups/maxli
 
-# 2. Construir y guardar el artefacto anterior antes de pisarlo
+# 2. Construir y guardar los artefactos anteriores antes de pisarlos.
+#    Los DOS: una regresión del frontend deja la tienda igual de parada que una
+#    del backend, y sin copia no hay forma de volver salvo reconstruir a
+#    contrarreloj desde un commit que habrá que averiguar cuál era.
 cd backend && mvn clean package -DskipTests=false
 cp /opt/maxli/maxli-backend.jar /opt/maxli/maxli-backend.jar.anterior
 cp target/maxli-backend-0.0.1-SNAPSHOT.jar /opt/maxli/maxli-backend.jar
 
 cd .. && npm ci && npm run build      # frontend a dist/, servido por el proxy
+rm -rf /opt/maxli/frontend.anterior
+cp -a /opt/maxli/frontend /opt/maxli/frontend.anterior
+rm -rf /opt/maxli/frontend && cp -a dist /opt/maxli/frontend
 
 # 3. Arrancar (Flyway aplica las migraciones pendientes al iniciar)
 sudo systemctl restart maxli
@@ -248,8 +294,10 @@ curl -fsS -H 'X-Forwarded-Proto: https' \
 # 5. Smoke test (§6)
 ```
 
-Guardar siempre el `.jar` anterior: sin él no hay rollback de artefacto, solo
-una reconstrucción a contrarreloj.
+Guardar siempre **el `.jar` y el frontend anteriores**: sin ellos no hay
+rollback de artefacto, solo una reconstrucción a contrarreloj. El proxy sirve
+`/opt/maxli/frontend` como raíz estática; ajustar las rutas a la instalación
+real, pero conservar la pareja `<actual>` / `<actual>.anterior`.
 
 ---
 
@@ -306,12 +354,25 @@ simplemente ignora.
 
 ```bash
 sudo systemctl stop maxli
+
+# Backend
 cp /opt/maxli/maxli-backend.jar.anterior /opt/maxli/maxli-backend.jar
+
+# Frontend: se vuelve atrás igual que el backend, y normalmente a la vez —
+# las dos mitades se desplegaron juntas y se probaron juntas.
+rm -rf /opt/maxli/frontend
+cp -a /opt/maxli/frontend.anterior /opt/maxli/frontend
+
 sudo systemctl start maxli
+sudo systemctl reload nginx        # solo si el proxy cachea el estático
 ```
 
 Verificar con el smoke test (§6). **No se toca la base**: las migraciones nuevas
 se quedan aplicadas y no estorban.
+
+Si la regresión es **solo del frontend** —la API responde bien y el fallo está
+en la interfaz— basta con revertir el directorio servido y recargar el proxy,
+sin detener el backend ni tocar la base.
 
 > Ojo: la versión anterior arranca con `ddl-auto: validate`. Si una migración
 > nueva cambió algo que esa versión sí mira —renombrar una columna, volverla
@@ -326,16 +387,29 @@ datos viejos no cumplen. El artefacto anterior no puede hablar con esta base.
 # 1. Detener la aplicación. No hay rollback con la base recibiendo escrituras.
 sudo systemctl stop maxli
 
-# 2. Restaurar el backup previo al despliegue (§4)
+# 2. Restaurar el backup previo al despliegue en una base NUEVA (§4).
+#    No sobre maxli_db: las tablas de las migraciones que acaban de aplicarse
+#    sobrevivirían al --clean y quedarían junto a un historial Flyway viejo.
+createdb -U postgres maxli_rollback
+
 DB_URL='jdbc:postgresql://localhost:5432/maxli_db' \
 DB_USER='maxli' DB_PASSWORD='...' \
 ops/restore-postgres.sh \
     --dump /var/backups/maxli/<el-backup-del-paso-1-del-despliegue>.dump \
-    --base maxli_db \
-    --confirmar RESTAURAR:maxli_db
+    --base maxli_rollback \
+    --confirmar RESTAURAR:maxli_rollback
 
-# 3. Volver al artefacto anterior
+# 2b. Poner la restaurada en su sitio y conservar la fallida con fecha:
+#     es la única prueba de lo ocurrido y de las operaciones a reconstruir.
+psql -U postgres -d postgres <<'SQL'
+ALTER DATABASE maxli_db RENAME TO maxli_db_fallida_20260817;
+ALTER DATABASE maxli_rollback RENAME TO maxli_db;
+SQL
+
+# 3. Volver a los artefactos anteriores, backend y frontend
 cp /opt/maxli/maxli-backend.jar.anterior /opt/maxli/maxli-backend.jar
+rm -rf /opt/maxli/frontend
+cp -a /opt/maxli/frontend.anterior /opt/maxli/frontend
 
 # 4. Arrancar y verificar (§6)
 sudo systemctl start maxli
@@ -358,6 +432,10 @@ ventas de ese lapso hay que reconstruirlas a mano desde los comprobantes.
   productiva. Es exactamente cómo se convierte un despliegue fallido en pérdida
   de datos. El rollback de esquema es **restaurar el backup**, y no hay otro.
 - ❌ Restaurar sobre `maxli_db` sin haber detenido la aplicación.
+- ❌ **Restaurar sobre una base que ya tiene datos**, confiando en que
+  `--clean` la deje limpia. No lo hace: solo borra lo que el dump contiene. El
+  script lo rechaza, y esa negativa no se rodea creando la base a mano y
+  vaciándola a medias — se restaura en una base nueva y se renombra.
 
 ---
 
@@ -387,6 +465,7 @@ resuelto en el código y debe seguir así.
 | Cada mes | `ops/ensayo-backup-restore.sh` |
 | `readiness` en `503` | Sacar de rotación; revisar PostgreSQL. **No** reiniciar por esto. |
 | `liveness` en fallo | Reiniciar el proceso |
-| Despliegue fallido, esquema compatible | Rollback de artefacto (§8 A) |
-| Despliegue fallido, esquema incompatible | Detener, restaurar backup, artefacto anterior (§8 B) |
+| Despliegue fallido, esquema compatible | Rollback de artefactos: `.jar` y frontend (§8 A) |
+| Regresión solo del frontend | Revertir el directorio servido y recargar el proxy (§8 A) |
+| Despliegue fallido, esquema incompatible | Detener, restaurar en base nueva, renombrar, artefactos anteriores (§8 B) |
 | Servidor perdido | Reinstalar, restaurar la copia off-host, verificar (§6) |

@@ -118,7 +118,7 @@ o reenviar `X-Forwarded-Proto: https`, o leerá un `302` como si fuera una caíd
 | Script | Qué hace |
 |---|---|
 | `ops/backup-postgres.sh` | Dump en formato custom, publicado solo tras verificarlo con `pg_restore --list`, con checksum SHA-256. |
-| `ops/restore-postgres.sh` | Restauración que exige nombrar la base destino en la confirmación; verifica el dump antes de tocar nada. |
+| `ops/restore-postgres.sh` | Restauración que exige nombrar la base destino en la confirmación y que esa base esté **vacía**; verifica checksum y dump antes de tocar nada. |
 | `ops/ensayo-backup-restore.sh` | Ensayo completo backup→restore sobre bases desechables. Correr antes de cada despliegue con migraciones. |
 | `ops/verificar-scripts.sh` | Comprueba la sintaxis y la validación de entrada de los tres anteriores. |
 
