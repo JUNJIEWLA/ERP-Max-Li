@@ -88,8 +88,16 @@ public class DevolucionService {
     private static final String DEVUELTA = "DEVUELTA";
     private static final String TIPO_NCF_NOTA_CREDITO = "B04";
     private static final String UK_REFERENCIA = "uk_devolucion_referencia";
-    private static final Set<MetodoPago> REEMBOLSOS_PERMITIDOS = Set.of(
-            MetodoPago.EFECTIVO, MetodoPago.TARJETA, MetodoPago.TRANSFERENCIA, MetodoPago.CHEQUE);
+
+    /**
+     * Único destino posible del crédito de una devolución.
+     * <p>
+     * La tienda no entrega dinero por una devolución: emite una Nota de Crédito
+     * B04 con saldo redimible en compras posteriores (política impresa al pie de
+     * cada comprobante). El efectivo del turno no se toca, por eso el cuadre no
+     * resta devoluciones.
+     */
+    private static final MetodoPago REEMBOLSO_UNICO = MetodoPago.NOTA_CREDITO;
 
     private final DevolucionRepository devolucionRepository;
     private final DetalleDevolucionRepository detalleDevolucionRepository;
@@ -204,7 +212,7 @@ public class DevolucionService {
         devolucion.setReferenciaOperacion(referencia);
         devolucion.setMotivo(request.getMotivo().trim());
         devolucion.setEstado(CONFIRMADA);
-        devolucion.setMetodoReembolso(com.maxli.venta.entity.MetodoPago.NOTA_CREDITO);
+        devolucion.setMetodoReembolso(metodoReembolso);
         devolucion.setNcf(notaCredito.getNcfCompleto());
         devolucion.setTipoNcf(TIPO_NCF_NOTA_CREDITO);
         devolucion.setNcfAfectado(venta.getNcf());
@@ -405,18 +413,31 @@ public class DevolucionService {
         }
     }
 
+    /**
+     * Valida el destino del crédito pedido por el cliente.
+     * <p>
+     * Omitirlo es válido —no hay alternativa que elegir— pero pedir efectivo o
+     * tarjeta se rechaza en voz alta en lugar de convertirse en silencio a Nota
+     * de Crédito: quien está en el mostrador tiene que enterarse de que el
+     * cliente se lleva saldo y no dinero, antes de que la devolución exista.
+     */
     private MetodoPago parseMetodoReembolso(String metodo) {
-        MetodoPago metodoReembolso;
+        if (metodo == null || metodo.isBlank()) {
+            return REEMBOLSO_UNICO;
+        }
+        MetodoPago solicitado;
         try {
-            metodoReembolso = MetodoPago.valueOf(metodo.trim().toUpperCase());
+            solicitado = MetodoPago.valueOf(metodo.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            metodoReembolso = null;
+            solicitado = null;
         }
-        if (metodoReembolso == null || !REEMBOLSOS_PERMITIDOS.contains(metodoReembolso)) {
-            throw new BusinessException("Método de reembolso inválido: " + metodo
-                    + ". Valores permitidos: EFECTIVO, TARJETA, TRANSFERENCIA, CHEQUE");
+        if (solicitado != REEMBOLSO_UNICO) {
+            throw new BusinessException(
+                    "Una devolución solo se acredita como Nota de Crédito (B04); la tienda no "
+                            + "reembolsa en " + (solicitado != null ? solicitado.name().toLowerCase() : "ese método")
+                            + ". Envíe NOTA_CREDITO u omita el método.");
         }
-        return metodoReembolso;
+        return solicitado;
     }
 
     // ═════════════════════════════════════════════════════════════════════

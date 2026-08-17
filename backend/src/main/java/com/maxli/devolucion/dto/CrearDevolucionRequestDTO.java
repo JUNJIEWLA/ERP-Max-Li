@@ -24,8 +24,11 @@ public class CrearDevolucionRequestDTO {
     @Size(max = 300, message = "El motivo no puede superar 300 caracteres")
     private String motivo;
 
-    /** EFECTIVO, TARJETA, TRANSFERENCIA o CHEQUE. */
-    @NotBlank(message = "El método de reembolso es obligatorio")
+    /**
+     * Destino del crédito. Solo admite {@code NOTA_CREDITO}, que es lo que
+     * emite toda devolución; omitirlo equivale a enviarlo. Cualquier otro valor
+     * se rechaza: la tienda no reembolsa en dinero.
+     */
     private String metodoReembolso;
 
     /**

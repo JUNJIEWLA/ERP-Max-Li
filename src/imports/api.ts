@@ -1492,8 +1492,15 @@ export const ventasApi = {
 //  el backend a partir de los snapshots de la venta original. Aquí solo se
 //  transportan: el cliente nunca los reconstruye.
 
-/** Métodos de reembolso que el backend acepta en una devolución. */
-export const METODOS_REEMBOLSO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'CHEQUE'] as const;
+/**
+ * Métodos de reembolso que el backend acepta en una devolución nueva.
+ *
+ * Uno solo: la tienda no entrega dinero por una devolución, acredita una Nota
+ * de Crédito B04 redimible en compras posteriores. El historial anterior a esa
+ * política sí trae otros valores, por eso `metodoReembolso` de una devolución
+ * ya registrada se lee como texto libre y no contra esta lista.
+ */
+export const METODOS_REEMBOLSO = ['NOTA_CREDITO'] as const;
 
 export type MetodoReembolso = typeof METODOS_REEMBOLSO[number];
 
