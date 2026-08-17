@@ -435,7 +435,7 @@ function UsuarioModal({
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase mb-1.5">Contraseña {isEdit ? '(opcional)' : <span className="text-destructive">*</span>}</label>
-                <input type="text" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary" placeholder={isEdit ? "Dejar en blanco para mantener actual" : "Asignar contraseña inicial"} />
+                <input type="password" autoComplete="new-password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary" placeholder={isEdit ? "Dejar en blanco para mantener actual" : "Asignar contraseña inicial"} />
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase mb-1.5">Estado</label>
@@ -546,7 +546,7 @@ function ResetPasswordModal({ usuario, onClose, onSaved }: { usuario: Usuario; o
           {error && <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm border border-destructive/20">{error}</div>}
           <div>
             <label className="block text-xs font-semibold uppercase mb-1.5">Nueva Contraseña Temporal <span className="text-destructive">*</span></label>
-            <input required type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary" placeholder="Min. 8 caracteres" />
+            <input required type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary" placeholder="Min. 8 caracteres" />
           </div>
           <div className="flex justify-end gap-3 mt-6">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-xl transition-colors">Cancelar</button>
