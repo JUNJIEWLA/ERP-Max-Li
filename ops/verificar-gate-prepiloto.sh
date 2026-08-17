@@ -316,7 +316,7 @@ sql "DELETE FROM flyway_schema_history WHERE version = '9999'" >/dev/null
 paso "Sondas y superficie protegida"
 
 echo 200 > "$ESTADO_SONDAS/protegida"
-debe_fallar_con "una ruta protegida abierta a anónimos se rechaza" "anónimo"
+debe_fallar_con "una ruta protegida abierta a anónimos se rechaza" "anónim"
 sondas_sanas
 
 echo 503 > "$ESTADO_SONDAS/readiness"
