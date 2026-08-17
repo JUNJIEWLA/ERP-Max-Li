@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, Search } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { alertasCostoApi, alertasRetrasoOcApi } from '../../imports/api';
 import Buzon from './Buzon';
 
@@ -35,15 +35,6 @@ export default function Header({ title }: HeaderProps) {
       <h2 className="text-xl font-semibold text-foreground">{title}</h2>
 
       <div className="flex items-center gap-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="w-80 pl-10 pr-4 py-2 bg-muted/30 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-          />
-        </div>
-
         <button
           onClick={() => setShowBuzon(true)}
           className="relative p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-colors"
