@@ -9,6 +9,7 @@ import com.maxli.cupon.service.CuponService;
 import com.maxli.cupon.dto.CuponAplicadoDTO;
 import com.maxli.cupon.dto.LineaParaCuponDTO;
 import com.maxli.exception.BusinessException;
+import com.maxli.exception.ParametroInvalidoException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
@@ -31,7 +32,9 @@ import com.maxli.venta.dto.IngresoVentaRequestDTO;
 import com.maxli.venta.dto.RecalcularFacturaRequestDTO;
 import com.maxli.venta.dto.RecalcularFacturaResponseDTO;
 import com.maxli.venta.dto.RecalcularFacturaResponseDTO.DetalleRecalculadoDTO;
+import com.maxli.venta.dto.VentaFiltroDTO;
 import com.maxli.venta.dto.VentaResponseDTO;
+import com.maxli.venta.dto.VentaResumenDTO;
 import com.maxli.venta.entity.DetalleVenta;
 import com.maxli.venta.entity.IngresoVenta;
 import com.maxli.venta.entity.MetodoPago;
@@ -39,7 +42,9 @@ import com.maxli.venta.entity.Venta;
 import com.maxli.venta.repository.VentaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +52,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -407,9 +413,58 @@ public class VentaService {
         return mapToResponseDTO(venta);
     }
 
+    /**
+     * Página del Historial de Ventas con los filtros ya aplicados en la base.
+     * <p>
+     * El orden lo fija el servicio y no el cliente: descendente por
+     * {@code idVenta}, que además de ser el orden natural del historial es
+     * único, así que ninguna fila puede repetirse o desaparecer al pasar de
+     * página.
+     */
     @Transactional(readOnly = true)
-    public Page<VentaResponseDTO> listar(Pageable pageable) {
-        return ventaRepository.findAll(pageable).map(this::mapToResponseDTO);
+    public Page<VentaResumenDTO> listar(VentaFiltroDTO filtro, Pageable pageable) {
+        LocalDateTime desde = filtro.fechaDesde() != null ? filtro.fechaDesde().atStartOfDay() : null;
+        // El día de `fechaHasta` cuenta entero: una venta de las 23:45 sigue
+        // perteneciendo a esa fecha.
+        LocalDateTime hasta = filtro.fechaHasta() != null ? filtro.fechaHasta().atTime(LocalTime.MAX) : null;
+
+        if (desde != null && hasta != null && desde.isAfter(hasta)) {
+            throw new ParametroInvalidoException(
+                    "El rango de fechas es inválido: fechaDesde no puede ser posterior a fechaHasta.");
+        }
+
+        String q = limpiar(filtro.q());
+        String cajero = limpiar(filtro.cajero());
+        String estado = limpiar(filtro.estado());
+
+        Pageable orden = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Direction.DESC, "idVenta"));
+
+        return ventaRepository.buscarResumen(
+                q != null ? "%" + q.toLowerCase() + "%" : null,
+                desde,
+                hasta,
+                cajero != null ? cajero.toLowerCase() : null,
+                parsearMetodoPago(filtro.metodoPago()),
+                estado != null ? estado.toUpperCase() : null,
+                orden);
+    }
+
+    /** Un filtro en blanco es un filtro ausente. */
+    private String limpiar(String valor) {
+        if (valor == null) return null;
+        String texto = valor.trim();
+        return texto.isEmpty() ? null : texto;
+    }
+
+    private MetodoPago parsearMetodoPago(String valor) {
+        String texto = limpiar(valor);
+        if (texto == null) return null;
+        try {
+            return MetodoPago.valueOf(texto.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ParametroInvalidoException("Método de pago desconocido: " + texto);
+        }
     }
 
     @Transactional(readOnly = true)

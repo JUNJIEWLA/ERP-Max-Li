@@ -3,14 +3,16 @@ package com.maxli.venta.controller;
 import com.maxli.venta.dto.CrearVentaRequestDTO;
 import com.maxli.venta.dto.RecalcularFacturaRequestDTO;
 import com.maxli.venta.dto.RecalcularFacturaResponseDTO;
+import com.maxli.venta.dto.VentaFiltroDTO;
 import com.maxli.venta.dto.VentaResponseDTO;
+import com.maxli.venta.dto.VentaResumenDTO;
 import com.maxli.venta.service.VentaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +20,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
+import java.time.LocalDate;
 import java.util.Map;
 
 @RestController
@@ -58,11 +62,23 @@ public class VentaController {
         return ResponseEntity.ok(ventaService.buscarPorId(id));
     }
 
-    /** Listar ventas con paginación. */
+    /**
+     * Historial de Ventas: página filtrada en servidor.
+     * <p>
+     * Todos los filtros son opcionales y se combinan entre sí. Devuelve un
+     * resumen por fila; el detalle completo se pide con {@code GET /{id}}.
+     */
     @GetMapping
-    public ResponseEntity<Page<VentaResponseDTO>> listar(
-            @PageableDefault(sort = "idVenta", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(ventaService.listar(pageable));
+    public ResponseEntity<Page<VentaResumenDTO>> listar(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta,
+            @RequestParam(required = false) String cajero,
+            @RequestParam(required = false) String metodoPago,
+            @RequestParam(required = false) String estado,
+            @PageableDefault(size = 20) Pageable pageable) {
+        VentaFiltroDTO filtro = new VentaFiltroDTO(q, fechaDesde, fechaHasta, cajero, metodoPago, estado);
+        return ResponseEntity.ok(ventaService.listar(filtro, pageable));
     }
 
     /** Obtener el siguiente número de control para preview en el frontend. */
