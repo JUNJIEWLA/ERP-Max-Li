@@ -167,6 +167,45 @@ fi
 informar "Rechazado, como debe ser."
 rm -f "$copia_alterada" "${copia_alterada}.sha256"
 
+paso "Comprobando que se rechaza un dump sin checksum"
+copia_sin_checksum="${DIRECTORIO_BACKUPS}/sin-checksum.dump"
+cp "$archivo_dump" "$copia_sin_checksum"
+if DB_URL="$(url_de "$BASE_DESTINO")" "$DIRECTORIO_OPS/restore-postgres.sh" \
+        --dump "$copia_sin_checksum" --base "$BASE_DESTINO" \
+        --confirmar "RESTAURAR:${BASE_DESTINO}" >/dev/null 2>&1; then
+    fallar "la restauración aceptó un dump sin checksum sin pedirlo explícitamente."
+fi
+informar "Rechazado; hace falta --permitir-sin-checksum."
+rm -f "$copia_sin_checksum"
+
+paso "Comprobando que un destino con datos se rechaza sin tocarlo"
+# Este es el caso del rollback real: la base destino ya tiene el esquema de una
+# versión posterior. `pg_restore --clean` solo borraría lo que el dump conoce,
+# así que las tablas nuevas sobrevivirían junto a un flyway_schema_history
+# viejo. El script debe negarse antes de escribir nada.
+consultar_destino "CREATE TABLE objeto_posterior_ensayo (id int)" >/dev/null
+consultar_destino "INSERT INTO objeto_posterior_ensayo VALUES (42)" >/dev/null
+
+if DB_URL="$(url_de "$BASE_DESTINO")" "$DIRECTORIO_OPS/restore-postgres.sh" \
+        --dump "$archivo_dump" --base "$BASE_DESTINO" \
+        --confirmar "RESTAURAR:${BASE_DESTINO}" >/dev/null 2>&1; then
+    fallar "la restauración sobrescribió una base que ya tenía objetos."
+fi
+
+sobrevive="$(consultar_destino \
+    "SELECT count(*) FROM objeto_posterior_ensayo WHERE id = 42")"
+[[ "$sobrevive" == "1" ]] \
+    || fallar "la restauración rechazada aun así modificó la base destino."
+
+marcador_filtrado="$(consultar_destino \
+    "SELECT to_regclass('public.categoria') IS NULL")"
+[[ "$marcador_filtrado" == "t" ]] \
+    || fallar "la restauración rechazada llegó a crear tablas del dump."
+informar "Rechazado y base intacta: el objeto posterior sigue ahí y no se restauró nada."
+
+# Se deja el destino como estaba —vacío— para la restauración de verdad.
+consultar_destino "DROP TABLE objeto_posterior_ensayo" >/dev/null
+
 # ── Restauración ──────────────────────────────────────────────────────
 
 paso "Restaurando en la base destino"

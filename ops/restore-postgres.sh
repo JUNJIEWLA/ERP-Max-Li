@@ -12,6 +12,10 @@
 #     ops/restore-postgres.sh --dump <archivo.dump> --base <nombre_destino> \
 #                             --confirmar RESTAURAR:<nombre_destino>
 #
+# El destino debe ser una base NUEVA Y VACÍA: `pg_restore --clean` solo borra
+# los objetos que el dump contiene, así que restaurar sobre una base ya migrada
+# dejaría en pie lo creado después del backup. Ver docs/RUNBOOK_PILOTO.md §4.
+#
 # IMPORTANTE: la aplicación debe estar detenida —o al menos sin escrituras—
 # durante la restauración. Ver docs/RUNBOOK_PILOTO.md.
 
@@ -35,8 +39,14 @@ Uso: $NOMBRE_SCRIPT --dump <archivo.dump> --base <base_destino> --confirmar REST
 
   --dump       Archivo producido por ops/backup-postgres.sh (formato custom).
   --base       Base de datos destino. Obligatoria: no hay valor por defecto.
+               Debe estar creada y VACÍA; restaurar sobre una base con datos
+               dejaría en pie todo lo que el dump no conoce.
   --confirmar  Debe ser exactamente RESTAURAR:<base_destino>. Nombrar la base
                es lo que impide vaciar la equivocada por un error de copiar y pegar.
+
+  --permitir-sin-checksum
+               Restaura aunque no exista el .sha256 junto al dump. Solo para
+               recuperación de emergencia: por defecto se falla cerrado.
 
 Variables: DB_URL, DB_USER, DB_PASSWORD (las mismas del backend).
 La conexión se rearma contra --base, así que DB_URL puede apuntar a otra base.
@@ -49,12 +59,14 @@ AYUDA
 ARCHIVO_DUMP=""
 BASE_DESTINO=""
 CONFIRMACION=""
+PERMITIR_SIN_CHECKSUM="no"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dump)      [[ $# -ge 2 ]] || fallar "--dump necesita un valor";      ARCHIVO_DUMP="$2"; shift 2 ;;
         --base)      [[ $# -ge 2 ]] || fallar "--base necesita un valor";      BASE_DESTINO="$2"; shift 2 ;;
         --confirmar) [[ $# -ge 2 ]] || fallar "--confirmar necesita un valor"; CONFIRMACION="$2"; shift 2 ;;
+        --permitir-sin-checksum) PERMITIR_SIN_CHECKSUM="si"; shift ;;
         -h|--help)   uso ;;
         *)           fallar "argumento no reconocido: $1" ;;
     esac
@@ -122,11 +134,19 @@ if [[ -f "$ARCHIVO_CHECKSUM" ]]; then
             || fallar "el checksum no coincide: el dump llegó alterado o incompleto."
     fi
     informar "Checksum verificado."
+elif [[ "$PERMITIR_SIN_CHECKSUM" == "si" ]]; then
+    # Salida de emergencia consciente: un dump traído a mano desde la copia
+    # off-host puede llegar sin su .sha256, y en mitad de un incidente
+    # restaurar algo sin verificar es mejor que no restaurar nada. Pero hay que
+    # pedirlo por su nombre.
+    informar "AVISO: no hay $ARCHIVO_CHECKSUM y se pidió --permitir-sin-checksum."
+    informar "AVISO: se restaura SIN verificar integridad."
 else
-    # No se aborta: un dump traído a mano desde la copia off-host puede llegar
-    # sin su .sha256. Pero queda dicho, porque restaurar sin verificar es
-    # exactamente el momento en que se descubren los archivos corruptos.
-    informar "AVISO: no hay $ARCHIVO_CHECKSUM; se restaura sin verificar integridad."
+    # Por defecto se falla cerrado: restaurar sin verificar es exactamente el
+    # momento en que se descubren los archivos corruptos, y para entonces la
+    # base destino ya está a medio escribir.
+    fallar "no existe $ARCHIVO_CHECKSUM. Copie el .sha256 junto al dump, o pase
+       --permitir-sin-checksum si asume el riesgo de restaurar sin verificar."
 fi
 
 pg_restore --list "$ARCHIVO_DUMP" >/dev/null 2>&1 \
@@ -140,13 +160,50 @@ psql --dbname="$URL_DESTINO" --username="$DB_USER" --no-password \
      --quiet --tuples-only --command="SELECT 1" >/dev/null \
     || fallar "no se puede conectar a la base destino '$BASE_DESTINO'. Créela antes de restaurar."
 
-informar "Destino: base '$BASE_DESTINO' en ${autoridad}"
+# ── El destino tiene que estar vacío ──────────────────────────────────
+#
+# `pg_restore --clean` solo borra los objetos que el propio dump contiene: lo
+# que se creó DESPUÉS del backup sobrevive. Restaurar un backup viejo sobre una
+# base ya migrada dejaría las tablas de las migraciones posteriores en pie
+# junto a un flyway_schema_history antiguo, y el arranque fallaría —o peor,
+# arrancaría contra un esquema que nadie describe.
+#
+# Por eso no se restaura «encima» de nada: se restaura en una base nueva y
+# después se decide qué hacer con ella (repuntar DB_URL o renombrar con la
+# aplicación detenida). Es un paso más en el runbook y una clase entera de
+# desastre menos.
+OBJETOS_PREVIOS="$(psql --dbname="$URL_DESTINO" --username="$DB_USER" --no-password \
+    --quiet --tuples-only --no-align --command="
+        SELECT count(*) FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+           AND n.nspname NOT LIKE 'pg_toast%'
+           AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')")"
+
+if [[ "$OBJETOS_PREVIOS" != "0" ]]; then
+    fallar "la base destino '$BASE_DESTINO' ya contiene $OBJETOS_PREVIOS objetos y no se toca.
+
+       Restaurar sobre una base con datos deja lo que el dump no conoce: las
+       tablas de migraciones posteriores al backup sobrevivirían junto a un
+       flyway_schema_history viejo.
+
+       Restaure en una base nueva y vacía:
+           createdb ${BASE_DESTINO}_restaurada
+           $NOMBRE_SCRIPT --dump '$ARCHIVO_DUMP' --base ${BASE_DESTINO}_restaurada \\
+                          --confirmar RESTAURAR:${BASE_DESTINO}_restaurada
+
+       Y luego, con la aplicación detenida, apunte DB_URL a esa base o
+       renómbrela. Ver docs/RUNBOOK_PILOTO.md §4."
+fi
+
+informar "Destino: base '$BASE_DESTINO' en ${autoridad} (vacía, como debe ser)"
 informar "La aplicación debe estar detenida o sin escrituras. Restaurando…"
 
 # ── Restauración ──────────────────────────────────────────────────────
 
-# --clean --if-exists: el dump borra cada objeto antes de recrearlo, así que la
-#   base destino no necesita estar vacía y no quedan restos del esquema viejo.
+# --clean --if-exists: red de seguridad, no la defensa principal. Solo borra los
+#   objetos que el dump contiene, por eso arriba se exige un destino vacío; aquí
+#   cubre los restos de un intento anterior interrumpido.
 # --no-owner / --no-acl: los roles son de la instalación, no del respaldo.
 # --exit-on-error: sin esto pg_restore continúa tras un fallo y termina con
 #   código 0, dejando una base a medio restaurar que parece buena.

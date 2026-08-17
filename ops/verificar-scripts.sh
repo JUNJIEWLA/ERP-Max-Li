@@ -129,14 +129,43 @@ debe_fallar_con "rechaza un argumento desconocido" "no reconocido" \
     env "${ENTORNO_VALIDO[@]}" bash "$RESTORE" --borrar-todo
 
 # Un archivo que existe pero no es un dump: debe caer en la verificación y
-# decirlo, sin haber abierto conexión con ninguna base.
+# decirlo, sin haber abierto conexión con ninguna base. Lleva su .sha256 válido
+# para que la prueba llegue hasta la comprobación de legibilidad y no se quede
+# en la del checksum.
 archivo_falso="$(mktemp)"
-trap 'rm -f "$archivo_falso"' EXIT
+trap 'rm -f "$archivo_falso" "$archivo_falso.sha256"' EXIT
 echo "esto no es un dump de PostgreSQL" > "$archivo_falso"
+if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$(dirname "$archivo_falso")" && sha256sum "$(basename "$archivo_falso")" \
+        > "$(basename "$archivo_falso").sha256")
+else
+    (cd "$(dirname "$archivo_falso")" && shasum -a 256 "$(basename "$archivo_falso")" \
+        > "$(basename "$archivo_falso").sha256")
+fi
 
 debe_fallar_con "detecta un dump ilegible antes de tocar la base" "No se toca la base" \
     env "${ENTORNO_VALIDO[@]}" bash "$RESTORE" \
         --dump "$archivo_falso" --base ensayo --confirmar "RESTAURAR:ensayo"
+
+# ── Checksum: se falla cerrado ────────────────────────────────────────
+
+echo
+echo "restore-postgres.sh — integridad del dump"
+
+archivo_sin_checksum="$(mktemp)"
+trap 'rm -f "$archivo_falso" "$archivo_falso.sha256" "$archivo_sin_checksum"' EXIT
+echo "tampoco es un dump, y encima sin checksum" > "$archivo_sin_checksum"
+
+debe_fallar_con "sin .sha256 se niega a restaurar" "permitir-sin-checksum" \
+    env "${ENTORNO_VALIDO[@]}" bash "$RESTORE" \
+        --dump "$archivo_sin_checksum" --base ensayo --confirmar "RESTAURAR:ensayo"
+
+# Con el flag explícito ya no se queja del checksum: sigue adelante y cae en la
+# comprobación siguiente, que es la que detecta que el archivo no es un dump.
+debe_fallar_con "con --permitir-sin-checksum avanza y falla por otra razón" "No se toca la base" \
+    env "${ENTORNO_VALIDO[@]}" bash "$RESTORE" \
+        --dump "$archivo_sin_checksum" --base ensayo --confirmar "RESTAURAR:ensayo" \
+        --permitir-sin-checksum
 
 # ── Higiene: ningún script imprime la contraseña ──────────────────────
 
