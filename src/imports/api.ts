@@ -1429,7 +1429,6 @@ export interface VentaFiltros {
   fechaHasta?: string;
   cajero?: string;
   metodoPago?: string;
-  estado?: string;
 }
 
 // ── API: Ventas POS ──────────────────────────────────────

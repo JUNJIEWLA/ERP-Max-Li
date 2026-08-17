@@ -13,14 +13,14 @@ import java.time.LocalDate;
  * @param fechaHasta  último día incluido, completo hasta las 23:59:59
  * @param cajero      username exacto del usuario que cobró
  * @param metodoPago  nombre de {@link com.maxli.venta.entity.MetodoPago}
- * @param estado      estado de la venta (COMPLETADA, ANULADA, …)
  */
+// No hay filtro por estado: el sistema solo escribe COMPLETADA, así que sería
+// un control que nunca recorta nada. Cuando exista la anulación, aquí entra.
 public record VentaFiltroDTO(
         String q,
         LocalDate fechaDesde,
         LocalDate fechaHasta,
         String cajero,
-        String metodoPago,
-        String estado
+        String metodoPago
 ) {
 }

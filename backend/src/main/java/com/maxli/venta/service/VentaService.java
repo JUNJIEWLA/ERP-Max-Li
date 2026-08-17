@@ -435,7 +435,6 @@ public class VentaService {
 
         String q = limpiar(filtro.q());
         String cajero = limpiar(filtro.cajero());
-        String estado = limpiar(filtro.estado());
 
         Pageable orden = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                 Sort.by(Sort.Direction.DESC, "idVenta"));
@@ -446,7 +445,6 @@ public class VentaService {
                 hasta,
                 cajero != null ? cajero.toLowerCase() : null,
                 parsearMetodoPago(filtro.metodoPago()),
-                estado != null ? estado.toUpperCase() : null,
                 orden);
     }
 

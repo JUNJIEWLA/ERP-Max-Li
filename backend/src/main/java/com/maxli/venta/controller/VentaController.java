@@ -75,9 +75,8 @@ public class VentaController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta,
             @RequestParam(required = false) String cajero,
             @RequestParam(required = false) String metodoPago,
-            @RequestParam(required = false) String estado,
             @PageableDefault(size = 20) Pageable pageable) {
-        VentaFiltroDTO filtro = new VentaFiltroDTO(q, fechaDesde, fechaHasta, cajero, metodoPago, estado);
+        VentaFiltroDTO filtro = new VentaFiltroDTO(q, fechaDesde, fechaHasta, cajero, metodoPago);
         return ResponseEntity.ok(ventaService.listar(filtro, pageable));
     }
 

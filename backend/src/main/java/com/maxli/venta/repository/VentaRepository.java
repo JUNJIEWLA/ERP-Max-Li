@@ -42,7 +42,6 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
               AND (CAST(:hasta AS timestamp) IS NULL OR v.fechaVenta <= :hasta)
               AND (:cajero IS NULL OR LOWER(u.username) = :cajero)
               AND (:metodoPago IS NULL OR v.metodoPagoPrincipal = :metodoPago)
-              AND (:estado IS NULL OR v.estado = :estado)
             ORDER BY v.idVenta DESC
             """,
             countQuery = """
@@ -59,14 +58,12 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
               AND (CAST(:hasta AS timestamp) IS NULL OR v.fechaVenta <= :hasta)
               AND (:cajero IS NULL OR LOWER(u.username) = :cajero)
               AND (:metodoPago IS NULL OR v.metodoPagoPrincipal = :metodoPago)
-              AND (:estado IS NULL OR v.estado = :estado)
             """)
     Page<VentaResumenDTO> buscarResumen(@Param("q") String q,
                                         @Param("desde") LocalDateTime desde,
                                         @Param("hasta") LocalDateTime hasta,
                                         @Param("cajero") String cajero,
                                         @Param("metodoPago") MetodoPago metodoPago,
-                                        @Param("estado") String estado,
                                         Pageable pageable);
 
     Page<Venta> findByEstado(String estado, Pageable pageable);

@@ -222,8 +222,7 @@ class HistorialVentasTest extends PostgresIntegrationTest {
         mockMvc.perform(get("/api/ventas")
                         .param("q", "")
                         .param("cajero", "")
-                        .param("metodoPago", "")
-                        .param("estado", ""))
+                        .param("metodoPago", ""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(4));
     }
