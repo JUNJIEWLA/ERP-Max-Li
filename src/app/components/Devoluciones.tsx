@@ -854,16 +854,16 @@ export default function Devoluciones({ userPermisos = [] }: DevolucionesProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">N° Devolución</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Venta</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nota de crédito</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">NCF afectado</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fecha</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cajero</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reembolso</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estado</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Acciones</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">N° Devolución</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Venta</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">B04</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">NCF afectado</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fecha</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cajero</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reembolso</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estado</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detalle</th>
               </tr>
             </thead>
             <tbody>
@@ -884,20 +884,20 @@ export default function Devoluciones({ userPermisos = [] }: DevolucionesProps) {
               ) : (
                 devoluciones.map(d => (
                   <tr key={d.idDevolucion} className="border-b border-border/60 transition-colors hover:bg-muted/20">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold">{d.numeroControl}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{d.numeroControlVenta}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{d.ncf}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{d.ncfAfectado || 'Sin NCF'}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{fmtFechaHora(d.fechaDevolucion)}</td>
-                    <td className="px-4 py-3 text-sm">{d.cajeroNombre}</td>
-                    <td className="px-4 py-3 text-xs">{d.metodoReembolso}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{fmtMoneda(d.total)}</td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-3 py-3 font-mono text-xs font-semibold">{d.numeroControl}</td>
+                    <td className="px-3 py-3 font-mono text-xs">{d.numeroControlVenta}</td>
+                    <td className="px-3 py-3 font-mono text-xs">{d.ncf}</td>
+                    <td className="px-3 py-3 font-mono text-xs">{d.ncfAfectado || 'Sin NCF'}</td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">{fmtFechaHora(d.fechaDevolucion)}</td>
+                    <td className="px-3 py-3 text-sm">{d.cajeroNombre}</td>
+                    <td className="px-3 py-3 text-xs">{d.metodoReembolso}</td>
+                    <td className="px-3 py-3 text-right font-semibold">{fmtMoneda(d.total)}</td>
+                    <td className="px-3 py-3 text-center">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-amber-100 text-amber-700 border-amber-200">
                         {d.estado}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       <button
                         id={`btn-detalle-devolucion-${d.idDevolucion}`}
                         onClick={() => setIdDetalle(d.idDevolucion)}
