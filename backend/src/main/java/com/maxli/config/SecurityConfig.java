@@ -63,6 +63,12 @@ public class SecurityConfig {
                 // El login es la petición que estrena el token; forzarlo antes
                 // dejaría al usuario sin forma de autenticarse.
                 .ignoringRequestMatchers("/api/auth/login")
+                // cambiar-password y logout ya están protegidos por el JWT en
+                // cookie; el CSRF doble no aporta nada adicional y bloquea el
+                // flujo en despliegues cross-origin (Vercel → Render) donde el
+                // SPA no puede leer la cookie XSRF-TOKEN del dominio del backend.
+                .ignoringRequestMatchers("/api/auth/cambiar-password")
+                .ignoringRequestMatchers("/api/auth/logout")
                 // Un cliente que se identifica solo con Bearer no expone
                 // credenciales ambientales y por tanto no es forjable.
                 .ignoringRequestMatchers(new PeticionSinCookieDeSesionMatcher(
