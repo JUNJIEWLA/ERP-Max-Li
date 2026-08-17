@@ -107,6 +107,96 @@ class ArranqueProduccionTest {
     }
 
     @Test
+    @DisplayName("no arranca si se desactiva la exigencia de HTTPS")
+    void noArrancaSinHttps() {
+        runner.withPropertyValues(
+                        "jwt.secret=" + SECRETO_FUERTE,
+                        "cors.allowed-origins=https://erp.plazamax.do",
+                        "maxli.security.require-https=false")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(causaRaiz(context.getStartupFailure()))
+                            .isInstanceOf(ConfiguracionInseguraException.class)
+                            .hasMessageContaining("HTTPS");
+                });
+    }
+
+    @Test
+    @DisplayName("no arranca si la cookie de sesión no es Secure")
+    void noArrancaConCookieSinSecure() {
+        runner.withPropertyValues(
+                        "jwt.secret=" + SECRETO_FUERTE,
+                        "cors.allowed-origins=https://erp.plazamax.do",
+                        "maxli.security.cookie.secure=false")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(causaRaiz(context.getStartupFailure()))
+                            .isInstanceOf(ConfiguracionInseguraException.class)
+                            .hasMessageContaining("Secure");
+                });
+    }
+
+    @Test
+    @DisplayName("no arranca con un SameSite desconocido")
+    void noArrancaConSameSiteInvalido() {
+        runner.withPropertyValues(
+                        "jwt.secret=" + SECRETO_FUERTE,
+                        "cors.allowed-origins=https://erp.plazamax.do",
+                        "maxli.security.cookie.same-site=Cualquiera")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(causaRaiz(context.getStartupFailure()))
+                            .isInstanceOf(ConfiguracionInseguraException.class)
+                            .hasMessageContaining("SameSite");
+                });
+    }
+
+    @Test
+    @DisplayName("no arranca con SameSite=None sin Secure: el navegador descartaría la cookie")
+    void noArrancaConSameSiteNoneSinSecure() {
+        runner.withPropertyValues(
+                        "jwt.secret=" + SECRETO_FUERTE,
+                        "cors.allowed-origins=https://erp.plazamax.do",
+                        "maxli.security.cookie.same-site=None",
+                        "maxli.security.cookie.secure=false")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(causaRaiz(context.getStartupFailure()))
+                            .isInstanceOf(ConfiguracionInseguraException.class);
+                });
+    }
+
+    @Test
+    @DisplayName("no arranca con una expiración JWT nula o negativa")
+    void noArrancaConExpiracionInvalida() {
+        runner.withPropertyValues(
+                        "jwt.secret=" + SECRETO_FUERTE,
+                        "cors.allowed-origins=https://erp.plazamax.do",
+                        "jwt.expiration=0")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(causaRaiz(context.getStartupFailure()))
+                            .isInstanceOf(ConfiguracionInseguraException.class)
+                            .hasMessageContaining("JWT_EXPIRATION");
+                });
+    }
+
+    @Test
+    @DisplayName("no arranca con una expiración JWT desmesurada")
+    void noArrancaConExpiracionExcesiva() {
+        runner.withPropertyValues(
+                        "jwt.secret=" + SECRETO_FUERTE,
+                        "cors.allowed-origins=https://erp.plazamax.do",
+                        "jwt.expiration=30d")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(causaRaiz(context.getStartupFailure()))
+                            .isInstanceOf(ConfiguracionInseguraException.class)
+                            .hasMessageContaining("JWT_EXPIRATION");
+                });
+    }
+
+    @Test
     @DisplayName("arranca con una configuración productiva válida")
     void arrancaConConfiguracionValida() {
         runner.withPropertyValues(
@@ -146,7 +236,8 @@ class ArranqueProduccionTest {
     /** Solo las piezas de configuración que participan en el arranque seguro. */
     @org.springframework.context.annotation.Configuration
     @org.springframework.boot.context.properties.EnableConfigurationProperties({
-            JwtProperties.class, CorsProperties.class, LoginProtectionProperties.class})
+            JwtProperties.class, CorsProperties.class, LoginProtectionProperties.class,
+            SecurityProperties.class})
     @org.springframework.context.annotation.Import(GuardaSeguridadProduccion.class)
     static class GuardSecurityConfiguration {
     }

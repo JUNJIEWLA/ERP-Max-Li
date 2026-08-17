@@ -15,10 +15,11 @@ public class SecurityProperties {
 
     /**
      * Exige HTTPS: redirige toda petición en texto plano y habilita HSTS.
-     * Se activa en el perfil {@code prod}; en dev queda apagado para que
-     * {@code http://localhost} siga funcionando.
+     * Por defecto <b>activado</b>: el perfil {@code dev} lo apaga a propósito
+     * para que {@code http://localhost} siga funcionando. Lo inseguro debe
+     * pedirse explícitamente, nunca obtenerse por omisión.
      */
-    private boolean requireHttps = false;
+    private boolean requireHttps = true;
 
     private Cookie cookie = new Cookie();
 
@@ -32,11 +33,11 @@ public class SecurityProperties {
         private String name = "maxli_session";
 
         /**
-         * Marca {@code Secure}. Se enciende junto con {@code requireHttps} en
-         * producción; en dev debe quedar apagada o el navegador descartaría la
-         * cookie sobre http://localhost.
+         * Marca {@code Secure}. Encendida por defecto; el perfil {@code dev} la
+         * apaga porque el navegador descartaría la cookie sobre
+         * {@code http://localhost}.
          */
-        private boolean secure = false;
+        private boolean secure = true;
 
         /**
          * {@code Lax} basta porque el SPA se sirve desde el mismo origen que la
