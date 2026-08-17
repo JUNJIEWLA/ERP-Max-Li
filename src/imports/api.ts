@@ -4,9 +4,10 @@
 //  El proxy de Vite redirige /api/* → http://localhost:8080
 // ─────────────────────────────────────────────────────────
 
-// En desarrollo: Vite proxy redirige /api → http://localhost:8080
-// En producción (Vercel): apunta directamente al backend en Render
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+// Vercel proxy (vercel.json) redirige /api/* → Render backend en producción.
+// Vite proxy (vite.config.ts) redirige /api/* → localhost:8080 en desarrollo.
+// Ambos mantienen el mismo origen para que las cookies y el CSRF funcionen.
+const BASE_URL = '/api';
 
 // ── Sesión ───────────────────────────────────────────────
 //
