@@ -194,6 +194,12 @@ public class SecurityConfig {
                         .hasAnyAuthority("VENTA_CREAR", "NCF_GESTIONAR")
                 .requestMatchers("/api/ncf/**").hasAuthority("NCF_GESTIONAR")
 
+                // ── Empresa: GET para cualquier autenticado, PUT solo administrador ─
+                // Los datos de empresa (nombre, RNC) se usan en encabezados de
+                // facturas y reportes, así que deben ser legibles por todos.
+                .requestMatchers(HttpMethod.GET, "/api/empresa/**").authenticated()
+                .requestMatchers(HttpMethod.PUT, "/api/empresa/**").hasAuthority("CONFIGURACION_VER")
+
                 // ── Cualquier otro endpoint: denegado por defecto ─────────────
                 .anyRequest().denyAll()
 

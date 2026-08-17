@@ -24,6 +24,7 @@ public class TurnoCajaResponseDTO {
     private BigDecimal totalVentasEfectivo;
     private BigDecimal totalVentasTarjeta;
     private BigDecimal totalVentasTransferencia;
+    private BigDecimal totalVentasNotaCredito;
     private BigDecimal totalOtrosIngresos;
     private BigDecimal totalEgresos;
     private BigDecimal montoEsperado;

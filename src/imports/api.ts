@@ -239,6 +239,7 @@ export interface Producto {
   costo: number;
   tasaItbis: number;
   cantidadMinimaMayor: number;
+  stockMinimo?: number;
   estado: string;
   idCategoria: number;
   categoriaNombre: string;
@@ -433,6 +434,7 @@ export interface TurnoCaja {
   totalVentasEfectivo: number;
   totalVentasTarjeta: number;
   totalVentasTransferencia: number;
+  totalVentasNotaCredito?: number;
   totalOtrosIngresos: number;
   totalEgresos: number;
   montoEsperado: number;
@@ -454,6 +456,7 @@ export interface CuadreTurnoCaja {
   totalEgresos: number;
   /** Efectivo devuelto por notas de crédito durante el turno. Resta del cajón. */
   totalDevolucionesEfectivo: number;
+  totalVentasNotaCredito?: number;
   montoEsperado: number;
   montoFinalDeclarado: number | null;
   diferencia: number | null;
@@ -1368,6 +1371,7 @@ export interface DetalleVentaResponse {
   idDetalleVenta: number;
   idProducto: number;
   skuProducto: string;
+  codigoProducto?: string | null;
   nombreProducto: string;
   cantidad: number;
   precioUnitario: number;
@@ -1376,6 +1380,7 @@ export interface DetalleVentaResponse {
   tasaItbis: number;
   descuentoLinea: number;
   descuentoOferta: number;
+  descuentoMonto?: number;
   ofertaAplicada: string | null;
   importe: number;
   /** Descuento global + cupón ya prorrateados sobre esta línea. */
@@ -1396,6 +1401,7 @@ export interface VentaResponse {
   idVenta: number;
   idTurnoCaja: number;
   cajeroNombre: string;
+  cajaNombre?: string | null;
   idAlmacen: number | null;
   almacenNombre: string | null;
   idCliente: number | null;
@@ -1601,6 +1607,19 @@ export interface CrearDevolucionRequest {
   detalles: DetalleDevolucionRequest[];
 }
 
+export interface NotaCreditoSaldo {
+  idDevolucion: number;
+  numeroControl: string;
+  ncf: string;
+  numeroControlVenta: string;
+  ncfAfectado: string;
+  nombreCliente: string | null;
+  totalDevolucion: number;
+  montoDisponible: number;
+  montoUsado: number;
+  fechaDevolucion: string;
+}
+
 // ── API: Devoluciones y Notas de Crédito ─────────────────
 
 export const devolucionesApi = {
@@ -1617,6 +1636,10 @@ export const devolucionesApi = {
   /** Líneas de la venta con cantidad vendida, ya devuelta y disponible. */
   consultarDisponible: (idVenta: number) =>
     get<VentaDevoluble>(`/devoluciones/ventas/${idVenta}/disponible`),
+
+  /** Consulta el saldo disponible de una Nota de Crédito. */
+  consultarSaldoNotaCredito: (numero: string) =>
+    get<NotaCreditoSaldo>('/devoluciones/nota-credito/saldo', { numero }),
 
   /** Confirma la devolución y emite la Nota de Crédito. Exige DEVOLUCION_CREAR. */
   crear: (request: CrearDevolucionRequest) =>
@@ -1653,3 +1676,40 @@ export const empaquesApi = {
   eliminar: (id: number) =>
     del(`/empaques/${id}`),
 };
+
+// ── Configuración de Empresa ──────────────────────────────────────────
+
+export interface ConfiguracionEmpresa {
+  // Datos fiscales
+  nombreComercial: string | null;
+  razonSocial: string | null;
+  rnc: string | null;
+  // Contacto
+  telefonoPrincipal: string | null;
+  telefonoSecundario: string | null;
+  emailComercial: string | null;
+  emailFacturacion: string | null;
+  // Dirección
+  direccion: string | null;
+  ciudad: string | null;
+  provincia: string | null;
+  pais: string | null;
+  // Presencia digital
+  sitioWeb: string | null;
+  logoUrl: string | null;
+  // Términos y políticas
+  politicaDevolucion: string | null;
+  // Auditoría (solo lectura)
+  fechaModificacion: string | null;
+}
+
+export const empresaApi = {
+  /** Obtiene la configuración actual de la empresa. */
+  obtener: () =>
+    get<ConfiguracionEmpresa>('/empresa/configuracion'),
+
+  /** Actualiza la configuración de la empresa (requiere CONFIGURACION_VER). */
+  actualizar: (body: Omit<ConfiguracionEmpresa, 'fechaModificacion'>) =>
+    put<ConfiguracionEmpresa>('/empresa/configuracion', body),
+};
+

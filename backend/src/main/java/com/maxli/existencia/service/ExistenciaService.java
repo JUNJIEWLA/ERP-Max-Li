@@ -68,8 +68,11 @@ public class ExistenciaService {
     public ExistenciaResponseDTO crear(CrearExistenciaRequestDTO dto) {
         Producto producto = obtenerProductoActivo(dto.getIdProducto());
         var almacen = almacenService.obtenerEntidadPorId(dto.getIdAlmacen());
+        int cantidadMinima = (dto.getCantidadMinima() != null && dto.getCantidadMinima() > 0)
+                ? dto.getCantidadMinima()
+                : (producto.getStockMinimo() != null ? producto.getStockMinimo() : 5);
         if (!existenciaLockService.crearManualSiAusente(dto.getIdProducto(), dto.getIdAlmacen(),
-                dto.getCantidadActual(), dto.getCantidadMinima())) {
+                dto.getCantidadActual(), cantidadMinima)) {
             throw new DuplicateResourceException(
                     "Ya existe un registro de existencia para este producto en este almacén");
         }

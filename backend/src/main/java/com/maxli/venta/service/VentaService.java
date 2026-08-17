@@ -94,6 +94,7 @@ public class VentaService {
     private final CuponService cuponService;
     private final ClienteRepository clienteRepository;
     private final TrazabilidadInventarioService trazabilidadInventarioService;
+    private final com.maxli.devolucion.repository.DevolucionRepository devolucionRepository;
 
     // ═════════════════════════════════════════════════════════════════════
     //  1. RECÁLCULO DINÁMICO (preview — no persiste nada)
@@ -368,6 +369,33 @@ public class VentaService {
             totalPagado = totalPagado.add(ingresoDto.getMonto());
             if (metodoPagoIngreso == MetodoPago.EFECTIVO) {
                 efectivoRecibido = efectivoRecibido.add(ingresoDto.getMonto());
+            } else if (metodoPagoIngreso == MetodoPago.NOTA_CREDITO) {
+                if (ingresoDto.getReferencia() == null || ingresoDto.getReferencia().isBlank()) {
+                    throw new BusinessException("Debe indicar el número de comprobante/factura de la Nota de Crédito.");
+                }
+                List<com.maxli.devolucion.entity.Devolucion> ncs = devolucionRepository.buscarPorNumero(ingresoDto.getReferencia().trim());
+                if (ncs.isEmpty()) {
+                    throw new BusinessException("No existe una Nota de Crédito válida para el número: " + ingresoDto.getReferencia());
+                }
+                BigDecimal pendienteCobrarNC = ingresoDto.getMonto();
+                for (com.maxli.devolucion.entity.Devolucion nc : ncs) {
+                    BigDecimal dispon = nc.getMontoDisponible() != null ? nc.getMontoDisponible() : BigDecimal.ZERO;
+                    if (dispon.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal aplicar = dispon.min(pendienteCobrarNC);
+                        nc.setMontoDisponible(dispon.subtract(aplicar));
+                        nc.setMontoUsado((nc.getMontoUsado() != null ? nc.getMontoUsado() : BigDecimal.ZERO).add(aplicar));
+                        devolucionRepository.save(nc);
+                        pendienteCobrarNC = pendienteCobrarNC.subtract(aplicar);
+                        if (pendienteCobrarNC.compareTo(BigDecimal.ZERO) <= 0) break;
+                    }
+                }
+                if (pendienteCobrarNC.compareTo(BigDecimal.ZERO) > 0) {
+                    throw new BusinessException("El saldo disponible en la Nota de Crédito es insuficiente para cubrir los RD$ " + ingresoDto.getMonto());
+                }
+                turno.setTotalVentasNotaCredito(
+                        (turno.getTotalVentasNotaCredito() != null ? turno.getTotalVentasNotaCredito() : BigDecimal.ZERO)
+                                .add(ingresoDto.getMonto())
+                );
             }
         }
 

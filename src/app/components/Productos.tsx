@@ -19,13 +19,14 @@ interface ProductoForm {
   estado: string;
   tasaItbis: string;
   cantidadMinimaMayor: string;
+  stockMinimo: string;
 }
 
 const EMPTY_FORM: ProductoForm = {
   codigoBarras: '', nombre: '', descripcion: '',
   precioVenta: '', costo: '',
   idCategoria: '', idMarca: '', estado: 'ACTIVO',
-  tasaItbis: '18.00', cantidadMinimaMayor: '1',
+  tasaItbis: '18.00', cantidadMinimaMayor: '1', stockMinimo: '5',
 };
 
 const fmt = (v: number) =>
@@ -115,6 +116,7 @@ export default function Productos() {
       estado: p.estado,
       tasaItbis: String(p.tasaItbis ?? 18),
       cantidadMinimaMayor: String(p.cantidadMinimaMayor ?? 1),
+      stockMinimo: String(p.stockMinimo ?? 5),
     });
     setFormError('');
     setShowModal(true);
@@ -148,6 +150,7 @@ export default function Productos() {
       estado: form.estado,
       tasaItbis: Number(form.tasaItbis),
       cantidadMinimaMayor: Number(form.cantidadMinimaMayor),
+      stockMinimo: Number(form.stockMinimo || 5),
     };
     try {
       if (editTarget) {
@@ -469,8 +472,8 @@ export default function Productos() {
                 </div>
               </div>
 
-              {/* Campos POS: ITBIS y Cantidad mínima mayorista */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Campos POS: ITBIS, Cantidad Mínima Mayorista y Stock Mínimo */}
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Tasa ITBIS (%)</label>
                   <select id="input-prod-itbis" value={form.tasaItbis}
@@ -479,15 +482,23 @@ export default function Productos() {
                     <option value="18.00">18% (Gravado)</option>
                     <option value="0.00">0% (Exento)</option>
                   </select>
-                  <p className="text-xs text-muted-foreground mt-1">Impuesto ITBIS aplicable al producto</p>
+                  <p className="text-xs text-muted-foreground mt-1">Impuesto ITBIS aplicable</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Cant. Mínima Mayorista</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Mín. Mayorista</label>
                   <input id="input-prod-min-mayor" type="number" min="1" step="1" value={form.cantidadMinimaMayor}
                     onChange={e => setForm(f => ({ ...f, cantidadMinimaMayor: e.target.value }))}
                     placeholder="1"
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                  <p className="text-xs text-muted-foreground mt-1">Cantidad mínima para activar precio al por mayor</p>
+                  <p className="text-xs text-muted-foreground mt-1">Para precio al por mayor</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Stock Mínimo</label>
+                  <input id="input-prod-stock-minimo" type="number" min="0" step="1" value={form.stockMinimo}
+                    onChange={e => setForm(f => ({ ...f, stockMinimo: e.target.value }))}
+                    placeholder="5"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                  <p className="text-xs text-muted-foreground mt-1">Nivel para alerta de buzón</p>
                 </div>
               </div>
 

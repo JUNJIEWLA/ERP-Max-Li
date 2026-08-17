@@ -21,7 +21,8 @@ import {
   ClipboardCheck,
   Archive,
   TrendingUp,
-  Receipt
+  Receipt,
+  Building2,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -76,6 +77,7 @@ export const PERMISSION_MAP: Record<string, string> = {
   ncf: 'CONFIGURACION_VER',
   cupones: 'CONFIGURACION_VER',
   'cajas-registradoras': 'CAJA_GESTIONAR',
+  'configuracion-empresa': 'CONFIGURACION_VER',
 };
 
 const menuSections: MenuSection[] = [
@@ -145,6 +147,7 @@ const menuSections: MenuSection[] = [
     items: [
       { id: 'usuarios', label: 'Usuarios', icon: Users, requiredPermission: 'USUARIO_GESTIONAR' },
       { id: 'roles', label: 'Roles', icon: UserCircle, requiredPermission: 'ROL_GESTIONAR' },
+      { id: 'configuracion-empresa', label: 'Datos de la Empresa', icon: Building2, requiredPermission: 'CONFIGURACION_VER' },
       { id: 'ofertas', label: 'Ofertas', icon: Tag, requiredPermission: 'CONFIGURACION_VER' },
       { id: 'ncf', label: 'Secuencias NCF', icon: Receipt, requiredPermission: 'CONFIGURACION_VER' },
       { id: 'cupones', label: 'Cupones', icon: Tag, requiredPermission: 'CONFIGURACION_VER' },

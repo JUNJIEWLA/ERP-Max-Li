@@ -18,6 +18,8 @@ public class ProductoMapper {
         producto.setDescripcion(dto.getDescripcion());
         producto.setPrecioVenta(dto.getPrecioVenta());
         producto.setCosto(dto.getCosto());
+        producto.setCantidadMinimaMayor(dto.getCantidadMinimaMayor() != null ? dto.getCantidadMinimaMayor() : 1);
+        producto.setStockMinimo(dto.getStockMinimo() != null ? dto.getStockMinimo() : 5);
         producto.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
         producto.setCategoria(categoria);
         producto.setMarca(marca);
@@ -36,6 +38,7 @@ public class ProductoMapper {
         dto.setCosto(producto.getCosto());
         dto.setTasaItbis(producto.getTasaItbis());
         dto.setCantidadMinimaMayor(producto.getCantidadMinimaMayor());
+        dto.setStockMinimo(producto.getStockMinimo());
         dto.setEstado(producto.getEstado());
         dto.setIdCategoria(producto.getCategoria().getIdCategoria());
         dto.setCategoriaNombre(producto.getCategoria().getNombre());

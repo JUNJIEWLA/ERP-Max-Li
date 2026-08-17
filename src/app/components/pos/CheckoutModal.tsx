@@ -2,17 +2,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 import {
   X, CreditCard, Banknote, Building2, FileText, ArrowUpDown,
-  AlertTriangle, CheckCircle2, Ticket, Loader2
+  AlertTriangle, CheckCircle2, Ticket, Loader2, Printer, Search
 } from 'lucide-react';
 import {
   ventasApi,
+  empresaApi,
+  devolucionesApi,
+  type ConfiguracionEmpresa,
   type RecalcularFacturaRequest,
   type RecalcularFacturaResponse,
   type DetalleRecalculado,
   type CrearVentaRequest,
   type VentaResponse,
+  type NotaCreditoSaldo,
 } from '../../../imports/api';
 import { CartItem } from './CartRow';
+import TicketImpresion from './TicketImpresion';
 
 interface CheckoutModalProps {
   cart: CartItem[];
@@ -31,6 +36,7 @@ const METODOS_PAGO = [
   { id: 'TARJETA',       label: 'Tarjeta',       icon: CreditCard, color: 'blue' },
   { id: 'TRANSFERENCIA', label: 'Transferencia', icon: ArrowUpDown, color: 'violet' },
   { id: 'CHEQUE',        label: 'Cheque',        icon: FileText,   color: 'amber' },
+  { id: 'NOTA_CREDITO',  label: 'Nota Crédito',  icon: Ticket,     color: 'rose' },
 ] as const;
 
 const TIPOS_NCF = [
@@ -71,15 +77,40 @@ export default function CheckoutModal({
   const [exito, setExito] = useState(false);
   const [ventaProcesada, setVentaProcesada] = useState<VentaResponse | null>(null);
 
+  // Nota de Crédito
+  const [numeroNotaCredito, setNumeroNotaCredito] = useState('');
+  const [saldoNC, setSaldoNC] = useState<NotaCreditoSaldo | null>(null);
+  const [verificandoNC, setVerificandoNC] = useState(false);
+  const [errorNC, setErrorNC] = useState('');
+
+  const consultarNC = async () => {
+    if (!numeroNotaCredito.trim()) return;
+    setVerificandoNC(true);
+    setErrorNC('');
+    setSaldoNC(null);
+    try {
+      const res = await devolucionesApi.consultarSaldoNotaCredito(numeroNotaCredito.trim());
+      if (res.montoDisponible <= 0) {
+        setErrorNC(`La Nota de Crédito ${res.ncf || res.numeroControl} no tiene saldo disponible.`);
+      } else {
+        setSaldoNC(res);
+      }
+    } catch (e: any) {
+      setErrorNC(e.message || 'No se encontró la Nota de Crédito o comprobante indicado.');
+    } finally {
+      setVerificandoNC(false);
+    }
+  };
+
   // ── Totales calculados ──────────────────────────────────────────────
   const subtotalCarrito = cart.reduce((sum, item) => sum + item.importe, 0);
   const total = recalculo ? recalculo.total : Math.max(0, subtotalCarrito - descuentoGlobal);
-  // El desglose de ITBIS solo viene del backend (tasa por línea, ISSUE-008):
-  // nunca se aproxima con /1.18 en el cliente. Antes de la primera respuesta
-  // del preview, se muestra como pendiente en vez de un valor inventado.
   const subtotalSinItbis = recalculo ? recalculo.subtotal : null;
   const itbis = recalculo ? recalculo.itbis : null;
-  const cambio = parseFloat(montoRecibido || '0') - total;
+
+  const montoAplicadoNC = (metodoPago === 'NOTA_CREDITO' && saldoNC) ? Math.min(total, saldoNC.montoDisponible) : 0;
+  const diferenciaAPagar = Math.max(0, total - montoAplicadoNC);
+  const cambio = parseFloat(montoRecibido || '0') - (montoAplicadoNC > 0 ? diferenciaAPagar : total);
 
 
   const montoInputRef = useRef<HTMLInputElement>(null);
@@ -166,25 +197,70 @@ export default function CheckoutModal({
   }, [onClose]);
 
 
+  // Empresa config para impresión
+  const [empresa, setEmpresa] = useState<ConfiguracionEmpresa | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    empresaApi.obtener()
+      .then(data => { if (active) setEmpresa(data); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const handleImprimir = useCallback(() => {
+    setTimeout(() => {
+      window.print();
+    }, 200);
+  }, []);
+
   // ── Procesar la venta ──────────────────────────────────────────────
   const handleProcesar = async () => {
-    const montoNum = parseFloat(montoRecibido || '0');
-    if (montoNum < total) {
-      setError(`El monto recibido (RD$ ${montoNum.toFixed(2)}) es menor al total (RD$ ${total.toFixed(2)})`);
-      return;
+    const montoEfectivoUOtro = parseFloat(montoRecibido || '0');
+
+    if (montoAplicadoNC > 0) {
+      if (diferenciaAPagar > 0 && montoEfectivoUOtro < diferenciaAPagar) {
+        setError(`El saldo de la Nota de Crédito (RD$ ${montoAplicadoNC.toFixed(2)}) no cubre el total. Debe cobrar la diferencia de RD$ ${diferenciaAPagar.toFixed(2)}.`);
+        return;
+      }
+    } else {
+      if (montoEfectivoUOtro < total) {
+        setError(`El monto recibido (RD$ ${montoEfectivoUOtro.toFixed(2)}) es menor al total (RD$ ${total.toFixed(2)})`);
+        return;
+      }
     }
 
     setProcesando(true);
     setError('');
 
     try {
+      const ingresos = [];
+
+      if (montoAplicadoNC > 0 && saldoNC) {
+        ingresos.push({
+          metodoPago: 'NOTA_CREDITO',
+          monto: montoAplicadoNC,
+          referencia: saldoNC.ncf || saldoNC.numeroControl,
+        });
+      }
+
+      if (diferenciaAPagar > 0 || ingresos.length === 0) {
+        const metodoDiferencia = metodoPago === 'NOTA_CREDITO' ? 'EFECTIVO' : metodoPago;
+        const montoIngreso = ingresos.length > 0 ? Math.max(diferenciaAPagar, montoEfectivoUOtro) : Math.max(total, montoEfectivoUOtro);
+        ingresos.push({
+          metodoPago: metodoDiferencia,
+          monto: montoIngreso,
+          referencia: referenciaPago.trim() || undefined,
+        });
+      }
+
       const request: CrearVentaRequest = {
         idTurnoCaja,
         idCliente: idCliente || undefined,
         nombreClienteTemporal: nombreCliente || undefined,
         rncTemporal: rnc || undefined,
         tipoNcf,
-        metodoPago,
+        metodoPago: metodoPago === 'NOTA_CREDITO' ? (ingresos.length > 1 ? 'MIXTO' : 'NOTA_CREDITO') : metodoPago,
         usaPrecioMayor,
         descuentoGlobal,
         codigoCupon: codigoCupon || undefined,
@@ -193,22 +269,20 @@ export default function CheckoutModal({
           cantidad: item.cantidad,
           descuentoLinea: item.descuentoLinea,
         })),
-        ingresos: [{
-          metodoPago,
-          monto: montoNum,
-          referencia: undefined,
-        }],
-
+        ingresos,
       };
 
       const venta = await ventasApi.procesar(request);
       setVentaProcesada(venta);
       setExito(true);
 
-      // Auto-cerrar después de 2s
+      // Disparar impresión automática del ticket
+      handleImprimir();
+
+      // Auto-cerrar después de 3.5s para permitir la impresión
       setTimeout(() => {
         onVentaCompletada(venta);
-      }, 2000);
+      }, 3500);
     } catch (err: any) {
       setError(err.message || 'Error al procesar la venta');
     } finally {
@@ -219,32 +293,56 @@ export default function CheckoutModal({
   // ── Pantalla de éxito ──────────────────────────────────────────────
   if (exito && ventaProcesada) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-        <div className="bg-background rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 text-center" onClick={e => e.stopPropagation()}>
-          <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 size={32} className="text-emerald-600" />
-          </div>
-          <h2 className="text-xl font-bold mb-2">¡Venta Procesada!</h2>
-          <p className="text-muted-foreground mb-4">
-            N° Control: <strong>{ventaProcesada.numeroControl}</strong>
-          </p>
-          {ventaProcesada.ncf && (
-            <p className="text-sm text-muted-foreground mb-2">
-              NCF: <strong>{ventaProcesada.ncf}</strong>
-            </p>
-          )}
-          <div className="bg-emerald-50 rounded-lg p-4 mb-4">
-            <p className="text-sm text-emerald-700">Total cobrado</p>
-            <p className="text-3xl font-bold text-emerald-600">RD${ventaProcesada.total.toFixed(2)}</p>
-            {ventaProcesada.cambio > 0 && (
-              <p className="text-sm text-emerald-600 mt-1">
-                Cambio: <strong>RD${ventaProcesada.cambio.toFixed(2)}</strong>
+      <>
+        {/* Ticket imprimible oculto en pantalla pero visible para window.print() */}
+        <TicketImpresion
+          venta={ventaProcesada}
+          empresa={empresa}
+          cart={cart}
+          montoRecibido={parseFloat(montoRecibido || '0')}
+        />
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+          <div className="bg-background rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+              <CheckCircle2 size={32} className="text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">¡Venta Procesada!</h2>
+              <p className="text-muted-foreground text-sm mt-1">
+                Factura #: <strong>{ventaProcesada.numeroControl}</strong>
               </p>
-            )}
+              {ventaProcesada.ncf && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  e-NCF: <strong>{ventaProcesada.ncf}</strong>
+                </p>
+              )}
+            </div>
+
+            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+              <p className="text-xs text-emerald-700 font-medium uppercase tracking-wide">Total cobrado</p>
+              <p className="text-3xl font-bold text-emerald-600 font-mono">RD${ventaProcesada.total.toFixed(2)}</p>
+              {ventaProcesada.cambio > 0 && (
+                <p className="text-sm text-emerald-600 font-medium mt-1">
+                  Cambio / Vuelto: <strong>RD${ventaProcesada.cambio.toFixed(2)}</strong>
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-center pt-2">
+              <button
+                onClick={handleImprimir}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20"
+              >
+                <Printer size={16} />
+                Reimprimir Ticket (80mm)
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground pt-1">Imprimiendo ticket y cerrando automáticamente...</p>
           </div>
-          <p className="text-xs text-muted-foreground">Cerrando automáticamente...</p>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -326,23 +424,96 @@ export default function CheckoutModal({
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Método de pago
             </h3>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {METODOS_PAGO.map(({ id, label, icon: Icon, color }) => (
                 <button
                   key={id}
                   onClick={() => setMetodoPago(id)}
-                  className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border text-sm font-medium transition-all ${
+                  className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg border text-xs font-medium transition-all ${
                     metodoPago === id
                       ? `border-${color}-500 bg-${color}-50 text-${color}-700 ring-2 ring-${color}-200`
                       : 'border-border hover:bg-accent text-foreground'
                   }`}
                 >
-                  <Icon size={20} />
+                  <Icon size={18} />
                   {label}
                 </button>
               ))}
             </div>
           </section>
+
+          {/* ── Sección Nota de Crédito ──────────────────────── */}
+          {metodoPago === 'NOTA_CREDITO' && (
+            <section className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
+                <Ticket size={16} /> Verificación de Nota de Crédito / Factura
+              </h3>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={numeroNotaCredito}
+                  onChange={e => setNumeroNotaCredito(e.target.value.toUpperCase())}
+                  placeholder="Ej. B0400000001 o FACT-000001"
+                  className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-background focus:ring-2 focus:ring-rose-500 focus:outline-none font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={consultarNC}
+                  disabled={!numeroNotaCredito.trim() || verificandoNC}
+                  className="px-4 py-2 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {verificandoNC ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  Verificar Saldo
+                </button>
+              </div>
+
+              {errorNC && (
+                <div className="text-xs text-rose-600 font-medium bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20 flex items-center gap-2">
+                  <AlertTriangle size={15} /> {errorNC}
+                </div>
+              )}
+
+              {saldoNC && (
+                <div className="bg-background border border-rose-500/30 rounded-lg p-3 space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Comprobante NC:</span>
+                    <span className="font-mono font-bold">{saldoNC.ncf || saldoNC.numeroControl}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Factura Afectada:</span>
+                    <span className="font-mono">{saldoNC.numeroControlVenta || '—'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Cliente:</span>
+                    <span className="font-semibold">{saldoNC.nombreCliente || 'Consumidor Final'}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-border pt-2 text-sm">
+                    <span className="font-semibold">Saldo Disponible:</span>
+                    <span className="font-bold font-mono text-emerald-600">RD$ {saldoNC.montoDisponible.toFixed(2)}</span>
+                  </div>
+
+                  {montoAplicadoNC > 0 && (
+                    <div className="pt-2 border-t border-border space-y-1">
+                      <div className="flex justify-between items-center font-semibold text-rose-600">
+                        <span>Abono Nota de Crédito:</span>
+                        <span className="font-mono">- RD$ {montoAplicadoNC.toFixed(2)}</span>
+                      </div>
+                      {diferenciaAPagar > 0 ? (
+                        <div className="flex justify-between items-center font-bold text-foreground text-sm pt-1 border-t border-dashed border-border">
+                          <span>Diferencia Restante a Pagar:</span>
+                          <span className="font-mono text-primary">RD$ {diferenciaAPagar.toFixed(2)}</span>
+                        </div>
+                      ) : (
+                        <div className="text-emerald-600 font-bold text-xs pt-1">
+                          ✓ La Nota de Crédito cubre la totalidad de la venta.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
 
           {/* ── Precio Mayorista Toggle ────────────────────────── */}
@@ -485,7 +656,12 @@ export default function CheckoutModal({
             </button>
             <button
               onClick={handleProcesar}
-              disabled={procesando || recalculando || parseFloat(montoRecibido || '0') < total || cart.length === 0}
+              disabled={
+                procesando || recalculando || cart.length === 0 ||
+                (metodoPago === 'NOTA_CREDITO'
+                  ? (!saldoNC || montoAplicadoNC <= 0 || (diferenciaAPagar > 0 && parseFloat(montoRecibido || '0') < diferenciaAPagar))
+                  : (parseFloat(montoRecibido || '0') < total))
+              }
               className="flex-[2] px-4 py-3 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {procesando ? (

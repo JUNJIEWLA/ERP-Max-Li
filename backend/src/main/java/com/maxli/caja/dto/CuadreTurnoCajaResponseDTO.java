@@ -18,6 +18,7 @@ public class CuadreTurnoCajaResponseDTO {
     private BigDecimal totalEgresos;
     /** Efectivo devuelto por notas de crédito durante el turno. */
     private BigDecimal totalDevolucionesEfectivo;
+    private BigDecimal totalVentasNotaCredito;
     private BigDecimal montoEsperado;
     private BigDecimal montoFinalDeclarado;
     private BigDecimal diferencia;

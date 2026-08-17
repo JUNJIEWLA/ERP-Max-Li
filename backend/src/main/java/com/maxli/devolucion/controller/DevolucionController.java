@@ -62,4 +62,10 @@ public class DevolucionController {
     public ResponseEntity<VentaDevolubleResponseDTO> consultarDisponible(@PathVariable Long idVenta) {
         return ResponseEntity.ok(devolucionService.consultarDisponible(idVenta));
     }
+
+    /** Consulta el saldo disponible de una Nota de Crédito por número de factura, NCF o número de control. */
+    @GetMapping("/nota-credito/saldo")
+    public ResponseEntity<com.maxli.devolucion.dto.NotaCreditoSaldoDTO> obtenerSaldoNotaCredito(@RequestParam String numero) {
+        return ResponseEntity.ok(devolucionService.obtenerSaldoNotaCredito(numero));
+    }
 }

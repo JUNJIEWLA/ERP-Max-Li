@@ -3,7 +3,7 @@ import {
   CreditCard, Loader2, Plus, Search, X, Lock, Unlock, Wallet,
   Calendar, Filter, RotateCcw, User, Building2, TrendingUp,
   AlertTriangle, CheckCircle2, Eye, Banknote, ArrowUpDown, ChevronLeft, ChevronRight,
-  PieChart as PieChartIcon, BarChart2, ShieldCheck, DollarSign
+  PieChart as PieChartIcon, BarChart2, ShieldCheck, DollarSign, Ticket
 } from 'lucide-react';
 import { cajasApi, turnosCajaApi, usuariosApi, Caja, TurnoCaja, CuadreTurnoCaja, Usuario } from '../../imports/api';
 
@@ -934,6 +934,12 @@ export default function TurnosCaja({ username, userPermisos }: TurnosCajaProps) 
                     <span className="font-mono font-semibold text-purple-600">{fmtMoney(selectedAuditTurno.totalVentasTransferencia)}</span>
                   </div>
                   <div className="flex justify-between items-center py-1 border-b border-border">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Ticket size={14} className="text-amber-600" /> Ventas Nota de Crédito:
+                    </span>
+                    <span className="font-mono font-semibold text-amber-600">{fmtMoney(selectedAuditTurno.totalVentasNotaCredito ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-border">
                     <span className="text-muted-foreground">Otros Ingresos:</span>
                     <span className="font-mono font-semibold text-foreground">{fmtMoney(selectedAuditTurno.totalOtrosIngresos)}</span>
                   </div>
@@ -1152,13 +1158,10 @@ export default function TurnosCaja({ username, userPermisos }: TurnosCajaProps) 
                         <span className="text-muted-foreground">Egresos:</span>
                         <p className="font-semibold text-rose-600 font-mono">-{fmtMoney(cuadrePreview.totalEgresos)}</p>
                       </div>
-                      {/* El efectivo reembolsado por notas de crédito sale del
-                          cajón: se muestra como resta propia, no mezclado con
-                          los egresos de caja chica. */}
                       <div>
-                        <span className="text-muted-foreground">Devoluciones en Efectivo:</span>
-                        <p id="cierre-devoluciones-efectivo" className="font-semibold text-rose-600 font-mono">
-                          -{fmtMoney(cuadrePreview.totalDevolucionesEfectivo)}
+                        <span className="text-muted-foreground">Ventas Nota Crédito:</span>
+                        <p id="cierre-ventas-nota-credito" className="font-semibold text-amber-600 font-mono">
+                          {fmtMoney(cuadrePreview.totalVentasNotaCredito ?? 0)}
                         </p>
                       </div>
                     </div>
