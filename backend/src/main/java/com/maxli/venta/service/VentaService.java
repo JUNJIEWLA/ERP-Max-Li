@@ -373,7 +373,9 @@ public class VentaService {
                 if (ingresoDto.getReferencia() == null || ingresoDto.getReferencia().isBlank()) {
                     throw new BusinessException("Debe indicar el número de comprobante/factura de la Nota de Crédito.");
                 }
-                List<com.maxli.devolucion.entity.Devolucion> ncs = devolucionRepository.buscarPorNumero(ingresoDto.getReferencia().trim());
+                // Bloqueo pesimista: entre leer el saldo y descontarlo no puede
+                // colarse otra caja cobrando la misma nota.
+                List<com.maxli.devolucion.entity.Devolucion> ncs = devolucionRepository.bloquearPorNumero(ingresoDto.getReferencia().trim());
                 if (ncs.isEmpty()) {
                     throw new BusinessException("No existe una Nota de Crédito válida para el número: " + ingresoDto.getReferencia());
                 }

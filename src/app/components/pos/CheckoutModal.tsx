@@ -309,11 +309,11 @@ export default function CheckoutModal({
             </div>
             <div>
               <h2 className="text-xl font-bold">¡Venta Procesada!</h2>
-              <p className="text-muted-foreground text-sm mt-1">
+              <p id="venta-procesada-numero-control" className="text-muted-foreground text-sm mt-1">
                 Factura #: <strong>{ventaProcesada.numeroControl}</strong>
               </p>
               {ventaProcesada.ncf && (
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <p id="venta-procesada-ncf" className="text-xs text-muted-foreground mt-0.5">
                   e-NCF: <strong>{ventaProcesada.ncf}</strong>
                 </p>
               )}
@@ -323,7 +323,7 @@ export default function CheckoutModal({
               <p className="text-xs text-emerald-700 font-medium uppercase tracking-wide">Total cobrado</p>
               <p className="text-3xl font-bold text-emerald-600 font-mono">RD${ventaProcesada.total.toFixed(2)}</p>
               {ventaProcesada.cambio > 0 && (
-                <p className="text-sm text-emerald-600 font-medium mt-1">
+                <p id="venta-procesada-cambio" className="text-sm text-emerald-600 font-medium mt-1">
                   Cambio / Vuelto: <strong>RD${ventaProcesada.cambio.toFixed(2)}</strong>
                 </p>
               )}

@@ -191,9 +191,13 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     expect(cuerpo.cambio).toBe(82);
 
     await expect(page.getByRole('heading', { name: '¡Venta Procesada!' })).toBeVisible();
-    await expect(page.getByText(`N° Control: ${cuerpo.numeroControl}`)).toBeVisible();
-    await expect(page.getByText(`NCF: ${cuerpo.ncf}`)).toBeVisible();
-    await expect(page.getByText(`Cambio: RD$${CAMBIO_ESPERADO}`)).toBeVisible();
+    // Por id: el número de factura también se imprime en la plantilla del
+    // comprobante, y el aviso de la pantalla es lo que aquí se comprueba.
+    await expect(page.locator('#venta-procesada-numero-control'))
+      .toHaveText(`Factura #: ${cuerpo.numeroControl}`);
+    await expect(page.locator('#venta-procesada-ncf')).toHaveText(`e-NCF: ${cuerpo.ncf}`);
+    await expect(page.locator('#venta-procesada-cambio'))
+      .toHaveText(`Cambio / Vuelto: RD$${CAMBIO_ESPERADO}`);
   });
 
   await test.step(`la venta descuenta el stock de ${STOCK_INICIAL} a 9`, async () => {
