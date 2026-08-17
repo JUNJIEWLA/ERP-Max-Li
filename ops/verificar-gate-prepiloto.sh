@@ -123,13 +123,50 @@ sql "INSERT INTO caja (nombre, estado, id_almacen, fecha_creacion)
        FROM almacen a WHERE a.nombre = 'Almacén Gate'" >/dev/null
 # Hash con forma de BCrypt real: lo que el gate mira es que no sea el centinela
 # 'LOCKED::' que deja V35, no que la contraseña sirva para nada.
-sql "INSERT INTO usuario (username, email, password_hash, estado, fecha_creacion)
-     VALUES ('cajera.gate', 'cajera.gate@ejemplo.invalid',
-             '\$2a\$10\$C6UzMDM.H6dfI/f/IKcEe.e0000000000000000000000000000000',
-             'ACTIVO', NOW())" >/dev/null
-sql "INSERT INTO usuario_rol (id_usuario, id_rol)
-     SELECT u.id_usuario, r.id_rol FROM usuario u, rol r
-      WHERE u.username = 'cajera.gate' AND r.nombre = 'CAJERO'" >/dev/null
+readonly HASH_FALSO='$2a$10$C6UzMDM.H6dfI/f/IKcEe.e0000000000000000000000000000000'
+
+crear_usuario() {
+    local nombre="$1" rol="$2"
+    sql "INSERT INTO usuario (username, email, password_hash, estado, fecha_creacion)
+         VALUES ('$nombre', '$nombre@ejemplo.invalid', '$HASH_FALSO', 'ACTIVO', NOW())
+         ON CONFLICT (username) DO UPDATE SET estado = 'ACTIVO'" >/dev/null
+    [[ -z "$rol" ]] && return
+    sql "INSERT INTO usuario_rol (id_usuario, id_rol)
+         SELECT u.id_usuario, r.id_rol FROM usuario u, rol r
+          WHERE u.username = '$nombre' AND r.nombre = '$rol'
+         ON CONFLICT DO NOTHING" >/dev/null
+}
+
+# Una plantilla operativa realista: quien cobra no es quien autoriza una
+# devolución, y ninguno de los dos administra el sistema.
+crear_usuario "cajera.gate"    "CAJERO"      # VENTA_CREAR + CAJA_OPERAR
+crear_usuario "supervisor.gate" "SUPERVISOR" # DEVOLUCION_CREAR
+crear_usuario "admin.gate"      "ADMIN"      # USUARIO_GESTIONAR + NCF_GESTIONAR
+
+# Un producto con existencia: sin stock vendible no hay piloto que valga, por
+# mucho que todo lo demás esté configurado.
+sql "INSERT INTO categoria (nombre, descripcion, estado, fecha_creacion)
+     VALUES ('Categoría Gate', 'Prueba del gate', 'ACTIVO', NOW())
+     ON CONFLICT DO NOTHING" >/dev/null
+sql "INSERT INTO marca (nombre, descripcion, estado, fecha_creacion)
+     VALUES ('Marca Gate', 'Prueba del gate', 'ACTIVO', NOW())
+     ON CONFLICT DO NOTHING" >/dev/null
+sql "INSERT INTO producto (sku, nombre, descripcion, precio_venta, precio_venta_mayor,
+         costo, tasa_itbis, cantidad_minima_mayor, estado, id_categoria, id_marca, fecha_creacion)
+     VALUES ('GATE-PROD-001', 'Producto del gate', 'Prueba del gate',
+             118.00, 118.00, 60.00, 18.00, 1, 'ACTIVO',
+             (SELECT id_categoria FROM categoria WHERE nombre = 'Categoría Gate'),
+             (SELECT id_marca FROM marca WHERE nombre = 'Marca Gate'), NOW())
+     ON CONFLICT (sku) DO UPDATE SET estado = 'ACTIVO'" >/dev/null
+
+restaurar_stock() {
+    sql "INSERT INTO existencia (id_producto, id_almacen, cantidad_actual, cantidad_minima, fecha_creacion)
+         SELECT p.id_producto, a.id_almacen, 10, 1, NOW()
+           FROM producto p, almacen a
+          WHERE p.sku = 'GATE-PROD-001' AND a.nombre = 'Almacén Gate'
+         ON CONFLICT (id_producto, id_almacen) DO UPDATE SET cantidad_actual = 10" >/dev/null
+}
+restaurar_stock
 
 sembrar_resoluciones() {
     sql "DELETE FROM resolucion_ncf WHERE tipo_ncf IN ('B02','B04')" >/dev/null
@@ -143,7 +180,7 @@ sembrar_resoluciones() {
             1, 10000, 1, CURRENT_DATE + 365, 'ACTIVO', NOW())" >/dev/null
 }
 sembrar_resoluciones
-echo "almacén, caja, usuario habilitado y resoluciones B02/B04 sembrados"
+echo "almacén, caja, usuarios con permisos, stock y resoluciones B02/B04 sembrados"
 
 # ── Preparación: servidor de sondas ───────────────────────────────────
 
@@ -184,18 +221,26 @@ checksum_de() {
 }
 
 readonly DUMP="${BASE}-$(date -u +%Y%m%dT%H%M%SZ).dump"
+readonly PLANTILLA_DUMP="$TEMPORAL/plantilla.dump"
+
+# Un dump de PostgreSQL de verdad, no un archivo de texto: el gate tiene que
+# poder distinguir un respaldo restaurable de cualquier cosa que lleve el sufijo
+# correcto y un checksum bien calculado. Se genera una sola vez y se copia.
+pg_dump --host="$HOST" --port="$PUERTO" --username="$USUARIO" --dbname="$BASE" \
+        --no-password --format=custom --compress=9 --no-owner --no-acl \
+        --file="$PLANTILLA_DUMP" \
+    || fallar "no se pudo generar el dump de plantilla para las pruebas."
+pg_restore --list "$PLANTILLA_DUMP" >/dev/null \
+    || fallar "el dump de plantilla no es legible; la suite no probaría nada."
 
 sembrar_backups() {
     rm -f "$BACKUPS_LOCALES"/* "$BACKUPS_EXTERNOS"/*
-    # No es un dump de verdad: el gate comprueba antigüedad e integridad del
-    # archivo, no que PostgreSQL sepa leerlo. Eso ya lo hace backup-postgres.sh
-    # al publicarlo y restore-postgres.sh al consumirlo.
-    printf 'dump sintético del gate %s\n' "$SUFIJO" > "$BACKUPS_LOCALES/$DUMP"
+    cp "$PLANTILLA_DUMP" "$BACKUPS_LOCALES/$DUMP"
     checksum_de "$BACKUPS_LOCALES/$DUMP"
     cp "$BACKUPS_LOCALES/$DUMP" "$BACKUPS_LOCALES/$DUMP.sha256" "$BACKUPS_EXTERNOS/"
 }
 sembrar_backups
-echo "backup local y copia externa: $DUMP"
+echo "backup local y copia externa: $DUMP ($(pg_restore --list "$PLANTILLA_DUMP" | grep -cvE '^;|^[[:space:]]*$') objetos)"
 
 # ── Ejecución del gate ────────────────────────────────────────────────
 
@@ -210,6 +255,12 @@ ENTORNO_BASE=(
     BACKUP_DIR="$BACKUPS_LOCALES"
     BACKUP_EXTERNO_DIR="$BACKUPS_EXTERNOS"
     MIGRACIONES_DIR="$MIGRACIONES"
+    # Los dos directorios de esta suite son mktemp -d y viven en el mismo disco.
+    # En el piloto eso es exactamente el fallo que hay que impedir —un punto de
+    # montaje desmontado deja la «copia externa» junto a la base—, así que la
+    # excepción se pide por su nombre y solo aquí. Hay un escenario más abajo
+    # que comprueba que sin ella el gate rechaza.
+    BACKUP_EXTERNO_PERMITIR_MISMO_FILESYSTEM="si"
 )
 
 ejecutar_gate() {
@@ -344,9 +395,72 @@ sql "UPDATE caja SET estado = 'ACTIVO'" >/dev/null
 
 # El 'admin' que deja V35 tiene el centinela LOCKED:: y no puede iniciar sesión:
 # una base donde solo queda esa cuenta no tiene a nadie que pueda vender.
-sql "UPDATE usuario SET estado = 'INACTIVO' WHERE username = 'cajera.gate'" >/dev/null
+sql "UPDATE usuario SET estado = 'INACTIVO'
+      WHERE username IN ('cajera.gate','supervisor.gate','admin.gate')" >/dev/null
 debe_fallar_con "sin usuarios habilitados se rechaza" "usuario"
-sql "UPDATE usuario SET estado = 'ACTIVO' WHERE username = 'cajera.gate'" >/dev/null
+sql "UPDATE usuario SET estado = 'ACTIVO'
+      WHERE username IN ('cajera.gate','supervisor.gate','admin.gate')" >/dev/null
+
+# Sin stock no se puede vender: eso no es un aviso, es un piloto que no abre.
+sql "UPDATE existencia SET cantidad_actual = 0" >/dev/null
+debe_fallar_con "sin stock vendible se rechaza" "stock"
+restaurar_stock
+
+# ── Escenarios: permisos efectivos para operar ────────────────────────
+#
+# Un usuario activo con rol asignado no basta. Cuatro cuentas de
+# AUXILIAR_INVENTARIO son cuatro cuentas que no pueden abrir caja, ni cobrar, ni
+# autorizar una devolución. El gate mira lo que la gente puede HACER.
+
+paso "Permisos efectivos para operar"
+
+quitar_permiso_de_rol() {
+    sql "DELETE FROM rol_permiso rp USING permiso p, rol r
+          WHERE rp.id_permiso = p.id_permiso AND rp.id_rol = r.id_rol
+            AND p.nombre_clave = '$1'" >/dev/null
+}
+reponer_permiso_en_rol() {
+    sql "INSERT INTO rol_permiso (id_rol, id_permiso)
+         SELECT r.id_rol, p.id_permiso FROM rol r, permiso p
+          WHERE r.nombre = '$2' AND p.nombre_clave = '$1'
+         ON CONFLICT DO NOTHING" >/dev/null
+}
+
+# Nadie puede abrir turno: la caja no se abre y no se vende nada.
+quitar_permiso_de_rol "CAJA_OPERAR"
+debe_fallar_con "sin nadie que pueda operar caja se rechaza" "CAJA_OPERAR"
+for rol in ADMIN SUPERVISOR CAJERO; do reponer_permiso_en_rol "CAJA_OPERAR" "$rol"; done
+
+quitar_permiso_de_rol "VENTA_CREAR"
+debe_fallar_con "sin nadie que pueda vender se rechaza" "VENTA_CREAR"
+for rol in ADMIN SUPERVISOR CAJERO; do reponer_permiso_en_rol "VENTA_CREAR" "$rol"; done
+
+# Sin nadie que pueda crear devoluciones, la B04 que tanto costó dar de alta no
+# la puede emitir ninguna persona del turno.
+quitar_permiso_de_rol "DEVOLUCION_CREAR"
+debe_fallar_con "sin nadie que pueda crear devoluciones se rechaza" "DEVOLUCION_CREAR"
+for rol in ADMIN SUPERVISOR; do reponer_permiso_en_rol "DEVOLUCION_CREAR" "$rol"; done
+
+# Un permiso concedido directamente vale igual que uno heredado del rol: el
+# gate no puede exigir que la tienda organice sus roles de una forma concreta.
+sql "DELETE FROM usuario_rol ur USING usuario u, rol r
+      WHERE ur.id_usuario = u.id_usuario AND ur.id_rol = r.id_rol
+        AND u.username = 'supervisor.gate' AND r.nombre = 'SUPERVISOR'" >/dev/null
+quitar_permiso_de_rol "DEVOLUCION_CREAR"
+sql "INSERT INTO usuario_permiso (id_usuario, id_permiso)
+     SELECT u.id_usuario, p.id_permiso FROM usuario u, permiso p
+      WHERE u.username = 'supervisor.gate' AND p.nombre_clave = 'DEVOLUCION_CREAR'
+     ON CONFLICT DO NOTHING" >/dev/null
+debe_aprobar "un permiso directo cuenta igual que uno heredado del rol"
+sql "DELETE FROM usuario_permiso" >/dev/null
+for rol in ADMIN SUPERVISOR; do reponer_permiso_en_rol "DEVOLUCION_CREAR" "$rol"; done
+crear_usuario "supervisor.gate" "SUPERVISOR"
+
+# Sin administrador operativo no hay quien dé de alta la próxima resolución
+# cuando la B02 se agote a mitad del piloto.
+sql "UPDATE usuario SET estado = 'INACTIVO' WHERE username = 'admin.gate'" >/dev/null
+debe_fallar_con "sin administrador operativo se rechaza" "administrador"
+sql "UPDATE usuario SET estado = 'ACTIVO' WHERE username = 'admin.gate'" >/dev/null
 
 # ── Escenarios: resoluciones NCF ──────────────────────────────────────
 
@@ -403,6 +517,28 @@ rm -f "$BACKUPS_LOCALES/$DUMP.sha256"
 debe_fallar_con "un backup sin checksum se rechaza" "checksum"
 sembrar_backups
 
+# El caso que un checksum no puede ver: el archivo llegó entero, es exactamente
+# el que se respaldó… y no es un dump. Un .sha256 bien calculado sobre basura es
+# basura verificada. Solo pg_restore --list distingue un respaldo restaurable de
+# cualquier cosa con el sufijo correcto.
+paso "El backup tiene que ser restaurable, no solo íntegro"
+
+rm -f "$BACKUPS_LOCALES"/* "$BACKUPS_EXTERNOS"/*
+printf 'esto no es un dump de PostgreSQL, pero su checksum cuadra\n' > "$BACKUPS_LOCALES/$DUMP"
+checksum_de "$BACKUPS_LOCALES/$DUMP"
+cp "$BACKUPS_LOCALES/$DUMP" "$BACKUPS_LOCALES/$DUMP.sha256" "$BACKUPS_EXTERNOS/"
+debe_fallar_con "un backup que no es un dump se rechaza pese al checksum válido" "restaurable"
+sembrar_backups
+
+# Un dump truncado a la mitad conserva la cabecera pero pierde la tabla de
+# contenidos: pasa por «archivo con pinta de dump» y no se puede restaurar.
+rm -f "$BACKUPS_LOCALES"/* "$BACKUPS_EXTERNOS"/*
+head -c 200 "$PLANTILLA_DUMP" > "$BACKUPS_LOCALES/$DUMP"
+checksum_de "$BACKUPS_LOCALES/$DUMP"
+cp "$BACKUPS_LOCALES/$DUMP" "$BACKUPS_LOCALES/$DUMP.sha256" "$BACKUPS_EXTERNOS/"
+debe_fallar_con "un dump truncado se rechaza" "restaurable"
+sembrar_backups
+
 # ── Escenarios: copia externa ─────────────────────────────────────────
 
 paso "Copia externa"
@@ -415,8 +551,47 @@ printf 'corrupción en tránsito\n' >> "$BACKUPS_EXTERNOS/$DUMP"
 debe_fallar_con "una copia externa corrupta se rechaza" "checksum"
 sembrar_backups
 
+# El sidecar de la copia externa no puede darse por bueno solo porque exista:
+# restore-postgres.sh lo va a verificar de verdad el día del incidente, y
+# descubrir entonces que está vacío es descubrirlo con la tienda parada.
+: > "$BACKUPS_EXTERNOS/$DUMP.sha256"
+debe_fallar_con "un sidecar externo vacío se rechaza" "checksum"
+sembrar_backups
+
+printf '%s  %s\n' \
+    "0000000000000000000000000000000000000000000000000000000000000000" \
+    "$DUMP" > "$BACKUPS_EXTERNOS/$DUMP.sha256"
+debe_fallar_con "un sidecar externo alterado se rechaza" "checksum"
+sembrar_backups
+
+rm -f "$BACKUPS_EXTERNOS/$DUMP.sha256"
+debe_fallar_con "una copia externa sin sidecar se rechaza" "checksum"
+sembrar_backups
+
+# La copia externa puede ser un dump íntegro y verificable… de otro respaldo.
+# El gate compara contra el dump local que dice acompañar.
+rm -f "$BACKUPS_EXTERNOS"/*
+pg_dump --host="$HOST" --port="$PUERTO" --username="$USUARIO" --dbname="$BASE" \
+        --no-password --format=custom --no-owner --no-acl \
+        --file="$BACKUPS_EXTERNOS/$DUMP" 2>/dev/null
+checksum_de "$BACKUPS_EXTERNOS/$DUMP"
+debe_fallar_con "una copia externa que es otro dump distinto se rechaza" "checksum"
+sembrar_backups
+
 debe_fallar_con "sin destino externo configurado se rechaza" "BACKUP_EXTERNO_DIR" \
     BACKUP_EXTERNO_DIR=""
+
+# ── Escenarios: la copia externa tiene que estar fuera ────────────────
+#
+# El caso real: /mnt/respaldo-maxli existe porque es el punto de montaje, pero
+# el recurso remoto se desmontó. El directorio sigue ahí, escribible y vacío, y
+# la «copia externa» acaba en el mismo disco que la base. El servidor se pierde
+# entero y con él las dos copias.
+
+paso "La copia externa tiene que estar fuera del servidor"
+
+debe_fallar_con "un destino externo en el mismo sistema de archivos se rechaza" "sistema de archivos" \
+    BACKUP_EXTERNO_PERMITIR_MISMO_FILESYSTEM=""
 
 # ── Escenario verde ───────────────────────────────────────────────────
 

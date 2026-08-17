@@ -147,13 +147,57 @@ informar "Marcador insertado: $MARCADOR"
 
 # ── Backup ────────────────────────────────────────────────────────────
 
+paso "La publicación externa no deja un dump sin su checksum"
+# Si el segundo paso de la publicación falla, no puede quedar un .dump con
+# aspecto de respaldo bueno y sin forma de verificarlo: quien lo encuentre
+# meses después no tendrá manera de saber que está a medias.
+#
+# Para provocar ese fallo se ocupa con un directorio el nombre exacto que tendrá
+# el sidecar. El sello va por segundos, así que se predice y se reintenta si el
+# reloj cambió a mitad; tres intentos bastan de sobra.
+publicacion_interrumpida="no"
+for _ in 1 2 3; do
+    sello_previsto="$(date -u +%Y%m%dT%H%M%SZ)"
+    trampa="$DIRECTORIO_EXTERNO/${BASE_ORIGEN}-${sello_previsto}.dump.sha256"
+    mkdir -p "$trampa"
+
+    if DB_URL="$(url_de "$BASE_ORIGEN")" "$DIRECTORIO_OPS/backup-postgres.sh" \
+            "$DIRECTORIO_BACKUPS" --externo "$DIRECTORIO_EXTERNO" \
+            --exigir-externo --permitir-mismo-filesystem >/dev/null 2>&1; then
+        # El reloj cruzó el segundo y la trampa no llegó a interceptar nada.
+        rm -rf "$DIRECTORIO_EXTERNO"/* "$DIRECTORIO_BACKUPS"/*
+        continue
+    fi
+
+    publicacion_interrumpida="si"
+    break
+done
+[[ "$publicacion_interrumpida" == "si" ]] \
+    || fallar "no se pudo interceptar la publicación externa en tres intentos."
+
+for publicado in "$DIRECTORIO_EXTERNO"/*.dump; do
+    [[ -f "$publicado" ]] || continue
+    fallar "quedó publicado $publicado pese a fallar la publicación del checksum."
+done
+[[ -z "$(ls -1 "$DIRECTORIO_EXTERNO"/*.parcial 2>/dev/null)" ]] \
+    || fallar "quedó un .parcial tras la publicación interrumpida."
+informar "Publicación interrumpida: ningún dump publicado sin checksum, ni restos .parcial."
+
+# Y la ejecución siguiente se recupera sola, sin que nadie limpie a mano.
+rm -rf "$trampa"
+rm -f "$DIRECTORIO_BACKUPS"/*
+
 paso "Backup con ops/backup-postgres.sh y copia externa exigida"
 # --exigir-externo convierte la copia fuera del servidor en parte del contrato:
 # si el destino no está configurado o la copia no llega íntegra, el backup falla
 # en lugar de dejar un respaldo que solo existe en el disco que puede perderse.
+#
+# --permitir-mismo-filesystem porque los dos directorios del ensayo son mktemp -d
+# y comparten disco. En el piloto esa combinación es justo lo que hay que
+# impedir, así que la excepción se pide por su nombre y solo aquí.
 DB_URL="$(url_de "$BASE_ORIGEN")" "$DIRECTORIO_OPS/backup-postgres.sh" "$DIRECTORIO_BACKUPS" \
-    --externo "$DIRECTORIO_EXTERNO" --exigir-externo \
-    || fallar "el backup falló."
+    --externo "$DIRECTORIO_EXTERNO" --exigir-externo --permitir-mismo-filesystem \
+    || fallar "el backup falló, o no se recuperó de la publicación interrumpida anterior."
 
 archivo_dump="$(ls -1 "$DIRECTORIO_BACKUPS"/*.dump 2>/dev/null | head -1)"
 [[ -n "$archivo_dump" ]] || fallar "el backup no dejó ningún .dump en $DIRECTORIO_BACKUPS"
