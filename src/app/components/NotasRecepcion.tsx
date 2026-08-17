@@ -5,7 +5,7 @@ import {
 } from '@floating-ui/react-dom';
 import {
   Plus, X, Loader2, PackageCheck, Search, CheckCircle2, XCircle,
-  AlertTriangle, MoreVertical, Eye, FileText,
+  AlertTriangle, MoreVertical, Eye,
   ClipboardCheck, ClipboardX, Package, Calendar, Hash,
   ChevronLeft, ChevronRight, LayoutGrid, ShieldCheck, Clock, Save, RotateCcw, AlertCircle
 } from 'lucide-react';
@@ -50,10 +50,9 @@ interface RowMenuProps {
   onVerDetalles: () => void;
   onConfirmar: () => void;
   onRechazar: () => void;
-  onGenerarReporte: () => void;
 }
 
-function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onGenerarReporte }: RowMenuProps) {
+function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar }: RowMenuProps) {
   const [open, setOpen] = useState(false);
 
   const { refs, floatingStyles, update } = useFloating({
@@ -127,7 +126,6 @@ function RowMenu({ nota, onVerDetalles, onConfirmar, onRechazar, onGenerarReport
       </div>
 
       {mi(<Eye size={14} />,      'Ver detalles',    onVerDetalles)}
-      {mi(<FileText size={14} />, 'Generar reporte', onGenerarReporte)}
 
       {isPendiente && <div className="my-1.5 border-t border-border" />}
       {isPendiente && (
@@ -297,7 +295,7 @@ export default function NotasRecepcion() {
 
   const [detalleNota,  setDetalleNota]  = useState<NotaRecepcion | null>(null);
   const [confirmNota,  setConfirmNota]  = useState<{ id: number; accion: 'confirmar' | 'rechazar' } | null>(null);
-  const [reporteToast, setReporteToast] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const [showBuzonAlertas, setShowBuzonAlertas] = useState(false);
 
@@ -395,8 +393,8 @@ export default function NotasRecepcion() {
         if (count > 0) {
           setShowBuzonAlertas(true);
         } else {
-          setReporteToast('Recepción confirmada exitosamente');
-          setTimeout(() => setReporteToast(null), 3000);
+          setSuccessToast('Recepción confirmada exitosamente');
+          setTimeout(() => setSuccessToast(null), 3000);
         }
       }
       else {
@@ -406,11 +404,6 @@ export default function NotasRecepcion() {
     } catch (e: any) {
       alert(e.message || 'Error en la acción');
     } finally { setConfirmNota(null); }
-  };
-
-  const handleGenerarReporte = (n: NotaRecepcion) => {
-    setReporteToast(`Generando reporte NR-${String(n.idNotaRecepcion).padStart(4, '0')}...`);
-    setTimeout(() => setReporteToast(null), 3000);
   };
 
   const filtered = notas.filter(n =>
@@ -424,11 +417,11 @@ export default function NotasRecepcion() {
   return (
     <div className="h-full flex flex-col bg-background">
 
-      {/* Toast reporte */}
-      {reporteToast && (
+      {/* Toast de operación exitosa */}
+      {successToast && (
         <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-card border border-border shadow-2xl rounded-xl px-4 py-3 text-sm font-medium animate-in fade-in slide-in-from-bottom-4">
-          <Loader2 size={16} className="animate-spin text-primary" />
-          {reporteToast}
+          <CheckCircle2 size={16} className="text-emerald-600" />
+          {successToast}
         </div>
       )}
 
@@ -621,7 +614,6 @@ export default function NotasRecepcion() {
                             onVerDetalles={() => setDetalleNota(n)}
                             onConfirmar={() => setConfirmNota({ id: n.idNotaRecepcion, accion: 'confirmar' })}
                             onRechazar={() => setConfirmNota({ id: n.idNotaRecepcion, accion: 'rechazar' })}
-                                onGenerarReporte={() => handleGenerarReporte(n)}
                           />
                         </td>
                       </tr>

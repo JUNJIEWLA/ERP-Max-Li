@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { LogOut } from 'lucide-react';
 import {
-  LayoutDashboard,
   ShoppingCart,
   Package,
   Users,
@@ -11,7 +10,6 @@ import {
   Truck,
   BarChart3,
   Tag,
-  RotateCcw,
   Monitor,
   FileText,
   Wallet,
@@ -51,13 +49,10 @@ interface MenuSection {
 /**
  * Maps sidebar item IDs to their required permission (nombreClave).
  * Exported so App.tsx can check if the active view requires a permission.
- * Items not in this map (like 'dashboard') are always visible.
+ * Solo contiene vistas realmente implementadas y navegables.
  */
 export const PERMISSION_MAP: Record<string, string> = {
   pos: 'VENTA_CREAR',
-  'ventas-historial': 'VENTA_VER',
-  devoluciones: 'DEVOLUCION_CREAR',
-  'notas-credito': 'DEVOLUCION_CREAR',
   clientes: 'CLIENTE_GESTIONAR',
   productos: 'PRODUCTO_VER',
   existencias: 'INVENTARIO_VER',
@@ -71,7 +66,6 @@ export const PERMISSION_MAP: Record<string, string> = {
   proveedores: 'PROVEEDOR_GESTIONAR',
   'gastos-pagos-proveedor': 'COMPRA_GESTIONAR',
   'turnos-caja': 'CAJA_OPERAR',
-  'movimientos-caja': 'CAJA_GESTIONAR',
   'caja-chica': 'CAJA_GESTIONAR',
   usuarios: 'USUARIO_GESTIONAR',
   roles: 'ROL_GESTIONAR',
@@ -88,9 +82,6 @@ const menuSections: MenuSection[] = [
     icon: ShoppingCart,
     items: [
       { id: 'pos', label: 'Punto de Venta', icon: Monitor, requiredPermission: 'VENTA_CREAR' },
-      { id: 'ventas-historial', label: 'Historial de Ventas', icon: FileText, requiredPermission: 'VENTA_VER' },
-      { id: 'devoluciones', label: 'Devoluciones', icon: RotateCcw, requiredPermission: 'DEVOLUCION_CREAR' },
-      { id: 'notas-credito', label: 'Notas de Crédito', icon: Receipt, requiredPermission: 'DEVOLUCION_CREAR' },
     ]
   },
   {
@@ -139,7 +130,6 @@ const menuSections: MenuSection[] = [
     icon: CreditCard,
     items: [
       { id: 'turnos-caja', label: 'Turnos de Caja', icon: CreditCard, requiredPermission: 'CAJA_OPERAR' },
-      { id: 'movimientos-caja', label: 'Movimientos', icon: TrendingUp, requiredPermission: 'CAJA_GESTIONAR' },
       { id: 'caja-chica', label: 'Caja Chica', icon: Wallet, requiredPermission: 'CAJA_GESTIONAR' },
     ]
   },
@@ -158,8 +148,29 @@ const menuSections: MenuSection[] = [
   },
 ];
 
+/**
+ * Primera vista real que el usuario puede abrir, siguiendo el orden del menú.
+ * Devuelve null si no tiene ningún módulo asignado. Sustituye al antiguo
+ * dashboard como vista inicial y como destino al perder un permiso.
+ */
+export function primeraVistaPermitida(userPermisos: string[]): string | null {
+  for (const section of menuSections) {
+    for (const item of section.items) {
+      if (!item.requiredPermission || userPermisos.includes(item.requiredPermission)) {
+        return item.id;
+      }
+    }
+  }
+  return null;
+}
+
 export default function Sidebar({ activeView, onViewChange, username, userRoles = [], userPermisos = [], onLogout }: SidebarProps) {
-  const [expandedSections, setExpandedSections] = useState<string[]>(['ventas']);
+  // La vista inicial siempre pertenece a alguna sección: se abre esa para que el
+  // usuario vea dónde está.
+  const [expandedSections, setExpandedSections] = useState<string[]>(() => {
+    const seccionInicial = menuSections.find(s => s.items.some(i => i.id === activeView));
+    return [seccionInicial?.id ?? 'ventas'];
+  });
 
   // Filter sections and items based on user permissions
   const visibleSections = menuSections
@@ -192,20 +203,6 @@ export default function Sidebar({ activeView, onViewChange, username, userRoles 
 
       <nav className="flex-1 overflow-y-auto p-4">
         <ul className="space-y-1">
-          <li>
-            <button
-              onClick={() => onViewChange('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                activeView === 'dashboard'
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-              }`}
-            >
-              <LayoutDashboard size={20} />
-              <span>Dashboard</span>
-            </button>
-          </li>
-
           {visibleSections.map((section) => {
             const SectionIcon = section.icon;
             const isExpanded = expandedSections.includes(section.id);

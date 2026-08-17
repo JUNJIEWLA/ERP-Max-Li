@@ -1,14 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import Sidebar, { PERMISSION_MAP } from './components/Sidebar';
+import Sidebar, { PERMISSION_MAP, primeraVistaPermitida } from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './components/Dashboard';
-import Ventas from './components/Ventas';
 import Productos from './components/Productos';
 import Inventario from './components/Inventario';
 import TurnosCaja from './components/TurnosCaja';
 import CajaChica from './components/CajaChica';
 import Cajas from './components/Cajas';
-import Devoluciones from './components/Devoluciones';
 import SaleScreen from './components/pos/SaleScreen';
 import Almacenes from './components/Almacenes';
 import MovimientosInventario from './components/MovimientosInventario';
@@ -30,11 +27,7 @@ import Cupones from './components/Cupones';
 import { AUTH_EXPIRED_EVENT, authApi } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
-  dashboard: 'Dashboard',
   pos: 'Punto de Venta',
-  'ventas-historial': 'Historial de Ventas',
-  'notas-credito': 'Notas de Crédito',
-  devoluciones: 'Devoluciones',
   clientes: 'Gestión de Clientes',
   productos: 'Catálogo de Productos',
   existencias: 'Control de Existencias',
@@ -48,7 +41,6 @@ const viewTitles: Record<string, string> = {
   proveedores: 'Proveedores',
   'gastos-pagos-proveedor': 'Gastos / Pagos a Proveedores',
   'turnos-caja': 'Turnos de Caja',
-  'movimientos-caja': 'Movimientos de Caja',
   'caja-chica': 'Caja Chica',
   usuarios: 'Usuarios',
   roles: 'Roles',
@@ -58,8 +50,13 @@ const viewTitles: Record<string, string> = {
   'cajas-registradoras': 'Cajas Registradoras',
 };
 
+/** Vista vacía: el usuario está autenticado pero sin ningún módulo asignado. */
+const SIN_MODULOS = '';
+
 export default function App() {
-  const [activeView, setActiveView] = useState('dashboard');
+  // Sin sesión todavía no se conocen los permisos, así que no hay vista activa;
+  // se resuelve al iniciar sesión o al recuperar la sesión existente.
+  const [activeView, setActiveView] = useState(SIN_MODULOS);
   const [loginNotice, setLoginNotice] = useState('');
   // La sesión vive en una cookie HttpOnly: este código no puede inspeccionarla,
   // así que arranca sin sesión y se la pregunta al backend en el primer efecto.
@@ -80,7 +77,7 @@ export default function App() {
     setUserRoles([]);
     setUserPermisos([]);
     setRequiresPasswordChange(false);
-    setActiveView('dashboard');
+    setActiveView(SIN_MODULOS);
   }, []);
 
   useEffect(() => {
@@ -97,10 +94,12 @@ export default function App() {
     authApi.recuperarSesion().then(sesion => {
       if (cancelado) return;
       if (sesion) {
+        const permisos = sesion.permisos ?? [];
         setUsername(sesion.username);
         setUserRoles(sesion.roles ?? []);
-        setUserPermisos(sesion.permisos ?? []);
+        setUserPermisos(permisos);
         setRequiresPasswordChange(sesion.requiereCambioPassword);
+        setActiveView(primeraVistaPermitida(permisos) ?? SIN_MODULOS);
         setIsAuthenticated(true);
       }
       setSessionChecked(true);
@@ -115,6 +114,7 @@ export default function App() {
     setUserRoles(roles);
     setUserPermisos(permisos);
     setRequiresPasswordChange(requiresPwdChange);
+    setActiveView(primeraVistaPermitida(permisos) ?? SIN_MODULOS);
     setIsAuthenticated(true);
   };
 
@@ -143,10 +143,11 @@ export default function App() {
           newPermisos.some((p, i) => p !== ordenados[i]);
         if (!changed) return actuales;
 
-        // If the user is on a view they no longer have access to, redirect to dashboard
+        // Si el usuario está en una vista sobre la que perdió permiso, se le
+        // lleva a la primera vista real que todavía puede abrir.
         const requiredPerm = PERMISSION_MAP[activeViewRef.current];
         if (requiredPerm && !newPermisos.includes(requiredPerm)) {
-          setActiveView('dashboard');
+          setActiveView(primeraVistaPermitida(newPermisos) ?? SIN_MODULOS);
         }
         return newPermisos;
       });
@@ -191,12 +192,8 @@ export default function App() {
 
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard':
-        return <Dashboard />;
       case 'pos':
         return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} userRoles={userRoles} />;
-      case 'ventas-historial':
-        return <Ventas />;
       case 'productos':
         return <Productos />;
       case 'existencias':
@@ -217,8 +214,6 @@ export default function App() {
         return <CajaChica />;
       case 'cajas-registradoras':
         return <Cajas />;
-      case 'devoluciones':
-        return <Devoluciones />;
       case 'proveedores':
         return <Proveedores />;
       case 'clientes':
@@ -240,10 +235,15 @@ export default function App() {
       case 'cupones':
         return <Cupones />;
       default:
+        // Todas las opciones del menú tienen su `case`; aquí solo cae el usuario
+        // autenticado sin ningún módulo asignado.
         return (
-          <div className="p-6">
-            <h2>{viewTitles[activeView]}</h2>
-            <p className="text-muted-foreground mt-2">Esta sección está en desarrollo.</p>
+          <div className="p-6 h-full flex flex-col items-center justify-center text-center">
+            <h2 className="text-foreground">No tienes módulos asignados</h2>
+            <p className="text-muted-foreground mt-2 max-w-md">
+              Tu usuario no tiene permisos sobre ninguna sección del sistema.
+              Contacta al administrador para que te asigne un rol.
+            </p>
           </div>
         );
     }

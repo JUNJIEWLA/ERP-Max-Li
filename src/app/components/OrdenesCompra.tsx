@@ -10,7 +10,7 @@ import {
 import {
   Plus, X, Loader2, ShoppingCart, Search, ChevronDown, ChevronRight,
   Send, Ban, CheckCircle2, PackageCheck, Trash2,
-  MoreVertical, Eye, Pencil, FileText, AlertCircle, Clock,
+  MoreVertical, Eye, AlertCircle, Clock,
   ChevronLeft, LayoutGrid, ShieldCheck, DollarSign, Save, RotateCcw,
   Calendar, Building2, Package
 } from 'lucide-react';
@@ -53,14 +53,12 @@ function RetrasoOcBadge({ diasRetraso }: { diasRetraso: number | null }) {
 interface RowMenuProps {
   orden: OrdenCompra;
   onVerDetalles: () => void;
-  onEditar: () => void;
   onEnviar: () => void;
   onForzarCierre: () => void;
   onAnular: () => void;
-  onGenerarReporte: () => void;
 }
 
-function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onAnular, onGenerarReporte }: RowMenuProps) {
+function RowMenu({ orden, onVerDetalles, onEnviar, onForzarCierre, onAnular }: RowMenuProps) {
   const [open, setOpen] = useState(false);
 
   const { refs, floatingStyles, update } = useFloating({
@@ -120,7 +118,6 @@ function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onA
     );
   };
 
-  const canEdit   = orden.estado === 'ENVIADA';
   const canEnviar = orden.estado === 'BORRADOR';
   const canForzar = ['ENVIADA', 'RECEPCION_PARCIAL'].includes(orden.estado);
   const canAnular = ['BORRADOR', 'ENVIADA'].includes(orden.estado);
@@ -141,8 +138,6 @@ function RowMenu({ orden, onVerDetalles, onEditar, onEnviar, onForzarCierre, onA
       </div>
 
       {menuItem(<Eye size={14} />,      'Ver detalles',    onVerDetalles)}
-      {menuItem(<FileText size={14} />, 'Generar reporte', onGenerarReporte)}
-      {canEdit && menuItem(<Pencil size={14} />, 'Editar orden', onEditar, 'info')}
 
       {hasActions && <div className="my-1.5 border-t border-border" />}
       {hasActions && (
@@ -266,7 +261,6 @@ export default function OrdenesCompra() {
 
 
   const [confirmAction, setConfirmAction] = useState<{ id: number; accion: 'anular' | 'forzar-cierre' } | null>(null);
-  const [reporteToast, setReporteToast] = useState<string | null>(null);
 
   const fetchOrdenes = useCallback(async () => {
     setLoading(true);
@@ -346,11 +340,6 @@ export default function OrdenesCompra() {
     } finally { setConfirmAction(null); }
   };
 
-  const handleGenerarReporte = (orden: OrdenCompra) => {
-    setReporteToast(`Generando reporte para OC-${String(orden.idOrdenCompra).padStart(4, '0')}...`);
-    setTimeout(() => setReporteToast(null), 3000);
-  };
-
   const filtered = ordenes.filter(o =>
     o.nombreProveedor.toLowerCase().includes(search.toLowerCase()) ||
     String(o.idOrdenCompra).includes(search)
@@ -361,14 +350,6 @@ export default function OrdenesCompra() {
 
   return (
     <div className="h-full flex flex-col bg-background">
-
-      {/* Toast reporte */}
-      {reporteToast && (
-        <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-card border border-border shadow-2xl rounded-xl px-4 py-3 text-sm font-medium animate-in fade-in slide-in-from-bottom-4">
-          <Loader2 size={16} className="animate-spin text-primary" />
-          {reporteToast}
-        </div>
-      )}
 
       {/* ── Page Header ─────────────────────────────── */}
       <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-border bg-card">
@@ -510,12 +491,10 @@ export default function OrdenesCompra() {
                           <RowMenu
                             orden={o}
                             onVerDetalles={() => setDetalleOrden(o)}
-                            onEditar={() => {}}
                             onEnviar={() => handleEstado(o.idOrdenCompra, 'enviar')}
 
                             onForzarCierre={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'forzar-cierre' })}
                             onAnular={() => setConfirmAction({ id: o.idOrdenCompra, accion: 'anular' })}
-                            onGenerarReporte={() => handleGenerarReporte(o)}
                           />
                         </td>
                       </tr>

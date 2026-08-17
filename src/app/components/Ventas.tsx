@@ -1,4 +1,4 @@
-import { Plus, Filter, Download, Eye, Edit, Trash2 } from 'lucide-react';
+import { Plus, Filter, Eye, Edit, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 const ventasData = [
@@ -87,11 +87,6 @@ export default function Ventas() {
               className="px-3 py-2 bg-input-background border border-border rounded-lg"
             />
           </div>
-
-          <button className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-2 hover:opacity-90">
-            <Download size={18} />
-            Exportar
-          </button>
         </div>
 
         <div className="overflow-x-auto">
