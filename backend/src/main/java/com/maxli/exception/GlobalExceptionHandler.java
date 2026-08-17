@@ -33,6 +33,11 @@ public class GlobalExceptionHandler {
         return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
+    @ExceptionHandler(ParametroInvalidoException.class)
+    public ResponseEntity<Map<String, Object>> handleParametroInvalido(ParametroInvalidoException ex) {
+        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     /**
      * Login frenado por intentos fallidos: 429 con Retry-After, en el mismo
      * formato JSON que los 401/403 para que el frontend maneje un solo contrato.

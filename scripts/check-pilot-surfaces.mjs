@@ -32,7 +32,6 @@ const NotasRecepcion = read('src/app/components/NotasRecepcion.tsx');
 const VISTAS_INACCESIBLES = [
   'src/app/components/Dashboard.tsx',
   'src/app/components/Devoluciones.tsx',
-  'src/app/components/Ventas.tsx',
 ];
 
 /**
@@ -115,29 +114,47 @@ test('App no importa ni renderiza Devoluciones', () => {
   );
 });
 
-// ─── 2 bis. Historial de Ventas (datos estáticos y controles sin efecto) ──
-test('el Sidebar no ofrece Historial de Ventas', () => {
+// ─── 2 bis. Historial de Ventas (vista real, de solo lectura) ─────────────
+test('el Historial de Ventas está en el menú tras VENTA_VER', () => {
   assert.ok(
-    !sidebarItemIds().includes('ventas-historial'),
-    "Sidebar todavía expone 'ventas-historial'"
+    sidebarItemIds().includes('ventas-historial'),
+    "Sidebar ya no expone 'ventas-historial'"
   );
-  assert.ok(
-    !/'ventas-historial'/.test(Sidebar),
-    "Sidebar todavía referencia 'ventas-historial' (p. ej. en PERMISSION_MAP)"
+  assert.match(
+    Sidebar,
+    /'ventas-historial': 'VENTA_VER'/,
+    "PERMISSION_MAP no protege 'ventas-historial' con VENTA_VER"
+  );
+  assert.match(
+    Sidebar,
+    /id: 'ventas-historial'[^}]*requiredPermission: 'VENTA_VER'/,
+    "el item del menú no exige VENTA_VER"
   );
 });
 
-test('App no importa ni renderiza el Historial de Ventas', () => {
-  assert.ok(!/import\s+Ventas\s+from/.test(App), 'App.tsx todavía importa Ventas');
-  assert.ok(!/<Ventas\s*\/>/.test(App), 'App.tsx todavía renderiza <Ventas />');
+test('App importa y renderiza el Historial de Ventas', () => {
+  assert.match(App, /import\s+Ventas\s+from/, 'App.tsx no importa Ventas');
+  assert.match(App, /<Ventas\s*\/>/, 'App.tsx no renderiza <Ventas />');
   assert.ok(
-    !appViewCases().includes('ventas-historial'),
-    "App.tsx todavía tiene la ruta 'ventas-historial'"
+    appViewCases().includes('ventas-historial'),
+    "App.tsx no tiene la ruta 'ventas-historial'"
   );
-  assert.ok(
-    !/'ventas-historial'/.test(App),
-    "App.tsx todavía referencia 'ventas-historial' (p. ej. en viewTitles)"
-  );
+});
+
+test('el Historial de Ventas lee del backend, no de datos estáticos', () => {
+  const Ventas = read('src/app/components/Ventas.tsx');
+  assert.match(Ventas, /ventasApi/, 'Ventas.tsx no consulta ventasApi');
+  assert.ok(!/const\s+ventasData\s*=/.test(Ventas), 'Ventas.tsx todavía define ventasData estático');
+});
+
+test('el Historial de Ventas es de solo lectura', () => {
+  const Ventas = read('src/app/components/Ventas.tsx');
+  for (const prohibido of ['Nueva Venta', 'Editar', 'Eliminar', 'Exportar', 'Anular']) {
+    assert.ok(
+      !new RegExp(prohibido).test(Ventas),
+      `Ventas.tsx ofrece una acción que el piloto no implementa: "${prohibido}"`
+    );
+  }
 });
 
 // ─── 3. Vista inicial y fallback ──────────────────────────────────────────

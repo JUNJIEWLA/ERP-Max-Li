@@ -1359,6 +1359,8 @@ export interface DetalleVentaResponse {
   descuentoOferta: number;
   ofertaAplicada: string | null;
   importe: number;
+  /** Descuento global + cupón ya prorrateados sobre esta línea. */
+  descuentoProrrateado: number;
   baseImponible: number;
   itbisLinea: number;
 }
@@ -1375,8 +1377,11 @@ export interface VentaResponse {
   idVenta: number;
   idTurnoCaja: number;
   cajeroNombre: string;
+  idAlmacen: number | null;
+  almacenNombre: string | null;
   idCliente: number | null;
   clienteNombre: string | null;
+  clienteRncCedula: string | null;
   nombreClienteTemporal: string | null;
   rncTemporal: string | null;
   numeroControl: string;
@@ -1398,6 +1403,35 @@ export interface VentaResponse {
   ingresos: IngresoVentaResponse[];
 }
 
+/**
+ * Fila del Historial de Ventas. El listado no trae líneas ni ingresos: el
+ * detalle completo se pide con `ventasApi.buscarPorId`.
+ */
+export interface VentaResumen {
+  idVenta: number;
+  numeroControl: string;
+  fechaVenta: string;
+  ncf: string | null;
+  tipoNcf: string | null;
+  /** Cliente registrado o, si fue de paso, el nombre temporal capturado. */
+  clienteNombre: string | null;
+  cajeroNombre: string;
+  metodoPagoPrincipal: string;
+  total: number;
+  estado: string;
+}
+
+/** Filtros del historial. Los campos vacíos no viajan: el backend los ignoraría igual. */
+export interface VentaFiltros {
+  q?: string;
+  /** YYYY-MM-DD */
+  fechaDesde?: string;
+  /** YYYY-MM-DD, inclusiva durante todo el día. */
+  fechaHasta?: string;
+  cajero?: string;
+  metodoPago?: string;
+}
+
 // ── API: Ventas POS ──────────────────────────────────────
 
 export const ventasApi = {
@@ -1409,9 +1443,14 @@ export const ventasApi = {
   procesar: (request: CrearVentaRequest) =>
     post<VentaResponse>('/ventas', request),
 
-  /** Listar ventas con paginación. */
-  listar: (page = 0, size = 20) =>
-    get<PageResponse<VentaResponse>>('/ventas', { page, size, sort: 'idVenta,desc' }),
+  /** Historial de ventas: filtros y paginación resueltos en el backend. */
+  listar: (filtros: VentaFiltros = {}, page = 0, size = 20) => {
+    const params: Record<string, string | number> = { page, size };
+    for (const [clave, valor] of Object.entries(filtros)) {
+      if (valor) params[clave] = valor;
+    }
+    return get<PageResponse<VentaResumen>>('/ventas', params);
+  },
 
   /** Buscar una venta por ID. */
   buscarPorId: (id: number) =>

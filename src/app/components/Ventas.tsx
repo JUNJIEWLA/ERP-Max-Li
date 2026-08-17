@@ -1,145 +1,623 @@
-import { Plus, Filter, Eye, Edit, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Receipt, Search, Eye, Loader2, AlertTriangle, X, Printer, RotateCcw,
+} from 'lucide-react';
+import {
+  ventasApi, type DetalleVentaResponse, type VentaFiltros, type VentaResumen, type VentaResponse,
+} from '../../imports/api';
 
-const ventasData = [
-  {
-    id: 'VT-2026-005',
-    cliente: 'Luis Fernández',
-    fecha: '01/05/2026 13:30',
-    comprobante: 'B01-00001238',
-    total: 'RD$ 5,120.00',
-    estado: 'Completada',
-    tipoPago: 'Tarjeta'
-  },
-  {
-    id: 'VT-2026-004',
-    cliente: 'Ana Martínez',
-    fecha: '01/05/2026 12:05',
-    comprobante: 'B01-00001237',
-    total: 'RD$ 850.00',
-    estado: 'Completada',
-    tipoPago: 'Efectivo'
-  },
-  {
-    id: 'VT-2026-003',
-    cliente: 'Carlos Rodríguez',
-    fecha: '01/05/2026 11:42',
-    comprobante: 'B01-00001236',
-    total: 'RD$ 3,890.00',
-    estado: 'Pendiente',
-    tipoPago: 'Transferencia'
-  },
-  {
-    id: 'VT-2026-002',
-    cliente: 'María González',
-    fecha: '01/05/2026 10:15',
-    comprobante: 'B01-00001235',
-    total: 'RD$ 1,230.50',
-    estado: 'Completada',
-    tipoPago: 'Tarjeta'
-  },
-  {
-    id: 'VT-2026-001',
-    cliente: 'Juan Pérez',
-    fecha: '01/05/2026 09:23',
-    comprobante: 'B01-00001234',
-    total: 'RD$ 2,450.00',
-    estado: 'Completada',
-    tipoPago: 'Efectivo'
-  },
-];
+// ── Formato ──────────────────────────────────────────────
 
-export default function Ventas() {
-  const [selectedEstado, setSelectedEstado] = useState('Todas');
+const monedaDO = new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' });
+
+const fmtMoneda = (v: number | null | undefined) => monedaDO.format(v ?? 0);
+
+const fmtFechaHora = (iso: string) =>
+  new Date(iso).toLocaleString('es-DO', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
+/** Una venta sin cliente identificado es, fiscalmente, consumidor final. */
+const nombreCliente = (nombre: string | null) => nombre || 'Consumidor Final';
+
+/** Convierte el porcentaje de línea y los demás descuentos a un monto real. */
+const descuentoMonetario = (detalle: DetalleVentaResponse) =>
+  Math.max(0, detalle.precioUnitario * detalle.cantidad - detalle.importe)
+    + detalle.descuentoProrrateado;
+
+const METODOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'CHEQUE', 'CUPON', 'MIXTO'];
+
+const FILTROS_VACIOS: VentaFiltros = {
+  q: '', fechaDesde: '', fechaHasta: '', cajero: '', metodoPago: '',
+};
+
+const PAGE_SIZE = 15;
+
+// ── Vista imprimible (COPIA) ─────────────────────────────
+
+/**
+ * Reimpresión del comprobante a partir de la venta ya persistida.
+ *
+ * No recalcula nada ni pide un NCF nuevo: todos los importes y el propio NCF
+ * salen de la respuesta de `GET /api/ventas/{id}`, y el documento se rotula
+ * como COPIA para que no pueda confundirse con el original entregado en caja.
+ * Los datos de encabezado son los que el sistema guardó (almacén, cajero,
+ * turno); no se inventa RNC ni dirección que no exista en configuración.
+ */
+function ComprobanteImprimible({ venta, onVolver }: { venta: VentaResponse; onVolver: () => void }) {
+  const rnc = venta.clienteRncCedula || venta.rncTemporal;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2>Gestión de Ventas</h2>
-          <p className="text-muted-foreground mt-1">Administra todas las transacciones de venta</p>
+    <>
+      {/* Al imprimir solo sobrevive el comprobante: Sidebar, Header, el fondo
+          del modal y los botones desaparecen. */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #ticket-reimpresion, #ticket-reimpresion * { visibility: visible !important; }
+          #ticket-reimpresion {
+            position: absolute; left: 0; top: 0; width: 100%;
+            box-shadow: none; border: 0; max-height: none; overflow: visible;
+          }
+          .no-imprimir { display: none !important; }
+        }
+      `}</style>
+
+      <div id="ticket-reimpresion" className="bg-white text-black p-6 text-sm overflow-y-auto">
+        <div className="text-center border-b border-black/30 pb-3 mb-3">
+          <p className="font-bold text-base">{venta.almacenNombre || 'Plaza Max'}</p>
+          <p className="text-xs uppercase tracking-widest mt-1 font-bold">COPIA — Reimpresión</p>
+          <p className="text-[11px] mt-0.5">Documento sin valor de original</p>
         </div>
-        <button className="bg-primary text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
-          <Plus size={20} />
-          Nueva Venta
-        </button>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3">
+          <p><span className="font-semibold">N° Control:</span> {venta.numeroControl}</p>
+          <p><span className="font-semibold">Fecha:</span> {fmtFechaHora(venta.fechaVenta)}</p>
+          <p><span className="font-semibold">NCF:</span> {venta.ncf || 'Sin NCF'}{venta.tipoNcf ? ` (${venta.tipoNcf})` : ''}</p>
+          <p><span className="font-semibold">Cajero:</span> {venta.cajeroNombre}</p>
+          <p><span className="font-semibold">Cliente:</span> {nombreCliente(venta.clienteNombre || venta.nombreClienteTemporal)}</p>
+          {rnc && <p><span className="font-semibold">RNC/Cédula:</span> {rnc}</p>}
+          <p><span className="font-semibold">Estado:</span> {venta.estado}</p>
+        </div>
+
+        <table className="w-full text-xs border-t border-black/30">
+          <thead>
+            <tr className="border-b border-black/30">
+              <th className="py-1 text-left">SKU</th>
+              <th className="py-1 text-left">Descripción</th>
+              <th className="py-1 text-right">Cant.</th>
+              <th className="py-1 text-right">Precio</th>
+              <th className="py-1 text-right">ITBIS</th>
+              <th className="py-1 text-right">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            {venta.detalles.map(d => (
+              <tr key={d.idDetalleVenta} className="border-b border-black/10">
+                <td className="py-1 font-mono">{d.skuProducto}</td>
+                <td className="py-1">{d.nombreProducto}</td>
+                <td className="py-1 text-right">{d.cantidad}</td>
+                <td className="py-1 text-right">{fmtMoneda(d.precioUnitario)}</td>
+                <td className="py-1 text-right">{fmtMoneda(d.itbisLinea)}</td>
+                <td className="py-1 text-right">{fmtMoneda(d.importe)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="mt-3 ml-auto w-full max-w-xs text-xs space-y-0.5">
+          <div className="flex justify-between"><span>Subtotal</span><span>{fmtMoneda(venta.subtotal)}</span></div>
+          <div className="flex justify-between"><span>Descuento</span><span>{fmtMoneda(venta.descuentoTotal)}</span></div>
+          {venta.codigoCupon && (
+            <div className="flex justify-between">
+              <span>Cupón {venta.codigoCupon}</span><span>{fmtMoneda(venta.descuentoCupon)}</span>
+            </div>
+          )}
+          <div className="flex justify-between"><span>ITBIS</span><span>{fmtMoneda(venta.itbis)}</span></div>
+          <div className="flex justify-between font-bold text-sm border-t border-black/30 pt-1">
+            <span>Total</span><span id="ticket-total">{fmtMoneda(venta.total)}</span>
+          </div>
+        </div>
+
+        <div className="mt-3 border-t border-black/30 pt-2 text-xs space-y-0.5">
+          {venta.ingresos.map(i => (
+            <div key={i.idIngresoVenta} className="flex justify-between">
+              <span>{i.metodoPago}{i.referencia ? ` · ${i.referencia}` : ''}</span>
+              <span>{fmtMoneda(i.monto)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between"><span>Recibido</span><span>{fmtMoneda(venta.montoRecibido)}</span></div>
+          <div className="flex justify-between font-semibold">
+            <span>Cambio</span><span id="ticket-cambio">{fmtMoneda(venta.cambio)}</span>
+          </div>
+        </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter size={20} className="text-muted-foreground" />
-              <select
-                value={selectedEstado}
-                onChange={(e) => setSelectedEstado(e.target.value)}
-                className="px-3 py-2 bg-input-background border border-border rounded-lg"
-              >
-                <option>Todas</option>
-                <option>Completada</option>
-                <option>Pendiente</option>
-                <option>Anulada</option>
-              </select>
+      <div className="no-imprimir flex gap-2 px-5 py-4 border-t border-border bg-muted/10 flex-shrink-0">
+        <button
+          onClick={onVolver}
+          className="flex-1 py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
+        >
+          Volver al detalle
+        </button>
+        <button
+          id="btn-imprimir-copia"
+          onClick={() => window.print()}
+          className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
+        >
+          <Printer size={14} /> Imprimir copia
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── Modal de detalle ─────────────────────────────────────
+
+function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () => void }) {
+  const [venta, setVenta] = useState<VentaResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imprimiendo, setImprimiendo] = useState(false);
+
+  const cargar = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    ventasApi.buscarPorId(idVenta)
+      .then(setVenta)
+      .catch((e: any) => setError(e.message || 'No se pudo cargar el detalle de la venta.'))
+      .finally(() => setLoading(false));
+  }, [idVenta]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="no-imprimir flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Receipt size={17} className="text-blue-500" />
+            <h2 className="text-base font-semibold">
+              {imprimiendo ? 'Reimpresión de comprobante' : 'Detalle de venta'}
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X size={15} />
+          </button>
+        </div>
+
+        {loading && (
+          <div className="py-20 text-center text-muted-foreground">
+            <Loader2 size={26} className="animate-spin mx-auto mb-2" />
+            Cargando el detalle…
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="p-6 space-y-3">
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-2 text-sm">
+              <AlertTriangle size={16} /> {error}
+            </div>
+            <button
+              onClick={cargar}
+              className="w-full py-2 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && venta && imprimiendo && (
+          <ComprobanteImprimible venta={venta} onVolver={() => setImprimiendo(false)} />
+        )}
+
+        {!loading && !error && venta && !imprimiendo && (
+          <>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Cabecera de la venta */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">N° Control</p>
+                  <p className="font-bold mt-0.5 font-mono">{venta.numeroControl}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">NCF</p>
+                  <p className="font-bold mt-0.5 font-mono">{venta.ncf || 'Sin NCF'}</p>
+                  <p className="text-xs text-muted-foreground">{venta.tipoNcf || '—'}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Fecha</p>
+                  <p className="font-semibold mt-0.5 text-xs">{fmtFechaHora(venta.fechaVenta)}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Estado</p>
+                  <p className="font-bold mt-0.5">{venta.estado}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Cajero</p>
+                  <p className="font-semibold mt-0.5">{venta.cajeroNombre}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Turno</p>
+                  <p className="font-semibold mt-0.5">TURNO #{venta.idTurnoCaja}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Almacén</p>
+                  <p className="font-semibold mt-0.5">{venta.almacenNombre || 'No registrado'}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Cliente</p>
+                  <p className="font-semibold mt-0.5">
+                    {nombreCliente(venta.clienteNombre || venta.nombreClienteTemporal)}
+                  </p>
+                  {(venta.clienteRncCedula || venta.rncTemporal) && (
+                    <p className="text-xs text-muted-foreground">
+                      RNC/Cédula: {venta.clienteRncCedula || venta.rncTemporal}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Líneas */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Productos ({venta.detalles.length})
+                </p>
+                <div className="border border-border rounded-xl overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/40 border-b border-border">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">SKU</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Descripción</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Cant.</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Precio</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Descuentos</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Base imp.</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">ITBIS</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Importe</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {venta.detalles.map(d => (
+                        <tr key={d.idDetalleVenta} className="border-b border-border/50">
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{d.skuProducto}</td>
+                          <td className="px-3 py-2">
+                            {d.nombreProducto}
+                            {d.ofertaAplicada && (
+                              <span className="block text-xs text-emerald-700">Oferta: {d.ofertaAplicada}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">{d.cantidad}</td>
+                          <td className="px-3 py-2 text-right">{fmtMoneda(d.precioUnitario)}</td>
+                          <td className="px-3 py-2 text-right">
+                            {fmtMoneda(descuentoMonetario(d))}
+                          </td>
+                          <td className="px-3 py-2 text-right">{fmtMoneda(d.baseImponible)}</td>
+                          <td className="px-3 py-2 text-right">{fmtMoneda(d.itbisLinea)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{fmtMoneda(d.importe)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totales y pagos */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="border border-border rounded-xl p-4 text-sm space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Totales</p>
+                  <div className="flex justify-between"><span>Subtotal</span><span>{fmtMoneda(venta.subtotal)}</span></div>
+                  <div className="flex justify-between"><span>Descuento total</span><span>{fmtMoneda(venta.descuentoTotal)}</span></div>
+                  <div className="flex justify-between">
+                    <span>Cupón {venta.codigoCupon ? `(${venta.codigoCupon})` : ''}</span>
+                    <span>{venta.codigoCupon ? fmtMoneda(venta.descuentoCupon) : 'No aplica'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>ITBIS</span><span id="detalle-itbis">{fmtMoneda(venta.itbis)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-base border-t border-border pt-1 mt-1">
+                    <span>Total</span><span id="detalle-total">{fmtMoneda(venta.total)}</span>
+                  </div>
+                </div>
+
+                <div id="detalle-pagos" className="border border-border rounded-xl p-4 text-sm space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Pagos</p>
+                  {venta.ingresos.map(i => (
+                    <div key={i.idIngresoVenta} className="flex justify-between">
+                      <span>{i.metodoPago}{i.referencia ? ` · ${i.referencia}` : ''}</span>
+                      <span>{fmtMoneda(i.monto)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between border-t border-border pt-1 mt-1">
+                    <span>Monto recibido</span><span id="detalle-recibido">{fmtMoneda(venta.montoRecibido)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold">
+                    <span>Cambio</span><span id="detalle-cambio">{fmtMoneda(venta.cambio)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
+            <div className="flex gap-2 px-5 py-4 border-t border-border bg-muted/10 flex-shrink-0">
+              <button
+                onClick={onClose}
+                className="flex-1 py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
+              >
+                Cerrar
+              </button>
+              <button
+                id="btn-reimprimir-venta"
+                onClick={() => setImprimiendo(true)}
+                className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
+              >
+                <Printer size={14} /> Reimprimir comprobante
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Historial de Ventas ──────────────────────────────────
+
+export default function Ventas() {
+  // Lo que el usuario está escribiendo, separado de lo que ya se consultó: la
+  // tabla solo cambia al pulsar Buscar, nunca a cada tecla.
+  const [form, setForm] = useState<VentaFiltros>(FILTROS_VACIOS);
+  const [filtros, setFiltros] = useState<VentaFiltros>(FILTROS_VACIOS);
+
+  const [ventas, setVentas] = useState<VentaResumen[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [idDetalle, setIdDetalle] = useState<number | null>(null);
+
+  const cargar = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    ventasApi.listar(filtros, page, PAGE_SIZE)
+      .then(pagina => {
+        setVentas(pagina.content);
+        setTotalPages(pagina.totalPages);
+        setTotalElements(pagina.totalElements);
+      })
+      .catch((e: any) => {
+        setVentas([]);
+        setError(e.message || 'No se pudo cargar el historial de ventas.');
+      })
+      .finally(() => setLoading(false));
+  }, [filtros, page]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  // Buscar y limpiar siempre vuelven a la primera página: la página 3 de los
+  // filtros anteriores no significa nada con los nuevos.
+  const buscar = () => { setPage(0); setFiltros(form); };
+  const limpiar = () => { setPage(0); setForm(FILTROS_VACIOS); setFiltros(FILTROS_VACIOS); };
+
+  const campo = (clave: keyof VentaFiltros) => ({
+    value: form[clave] ?? '',
+    onChange: (e: { target: { value: string } }) => setForm(f => ({ ...f, [clave]: e.target.value })),
+  });
+
+  return (
+    <div className="p-6 space-y-5">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Receipt size={22} className="text-blue-500" />
+          Historial de Ventas
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Consulta de ventas registradas. Solo lectura.
+        </p>
+      </div>
+
+      {/* ── Filtros ─────────────────────────────────────── */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[220px] max-w-sm">
+          <label htmlFor="filtro-ventas-q" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+            Buscar
+          </label>
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
-              type="date"
-              className="px-3 py-2 bg-input-background border border-border rounded-lg"
+              id="filtro-ventas-q"
+              type="text"
+              placeholder="N° control, NCF o cliente…"
+              {...campo('q')}
+              onKeyDown={e => { if (e.key === 'Enter') buscar(); }}
+              className="w-full pl-9 pr-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
             />
           </div>
         </div>
 
+        <div>
+          <label htmlFor="filtro-ventas-desde" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+            Desde
+          </label>
+          <input
+            id="filtro-ventas-desde"
+            type="date"
+            {...campo('fechaDesde')}
+            className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="filtro-ventas-hasta" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+            Hasta
+          </label>
+          <input
+            id="filtro-ventas-hasta"
+            type="date"
+            {...campo('fechaHasta')}
+            className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="filtro-ventas-cajero" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+            Cajero
+          </label>
+          <input
+            id="filtro-ventas-cajero"
+            type="text"
+            placeholder="Usuario"
+            {...campo('cajero')}
+            onKeyDown={e => { if (e.key === 'Enter') buscar(); }}
+            className="w-36 px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="filtro-ventas-metodo" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
+            Método de pago
+          </label>
+          <select
+            id="filtro-ventas-metodo"
+            {...campo('metodoPago')}
+            className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+          >
+            <option value="">Todos</option>
+            {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <button
+          id="btn-buscar-ventas"
+          onClick={buscar}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center gap-2"
+        >
+          <Search size={15} /> Buscar
+        </button>
+        <button
+          id="btn-limpiar-filtros-ventas"
+          onClick={limpiar}
+          className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+        >
+          <RotateCcw size={15} /> Limpiar
+        </button>
+      </div>
+
+      {/* ── Error ──────────────────────────────────────── */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center justify-between gap-3 text-sm">
+          <span className="flex items-center gap-2"><AlertTriangle size={16} /> {error}</span>
+          <button
+            id="btn-reintentar-ventas"
+            onClick={cargar}
+            className="px-3 py-1.5 border border-red-300 rounded-lg hover:bg-red-100 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* ── Tabla ──────────────────────────────────────── */}
+      <div className="border border-border rounded-xl overflow-hidden bg-background">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 text-muted-foreground">ID</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Cliente</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Fecha</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Comprobante</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Tipo Pago</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Total</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Estado</th>
-                <th className="text-left py-3 px-4 text-muted-foreground">Acciones</th>
+              <tr className="border-b border-border bg-muted/40">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">N° Control</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fecha</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">NCF</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cliente</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cajero</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Método</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estado</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {ventasData.map((venta) => (
-                <tr key={venta.id} className="border-b border-border hover:bg-accent transition-colors">
-                  <td className="py-3 px-4">{venta.id}</td>
-                  <td className="py-3 px-4">{venta.cliente}</td>
-                  <td className="py-3 px-4 text-sm text-muted-foreground">{venta.fecha}</td>
-                  <td className="py-3 px-4 text-sm">{venta.comprobante}</td>
-                  <td className="py-3 px-4 text-sm">{venta.tipoPago}</td>
-                  <td className="py-3 px-4">{venta.total}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-3 py-1 rounded-full text-sm ${
-                      venta.estado === 'Completada'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {venta.estado}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <button className="p-1 hover:bg-accent rounded" title="Ver">
-                        <Eye size={18} className="text-muted-foreground" />
-                      </button>
-                      <button className="p-1 hover:bg-accent rounded" title="Editar">
-                        <Edit size={18} className="text-muted-foreground" />
-                      </button>
-                      <button className="p-1 hover:bg-accent rounded" title="Eliminar">
-                        <Trash2 size={18} className="text-destructive" />
-                      </button>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="py-20 text-center text-muted-foreground">
+                    <Loader2 size={26} className="animate-spin mx-auto mb-2" />
+                    Cargando ventas…
                   </td>
                 </tr>
-              ))}
+              ) : ventas.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-20 text-center text-muted-foreground">
+                    <Receipt size={36} className="mx-auto mb-2 opacity-30" />
+                    <p>No hay ventas que coincidan con los filtros.</p>
+                  </td>
+                </tr>
+              ) : (
+                ventas.map(v => (
+                  <tr key={v.idVenta} className="border-b border-border/60 transition-colors hover:bg-muted/20">
+                    <td className="px-4 py-3 font-mono text-xs font-semibold">{v.numeroControl}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{fmtFechaHora(v.fechaVenta)}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{v.ncf || 'Sin NCF'}</td>
+                    <td className="px-4 py-3">{nombreCliente(v.clienteNombre)}</td>
+                    <td className="px-4 py-3 text-sm">{v.cajeroNombre}</td>
+                    <td className="px-4 py-3 text-xs">{v.metodoPagoPrincipal}</td>
+                    <td className="px-4 py-3 text-right font-semibold">{fmtMoneda(v.total)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-emerald-100 text-emerald-700 border-emerald-200">
+                        {v.estado}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        id={`btn-detalle-venta-${v.idVenta}`}
+                        onClick={() => setIdDetalle(v.idVenta)}
+                        title="Ver detalle"
+                        className="p-1.5 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors text-muted-foreground"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        {!loading && !error && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
+            <span>
+              {totalElements} venta{totalElements !== 1 ? 's' : ''}
+              {totalPages > 0 ? ` · Página ${page + 1} de ${totalPages}` : ''}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                id="btn-ventas-pagina-anterior"
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="px-3 py-1.5 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                ← Anterior
+              </button>
+              <button
+                id="btn-ventas-pagina-siguiente"
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages - 1}
+                className="px-3 py-1.5 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                Siguiente →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {idDetalle !== null && (
+        <DetalleVentaModal idVenta={idDetalle} onClose={() => setIdDetalle(null)} />
+      )}
     </div>
   );
 }
