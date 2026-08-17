@@ -128,8 +128,8 @@ public class DevolucionService {
                         "Venta no encontrada con id: " + request.getIdVenta()));
         validarVentaDevolvible(venta);
 
-        List<DetalleDevolucionRequestDTO> lineasSolicitadas = validarLineas(venta, request.getDetalles());
         Map<Long, DetalleVenta> lineasVenta = indexarPorId(venta);
+        validarLineas(venta, lineasVenta, request.getDetalles());
         Map<Long, Acreditado> acreditadoPrevio = acreditadoPrevio(lineasVenta.keySet());
 
         // ── Calcular el crédito de cada línea desde los snapshots de la venta ──
@@ -139,7 +139,7 @@ public class DevolucionService {
         BigDecimal baseTotal = BigDecimal.ZERO;
         BigDecimal itbisTotal = BigDecimal.ZERO;
 
-        for (DetalleDevolucionRequestDTO solicitud : lineasSolicitadas) {
+        for (DetalleDevolucionRequestDTO solicitud : request.getDetalles()) {
             DetalleVenta lineaVenta = lineasVenta.get(solicitud.getIdDetalleVenta());
             Acreditado previo = acreditadoPrevio.getOrDefault(
                     lineaVenta.getIdDetalleVenta(), Acreditado.vacio());
@@ -346,10 +346,8 @@ public class DevolucionService {
     }
 
     /** Rechaza líneas ajenas y repetidas antes de tocar stock, NCF o caja. */
-    private List<DetalleDevolucionRequestDTO> validarLineas(
-            Venta venta, List<DetalleDevolucionRequestDTO> solicitadas) {
-
-        Map<Long, DetalleVenta> lineasVenta = indexarPorId(venta);
+    private void validarLineas(Venta venta, Map<Long, DetalleVenta> lineasVenta,
+                               List<DetalleDevolucionRequestDTO> solicitadas) {
         Set<Long> vistas = new LinkedHashSet<>();
         for (DetalleDevolucionRequestDTO solicitud : solicitadas) {
             if (!lineasVenta.containsKey(solicitud.getIdDetalleVenta())) {
@@ -364,7 +362,6 @@ public class DevolucionService {
                         solicitud.getIdDetalleVenta()));
             }
         }
-        return solicitadas;
     }
 
     private MetodoPago parseMetodoReembolso(String metodo) {

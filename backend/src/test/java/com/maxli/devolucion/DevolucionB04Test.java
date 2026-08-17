@@ -544,7 +544,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
     @Nested
     @DisplayName("caja")
-    class Caja_ {
+    class CajaYCuadre {
 
         @Test
         @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER", "CAJA_OPERAR"})
