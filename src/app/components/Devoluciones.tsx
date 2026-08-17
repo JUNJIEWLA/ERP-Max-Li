@@ -216,7 +216,11 @@ function DetalleDevolucionModal({ idDevolucion, onClose }: { idDevolucion: numbe
 //  Nueva devolución
 // ─────────────────────────────────────────────────────────
 
-function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; onRegistrada: () => void }) {
+function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
+  /** `true` cuando queda algo nuevo que leer del backend. */
+  onCerrar: (refrescarHistorial: boolean) => void;
+  onRefrescar: () => void;
+}) {
   // Paso 0: turno abierto del usuario. Sin él el backend rechaza el reembolso.
   const [turno, setTurno] = useState<TurnoCaja | null>(null);
   const [turnoError, setTurnoError] = useState<string | null>(null);
@@ -249,6 +253,14 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
    * la misma referencia devuelve 409 en lugar de emitir un segundo B04. Solo se
    * descarta al empezar una devolución distinta.
    */
+  /**
+   * Hay algo confirmado en el servidor que el historial de detrás todavía no
+   * refleja. Lo levanta tanto un 201 como un 409 —que significa que la
+   * operación ya se registró, quizá en un envío anterior que se perdió— y lo
+   * consume una única recarga, salga el usuario por donde salga.
+   */
+  const debeRefrescar = useRef(false);
+
   const referenciaRef = useRef<string | null>(null);
   const referenciaDelIntento = () => {
     if (referenciaRef.current === null) {
@@ -321,8 +333,11 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
 
   const unidades = detalles.reduce((suma, linea) => suma + linea.cantidad, 0);
 
+  // Tras un 409 el intento está cerrado: repetirlo con la misma referencia
+  // volvería a chocar, y generar otra duplicaría la nota de crédito.
   const puedeConfirmar = !!turno && !!venta && venta.devolvible
-    && detalles.length > 0 && motivo.trim().length > 0 && !enviando;
+    && detalles.length > 0 && motivo.trim().length > 0 && !enviando
+    && !errorEnvio?.yaRegistrada;
 
   const confirmar = () => {
     if (!puedeConfirmar || !turno || !venta) return;
@@ -336,11 +351,20 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
       referenciaOperacion: referenciaDelIntento(),
       detalles,
     })
-      .then(setResultado)
-      .catch((e: any) => setErrorEnvio({
-        mensaje: e.message || 'No se pudo registrar la devolución.',
-        yaRegistrada: e instanceof ApiError && e.status === 409,
-      }))
+      .then(devolucion => {
+        debeRefrescar.current = true;
+        setResultado(devolucion);
+      })
+      .catch((e: any) => {
+        const yaRegistrada = e instanceof ApiError && e.status === 409;
+        // El 409 no confirma nada nuevo, pero sí que algo se confirmó antes:
+        // el historial es la única forma de saber qué quedó registrado.
+        if (yaRegistrada) debeRefrescar.current = true;
+        setErrorEnvio({
+          mensaje: e.message || 'No se pudo registrar la devolución.',
+          yaRegistrada,
+        });
+      })
       .finally(() => setEnviando(false));
   };
 
@@ -355,20 +379,23 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
     setCantidades({});
     setMotivo('');
     setMetodo('EFECTIVO');
-    onRegistrada();
+    // El historial de detrás se pone al día aquí y ya no vuelve a pedirse al
+    // cerrar: una sola carga por operación registrada.
+    if (debeRefrescar.current) {
+      debeRefrescar.current = false;
+      onRefrescar();
+    }
     cargarTurno();
   };
 
-  const cerrarTrasRegistrar = () => {
-    onRegistrada();
-    onClose();
-  };
+  /** Única salida del modal: la X, el fondo y los botones pasan por aquí. */
+  const cerrar = () => onCerrar(debeRefrescar.current);
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
-      onClick={(e) => { if (e.target === e.currentTarget && !enviando) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && !enviando) cerrar(); }}
     >
       <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl mx-4 overflow-hidden max-h-[92vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30 flex-shrink-0">
@@ -378,7 +405,7 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
           </div>
           <button
             id="btn-cerrar-modal-devolucion"
-            onClick={onClose}
+            onClick={cerrar}
             disabled={enviando}
             title="Cerrar"
             className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
@@ -444,7 +471,7 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
               </button>
               <button
                 id="btn-cerrar-resultado-devolucion"
-                onClick={cerrarTrasRegistrar}
+                onClick={cerrar}
                 className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
               >
                 Cerrar
@@ -719,7 +746,15 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
                           ? `Esta operación ya quedó registrada; búscala en el historial antes de repetirla. ${errorEnvio.mensaje}`
                           : errorEnvio.mensaje}
                       </span>
-                      {!errorEnvio.yaRegistrada && (
+                      {errorEnvio.yaRegistrada ? (
+                        <button
+                          id="btn-ver-historial-devolucion"
+                          onClick={cerrar}
+                          className="px-3 py-1.5 text-xs border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors"
+                        >
+                          Ver el historial
+                        </button>
+                      ) : (
                         <button
                           id="btn-reintentar-devolucion"
                           onClick={confirmar}
@@ -743,7 +778,7 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
               </span>
               <button
                 id="btn-cerrar-devolucion"
-                onClick={onClose}
+                onClick={cerrar}
                 disabled={enviando}
                 className="px-4 py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors disabled:opacity-40"
               >
@@ -875,6 +910,17 @@ export default function Devoluciones({ userPermisos = [] }: DevolucionesProps) {
                     Cargando devoluciones…
                   </td>
                 </tr>
+              ) : error ? (
+                // Una consulta que falló no dice nada sobre cuántas
+                // devoluciones hay: anunciar aquí que no hay ninguna sería
+                // confundir una avería con una base vacía.
+                <tr>
+                  <td colSpan={10} className="py-20 text-center text-muted-foreground">
+                    <AlertTriangle size={36} className="mx-auto mb-2 opacity-30" />
+                    <p>No se pudo consultar el historial.</p>
+                    <p className="text-xs mt-1">Usa «Reintentar» para volver a pedirlo.</p>
+                  </td>
+                </tr>
               ) : devoluciones.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-20 text-center text-muted-foreground">
@@ -949,8 +995,11 @@ export default function Devoluciones({ userPermisos = [] }: DevolucionesProps) {
 
       {creando && (
         <NuevaDevolucionModal
-          onClose={() => setCreando(false)}
-          onRegistrada={refrescarDesdeElPrincipio}
+          onCerrar={(refrescarHistorial) => {
+            setCreando(false);
+            if (refrescarHistorial) refrescarDesdeElPrincipio();
+          }}
+          onRefrescar={refrescarDesdeElPrincipio}
         />
       )}
     </div>

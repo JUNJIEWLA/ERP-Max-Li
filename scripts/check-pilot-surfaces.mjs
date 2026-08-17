@@ -199,8 +199,13 @@ test('un 409 refresca el historial y cierra ese intento', () => {
   // forma de saberlo, así que se recarga y se corta el reenvío.
   assert.match(
     Devoluciones,
-    /yaRegistrada:[\s\S]{0,120}status === 409/,
+    /const yaRegistrada = e instanceof ApiError && e\.status === 409/,
     'Devoluciones.tsx no distingue el 409 del resto de errores'
+  );
+  assert.match(
+    Devoluciones,
+    /if \(yaRegistrada\) debeRefrescar\.current = true/,
+    'un 409 no marca el historial para recargarse'
   );
   assert.match(
     Devoluciones,
