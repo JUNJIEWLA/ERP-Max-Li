@@ -204,7 +204,7 @@ public class DevolucionService {
         devolucion.setReferenciaOperacion(referencia);
         devolucion.setMotivo(request.getMotivo().trim());
         devolucion.setEstado(CONFIRMADA);
-        devolucion.setMetodoReembolso(com.maxli.venta.entity.MetodoPago.NOTA_CREDITO);
+        devolucion.setMetodoReembolso(metodoReembolso);
         devolucion.setNcf(notaCredito.getNcfCompleto());
         devolucion.setTipoNcf(TIPO_NCF_NOTA_CREDITO);
         devolucion.setNcfAfectado(venta.getNcf());
@@ -531,7 +531,8 @@ public class DevolucionService {
         turno.setMontoEsperado(normalizar(turno.getMontoInicial()
                 .add(valor(turno.getTotalVentasEfectivo()))
                 .add(valor(turno.getTotalOtrosIngresos()))
-                .subtract(valor(turno.getTotalEgresos()))));
+                .subtract(valor(turno.getTotalEgresos()))
+                .subtract(valor(turno.getTotalDevolucionesEfectivo()))));
         turnoCajaRepository.save(turno);
     }
 

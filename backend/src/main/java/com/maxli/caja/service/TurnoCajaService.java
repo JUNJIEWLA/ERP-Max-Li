@@ -202,13 +202,13 @@ public class TurnoCajaService {
         BigDecimal totalVentasTransferencia = totalVentasTransferencia(turno);
         BigDecimal totalOtrosIngresos = totalOtrosIngresos(turno);
         BigDecimal totalEgresos = totalEgresos(turno);
-        // Las devoluciones generan Nota de Crédito y NUNCA reducen el efectivo físico del turno.
         BigDecimal totalDevolucionesEfectivo = valor(turno.getTotalDevolucionesEfectivo());
         BigDecimal totalVentasNotaCredito = valor(turno.getTotalVentasNotaCredito());
         BigDecimal montoEsperado = normalizar(turno.getMontoInicial()
                 .add(totalVentasEfectivo)
                 .add(totalOtrosIngresos)
-                .subtract(totalEgresos));
+                .subtract(totalEgresos)
+                .subtract(totalDevolucionesEfectivo));
 
         CuadreTurnoCajaResponseDTO dto = new CuadreTurnoCajaResponseDTO();
         dto.setIdTurnoCaja(turno.getIdTurnoCaja());
