@@ -198,6 +198,10 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await expect(page.locator('#venta-procesada-ncf')).toHaveText(`e-NCF: ${cuerpo.ncf}`);
     await expect(page.locator('#venta-procesada-cambio'))
       .toHaveText(`Cambio / Vuelto: RD$${CAMBIO_ESPERADO}`);
+
+    // El comprobante que sale con la venta es el original y no lleva la marca
+    // de copia. Sin esto, marcar las reimpresiones no distinguiría nada.
+    await expect(page.locator('#ticket-marca-copia')).toHaveCount(0);
   });
 
   await test.step(`la venta descuenta el stock de ${STOCK_INICIAL} a 9`, async () => {
@@ -260,24 +264,32 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
 
     await page.locator('#btn-reimprimir-venta').click();
 
-    const ticket = page.locator('#ticket-reimpresion');
-    await expect(ticket).toBeVisible();
-    await expect(ticket).toContainText('COPIA');
+    // Reimprimir pregunta primero el formato: rollo de 80 mm o factura A4.
+    await expect(page.getByRole('heading', { name: 'Formato de Reimpresión' })).toBeVisible();
+    await page.locator('#btn-formato-80mm').click();
+
+    // La plantilla es `hidden print:block`: existe en el DOM y solo la pinta
+    // @media print. Por eso se comprueba su contenido, no su visibilidad —
+    // afirmar que se ve en pantalla sería afirmar que la impresión está rota.
+    const ticket = page.locator('#printable-ticket');
+    await expect(ticket).toBeAttached();
     await expect(ticket).toContainText(ventaCreada.numeroControl);
     await expect(ticket).toContainText(ventaCreada.ncf);
     await expect(ticket).toContainText(NOMBRE_PRODUCTO);
-    await expect(page.locator('#ticket-total')).toHaveText('RD$118.00');
-    await expect(page.locator('#ticket-cambio')).toHaveText(`RD$${CAMBIO_ESPERADO}`);
+    await expect(ticket).toContainText('RD$ 118.00');
 
-    await page.locator('#btn-imprimir-copia').click();
-    expect(await page.evaluate(() => window.__impresiones)).toBe(1);
+    // Una copia tiene que decir que lo es: dos papeles con el mismo e-NCF y sin
+    // nada que los distinga son dos originales para quien los recibe.
+    await expect(page.locator('#ticket-marca-copia')).toHaveText('COPIA — Reimpresión');
+
+    // El formato se elige y se imprime en el mismo gesto; no hay segundo botón.
+    await expect.poll(() => page.evaluate(() => window.__impresiones)).toBe(1);
 
     // Reimprimir no emite comprobante nuevo: el NCF sigue siendo el mismo.
     const revision = await page.request.get(`/api/ventas/${ventaCreada.idVenta}`);
     expect(revision.status()).toBe(200);
     expect((await revision.json()).ncf).toBe(ventaCreada.ncf);
 
-    await page.getByRole('button', { name: 'Volver al detalle' }).click();
     // `exact` distingue el botón del modal del «Cerrar sesión» del menú.
     await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
   });

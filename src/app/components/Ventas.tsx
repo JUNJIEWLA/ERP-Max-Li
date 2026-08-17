@@ -83,10 +83,10 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
     >
       {/* Templates de impresión ocultos en pantalla pero activos para @media print */}
       {venta && formatoImpresion === '80MM' && (
-        <TicketImpresion venta={venta} empresa={empresa} />
+        <TicketImpresion venta={venta} empresa={empresa} esCopia />
       )}
       {venta && formatoImpresion === 'A4' && (
-        <FacturaImpresionA4 venta={venta} empresa={empresa} />
+        <FacturaImpresionA4 venta={venta} empresa={empresa} esCopia />
       )}
 
       {/* Modal de Selección de Formato */}
@@ -119,6 +119,7 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
 
             <div className="grid grid-cols-1 gap-3">
               <button
+                id="btn-formato-80mm"
                 onClick={() => handleSeleccionarFormato('80MM')}
                 className="flex items-start gap-4 p-4 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
               >
@@ -134,6 +135,7 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
               </button>
 
               <button
+                id="btn-formato-a4"
                 onClick={() => handleSeleccionarFormato('A4')}
                 className="flex items-start gap-4 p-4 rounded-xl border border-border hover:border-violet-500 hover:bg-violet-500/5 transition-all text-left group"
               >
