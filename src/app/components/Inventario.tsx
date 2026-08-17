@@ -799,7 +799,9 @@ export default function Inventario() {
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-                          <span className={`text-base font-bold tabular-nums ${
+                          <span
+                            id={`stock-exist-${e.idExistencia}`}
+                            className={`text-base font-bold tabular-nums ${
                             st === 'normal'  ? 'text-emerald-600' :
                             st === 'bajo'    ? 'text-amber-600'   :
                             st === 'critico' ? 'text-red-600'     : 'text-slate-500'
