@@ -204,7 +204,7 @@ public class DevolucionService {
         devolucion.setReferenciaOperacion(referencia);
         devolucion.setMotivo(request.getMotivo().trim());
         devolucion.setEstado(CONFIRMADA);
-        devolucion.setMetodoReembolso(metodoReembolso);
+        devolucion.setMetodoReembolso(com.maxli.venta.entity.MetodoPago.NOTA_CREDITO);
         devolucion.setNcf(notaCredito.getNcfCompleto());
         devolucion.setTipoNcf(TIPO_NCF_NOTA_CREDITO);
         devolucion.setNcfAfectado(venta.getNcf());
@@ -215,6 +215,8 @@ public class DevolucionService {
         devolucion.setBaseImponible(normalizar(baseTotal));
         devolucion.setItbis(normalizar(itbisTotal));
         devolucion.setTotal(normalizar(baseTotal.add(itbisTotal)));
+        devolucion.setMontoDisponible(devolucion.getTotal());
+        devolucion.setMontoUsado(BigDecimal.ZERO);
         devolucion.setFechaDevolucion(LocalDateTime.now());
 
         Devolucion guardada = guardarTraduciendoIntegridad(devolucion);
@@ -245,6 +247,42 @@ public class DevolucionService {
     // ═════════════════════════════════════════════════════════════════════
     //  2. Consultas
     // ═════════════════════════════════════════════════════════════════════
+
+    @Transactional(readOnly = true)
+    public com.maxli.devolucion.dto.NotaCreditoSaldoDTO obtenerSaldoNotaCredito(String numero) {
+        if (numero == null || numero.isBlank()) {
+            throw new BusinessException("Debe indicar un número de factura, comprobante o Nota de Crédito.");
+        }
+        String queryStr = numero.trim();
+        List<Devolucion> lista = devolucionRepository.buscarPorNumero(queryStr);
+        if (lista.isEmpty()) {
+            throw new ResourceNotFoundException("No se encontró una Nota de Crédito para el número: " + queryStr);
+        }
+
+        BigDecimal disponibleTotal = BigDecimal.ZERO;
+        BigDecimal usadoTotal = BigDecimal.ZERO;
+        BigDecimal totalDevolucion = BigDecimal.ZERO;
+        Devolucion principal = lista.get(0);
+
+        for (Devolucion d : lista) {
+            disponibleTotal = disponibleTotal.add(d.getMontoDisponible() != null ? d.getMontoDisponible() : BigDecimal.ZERO);
+            usadoTotal = usadoTotal.add(d.getMontoUsado() != null ? d.getMontoUsado() : BigDecimal.ZERO);
+            totalDevolucion = totalDevolucion.add(d.getTotal() != null ? d.getTotal() : BigDecimal.ZERO);
+        }
+
+        return com.maxli.devolucion.dto.NotaCreditoSaldoDTO.builder()
+                .idDevolucion(principal.getIdDevolucion())
+                .numeroControl(principal.getNumeroControl())
+                .ncf(principal.getNcf())
+                .numeroControlVenta(principal.getNumeroControlVenta())
+                .ncfAfectado(principal.getNcfAfectado())
+                .nombreCliente(principal.getNombreCliente())
+                .totalDevolucion(totalDevolucion)
+                .montoDisponible(disponibleTotal)
+                .montoUsado(usadoTotal)
+                .fechaDevolucion(principal.getFechaDevolucion())
+                .build();
+    }
 
     @Transactional(readOnly = true)
     public DevolucionResponseDTO buscarPorId(Long id) {
@@ -493,8 +531,7 @@ public class DevolucionService {
         turno.setMontoEsperado(normalizar(turno.getMontoInicial()
                 .add(valor(turno.getTotalVentasEfectivo()))
                 .add(valor(turno.getTotalOtrosIngresos()))
-                .subtract(valor(turno.getTotalEgresos()))
-                .subtract(devolucionesEfectivo)));
+                .subtract(valor(turno.getTotalEgresos()))));
         turnoCajaRepository.save(turno);
     }
 

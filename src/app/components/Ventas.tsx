@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Receipt, Search, Eye, Loader2, AlertTriangle, X, Printer, RotateCcw,
+  FileText, Ticket as TicketIcon, CheckCircle2
 } from 'lucide-react';
 import {
-  ventasApi, type DetalleVentaResponse, type VentaFiltros, type VentaResumen, type VentaResponse,
+  ventasApi, empresaApi, type DetalleVentaResponse, type VentaFiltros, type VentaResumen, type VentaResponse, type ConfiguracionEmpresa,
 } from '../../imports/api';
+import TicketImpresion from './pos/TicketImpresion';
+import FacturaImpresionA4 from './pos/FacturaImpresionA4';
 
 // ── Formato ──────────────────────────────────────────────
 
@@ -34,132 +37,17 @@ const FILTROS_VACIOS: VentaFiltros = {
 
 const PAGE_SIZE = 15;
 
-// ── Vista imprimible (COPIA) ─────────────────────────────
-
-/**
- * Reimpresión del comprobante a partir de la venta ya persistida.
- *
- * No recalcula nada ni pide un NCF nuevo: todos los importes y el propio NCF
- * salen de la respuesta de `GET /api/ventas/{id}`, y el documento se rotula
- * como COPIA para que no pueda confundirse con el original entregado en caja.
- * Los datos de encabezado son los que el sistema guardó (almacén, cajero,
- * turno); no se inventa RNC ni dirección que no exista en configuración.
- */
-function ComprobanteImprimible({ venta, onVolver }: { venta: VentaResponse; onVolver: () => void }) {
-  const rnc = venta.clienteRncCedula || venta.rncTemporal;
-
-  return (
-    <>
-      {/* Al imprimir solo sobrevive el comprobante: Sidebar, Header, el fondo
-          del modal y los botones desaparecen. */}
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          #ticket-reimpresion, #ticket-reimpresion * { visibility: visible !important; }
-          #ticket-reimpresion {
-            position: absolute; left: 0; top: 0; width: 100%;
-            box-shadow: none; border: 0; max-height: none; overflow: visible;
-          }
-          .no-imprimir { display: none !important; }
-        }
-      `}</style>
-
-      <div id="ticket-reimpresion" className="bg-white text-black p-6 text-sm overflow-y-auto">
-        <div className="text-center border-b border-black/30 pb-3 mb-3">
-          <p className="font-bold text-base">{venta.almacenNombre || 'Plaza Max'}</p>
-          <p className="text-xs uppercase tracking-widest mt-1 font-bold">COPIA — Reimpresión</p>
-          <p className="text-[11px] mt-0.5">Documento sin valor de original</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3">
-          <p><span className="font-semibold">N° Control:</span> {venta.numeroControl}</p>
-          <p><span className="font-semibold">Fecha:</span> {fmtFechaHora(venta.fechaVenta)}</p>
-          <p><span className="font-semibold">NCF:</span> {venta.ncf || 'Sin NCF'}{venta.tipoNcf ? ` (${venta.tipoNcf})` : ''}</p>
-          <p><span className="font-semibold">Cajero:</span> {venta.cajeroNombre}</p>
-          <p><span className="font-semibold">Cliente:</span> {nombreCliente(venta.clienteNombre || venta.nombreClienteTemporal)}</p>
-          {rnc && <p><span className="font-semibold">RNC/Cédula:</span> {rnc}</p>}
-          <p><span className="font-semibold">Estado:</span> {venta.estado}</p>
-        </div>
-
-        <table className="w-full text-xs border-t border-black/30">
-          <thead>
-            <tr className="border-b border-black/30">
-              <th className="py-1 text-left">SKU</th>
-              <th className="py-1 text-left">Descripción</th>
-              <th className="py-1 text-right">Cant.</th>
-              <th className="py-1 text-right">Precio</th>
-              <th className="py-1 text-right">ITBIS</th>
-              <th className="py-1 text-right">Importe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {venta.detalles.map(d => (
-              <tr key={d.idDetalleVenta} className="border-b border-black/10">
-                <td className="py-1 font-mono">{d.skuProducto}</td>
-                <td className="py-1">{d.nombreProducto}</td>
-                <td className="py-1 text-right">{d.cantidad}</td>
-                <td className="py-1 text-right">{fmtMoneda(d.precioUnitario)}</td>
-                <td className="py-1 text-right">{fmtMoneda(d.itbisLinea)}</td>
-                <td className="py-1 text-right">{fmtMoneda(d.importe)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="mt-3 ml-auto w-full max-w-xs text-xs space-y-0.5">
-          <div className="flex justify-between"><span>Subtotal</span><span>{fmtMoneda(venta.subtotal)}</span></div>
-          <div className="flex justify-between"><span>Descuento</span><span>{fmtMoneda(venta.descuentoTotal)}</span></div>
-          {venta.codigoCupon && (
-            <div className="flex justify-between">
-              <span>Cupón {venta.codigoCupon}</span><span>{fmtMoneda(venta.descuentoCupon)}</span>
-            </div>
-          )}
-          <div className="flex justify-between"><span>ITBIS</span><span>{fmtMoneda(venta.itbis)}</span></div>
-          <div className="flex justify-between font-bold text-sm border-t border-black/30 pt-1">
-            <span>Total</span><span id="ticket-total">{fmtMoneda(venta.total)}</span>
-          </div>
-        </div>
-
-        <div className="mt-3 border-t border-black/30 pt-2 text-xs space-y-0.5">
-          {venta.ingresos.map(i => (
-            <div key={i.idIngresoVenta} className="flex justify-between">
-              <span>{i.metodoPago}{i.referencia ? ` · ${i.referencia}` : ''}</span>
-              <span>{fmtMoneda(i.monto)}</span>
-            </div>
-          ))}
-          <div className="flex justify-between"><span>Recibido</span><span>{fmtMoneda(venta.montoRecibido)}</span></div>
-          <div className="flex justify-between font-semibold">
-            <span>Cambio</span><span id="ticket-cambio">{fmtMoneda(venta.cambio)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="no-imprimir flex gap-2 px-5 py-4 border-t border-border bg-muted/10 flex-shrink-0">
-        <button
-          onClick={onVolver}
-          className="flex-1 py-2.5 text-sm border border-border rounded-xl hover:bg-muted transition-colors"
-        >
-          Volver al detalle
-        </button>
-        <button
-          id="btn-imprimir-copia"
-          onClick={() => window.print()}
-          className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
-        >
-          <Printer size={14} /> Imprimir copia
-        </button>
-      </div>
-    </>
-  );
-}
-
 // ── Modal de detalle ─────────────────────────────────────
 
 function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () => void }) {
   const [venta, setVenta] = useState<VentaResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [imprimiendo, setImprimiendo] = useState(false);
+
+  // Impresión y selección de formato
+  const [empresa, setEmpresa] = useState<ConfiguracionEmpresa | null>(null);
+  const [showSelectorFormato, setShowSelectorFormato] = useState(false);
+  const [formatoImpresion, setFormatoImpresion] = useState<'80MM' | 'A4' | null>(null);
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -172,19 +60,113 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  // Cargar datos de la empresa para la factura
+  useEffect(() => {
+    empresaApi.obtener()
+      .then(setEmpresa)
+      .catch(() => {});
+  }, []);
+
+  const handleSeleccionarFormato = (formato: '80MM' | 'A4') => {
+    setFormatoImpresion(formato);
+    setShowSelectorFormato(false);
+    setTimeout(() => {
+      window.print();
+    }, 200);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
+      {/* Templates de impresión ocultos en pantalla pero activos para @media print */}
+      {venta && formatoImpresion === '80MM' && (
+        <TicketImpresion venta={venta} empresa={empresa} />
+      )}
+      {venta && formatoImpresion === 'A4' && (
+        <FacturaImpresionA4 venta={venta} empresa={empresa} />
+      )}
+
+      {/* Modal de Selección de Formato */}
+      {showSelectorFormato && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+          onClick={() => setShowSelectorFormato(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Printer size={20} className="text-primary" />
+                <h3 className="font-bold text-lg text-foreground">Formato de Reimpresión</h3>
+              </div>
+              <button
+                onClick={() => setShowSelectorFormato(false)}
+                className="p-1 rounded-lg hover:bg-muted text-muted-foreground"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Selecciona el formato de salida para reimprimir el comprobante de la venta{' '}
+              <strong className="text-foreground">{venta?.numeroControl}</strong>:
+            </p>
+
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                onClick={() => handleSeleccionarFormato('80MM')}
+                className="flex items-start gap-4 p-4 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
+              >
+                <div className="p-3 bg-blue-500/10 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <TicketIcon size={24} />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-foreground">Ticket Térmico (80mm)</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Formato de rollo para impresoras térmicas POS. Compacto e ideal para caja.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleSeleccionarFormato('A4')}
+                className="flex items-start gap-4 p-4 rounded-xl border border-border hover:border-violet-500 hover:bg-violet-500/5 transition-all text-left group"
+              >
+                <div className="p-3 bg-violet-500/10 text-violet-600 rounded-xl group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                  <FileText size={24} />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-foreground">Factura Tamaño Carta / A4</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Hoja completa formal con membrete corporativo, desglose detallado e-NCF y cliente.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowSelectorFormato(false)}
+                className="px-4 py-2 border border-border rounded-xl text-xs font-medium hover:bg-muted transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Principal de Detalle */}
       <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
         <div className="no-imprimir flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Receipt size={17} className="text-blue-500" />
-            <h2 className="text-base font-semibold">
-              {imprimiendo ? 'Reimpresión de comprobante' : 'Detalle de venta'}
-            </h2>
+            <h2 className="text-base font-semibold">Detalle de Venta</h2>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
             <X size={15} />
@@ -212,11 +194,7 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
           </div>
         )}
 
-        {!loading && !error && venta && imprimiendo && (
-          <ComprobanteImprimible venta={venta} onVolver={() => setImprimiendo(false)} />
-        )}
-
-        {!loading && !error && venta && !imprimiendo && (
+        {!loading && !error && venta && (
           <>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               {/* Cabecera de la venta */}
@@ -352,10 +330,10 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
               </button>
               <button
                 id="btn-reimprimir-venta"
-                onClick={() => setImprimiendo(true)}
-                className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
+                onClick={() => setShowSelectorFormato(true)}
+                className="flex-1 py-2.5 text-sm rounded-xl bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-md shadow-blue-600/20"
               >
-                <Printer size={14} /> Reimprimir comprobante
+                <Printer size={16} /> Reimprimir comprobante
               </button>
             </div>
           </>

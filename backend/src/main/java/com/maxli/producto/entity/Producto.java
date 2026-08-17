@@ -66,6 +66,10 @@ public class Producto {
     @Column(name = "cantidad_minima_mayor", nullable = false)
     private Integer cantidadMinimaMayor = 1;
 
+    /** Stock mínimo requerido en almacén antes de disparar alerta de poco stock. */
+    @Column(name = "stock_minimo", nullable = false)
+    private Integer stockMinimo = 5;
+
     @Column(name = "estado", nullable = false, length = 20)
     private String estado;
 

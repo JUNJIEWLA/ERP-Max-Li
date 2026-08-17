@@ -713,21 +713,15 @@ function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
                       />
                     </div>
                     <div>
-                      <label htmlFor="select-metodo-reembolso" className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
-                        Método de reembolso
+                      <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5 text-foreground">
+                        Emisión de Nota de Crédito
                       </label>
-                      <select
-                        id="select-metodo-reembolso"
-                        value={metodo}
-                        disabled={enviando}
-                        onChange={e => setMetodo(e.target.value as MetodoReembolso)}
-                        className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-40"
-                      >
-                        {METODOS_REEMBOLSO.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                      <p className="text-xs text-muted-foreground mt-1.5">
-                        Solo EFECTIVO reduce el efectivo esperado del turno.
-                      </p>
+                      <div className="px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-800 dark:text-amber-300 font-medium space-y-1">
+                        <div className="font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                          <span>🧾 Saldo Nota de Crédito B04</span>
+                        </div>
+                        <p>Esta devolución emitirá una Nota de Crédito por el valor acreditado para usar como saldo a favor en el POS.</p>
+                      </div>
                     </div>
                   </div>
 

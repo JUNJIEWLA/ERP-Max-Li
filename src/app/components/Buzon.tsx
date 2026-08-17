@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Bell, Check, X, Loader2, TrendingUp, TrendingDown, Package, AlertTriangle, Clock, ShoppingCart
 } from 'lucide-react';
-import { alertasCostoApi, alertasRetrasoOcApi, type AlertaCosto, type AlertaRetrasoOc } from '../../imports/api';
+import { alertasCostoApi, alertasRetrasoOcApi, existenciasApi, type AlertaCosto, type AlertaRetrasoOc, type Existencia } from '../../imports/api';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(n ?? 0);
@@ -15,7 +15,7 @@ interface BuzonProps {
   onUpdateCount?: () => void;
 }
 
-type Tab = 'costos' | 'retrasos';
+type Tab = 'costos' | 'retrasos' | 'stock';
 
 /* ─── Tab: Alertas de Costo ─────────────────────────────────────────── */
 function TabCostos({ onUpdateCount }: { onUpdateCount?: () => void }) {
@@ -260,6 +260,70 @@ function TabRetrasos({ onUpdateCount }: { onUpdateCount?: () => void }) {
   );
 }
 
+/* ─── Tab: Alertas de Stock Bajo por Almacén ───────────────────────── */
+function TabStockBajo({ onUpdateCount }: { onUpdateCount?: () => void }) {
+  const [existencias, setExistencias] = useState<Existencia[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await existenciasApi.bajoStock(0, 100);
+      setExistencias(res.content);
+      if (onUpdateCount) onUpdateCount();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [onUpdateCount]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5">
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 size={32} className="animate-spin text-primary" /></div>
+      ) : existencias.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Package size={48} className="mx-auto mb-4 opacity-20" />
+          <p className="font-medium text-lg">Sin alertas de poco stock</p>
+          <p className="text-sm mt-1 opacity-70">Todas las existencias están por encima de los límites configurados.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {existencias.map(e => (
+            <div key={e.idExistencia} className="flex gap-4 p-4 border border-amber-500/25 bg-amber-500/5 rounded-xl hover:border-amber-500/40 transition-colors">
+              <div className="pt-0.5 text-amber-600">
+                <AlertTriangle size={22} />
+              </div>
+              <div className="flex-1 space-y-1.5">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-bold text-foreground text-sm">
+                      Pocas existencias en {e.almacenNombre || 'Almacén'}
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      <span className="font-semibold text-foreground">[{e.productoCodigo}]</span> {e.productoNombre}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                    Bajo Stock
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-mono pt-1 text-foreground/80">
+                  <span>Stock actual: <strong className="text-rose-600 font-bold">{e.cantidadActual}</strong></span>
+                  <span>Mínimo configurado: <strong>{e.cantidadMinima}</strong></span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Componente principal: Buzón unificado con tabs ─────────────────── */
 export default function Buzon({ onClose, onUpdateCount }: BuzonProps) {
   const [tab, setTab] = useState<Tab>('costos');
@@ -308,12 +372,25 @@ export default function Buzon({ onClose, onUpdateCount }: BuzonProps) {
           <Clock size={15} />
           Retrasos de OC
         </button>
+        <button
+          onClick={() => setTab('stock')}
+          className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+            tab === 'stock'
+              ? 'text-amber-600 border-b-2 border-amber-500 bg-amber-500/5'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+          }`}
+        >
+          <AlertTriangle size={15} />
+          Stock Bajo
+        </button>
       </div>
 
       {/* Contenido de la pestaña activa */}
       {tab === 'costos'
         ? <TabCostos onUpdateCount={onUpdateCount} />
-        : <TabRetrasos onUpdateCount={onUpdateCount} />
+        : tab === 'retrasos'
+        ? <TabRetrasos onUpdateCount={onUpdateCount} />
+        : <TabStockBajo onUpdateCount={onUpdateCount} />
       }
     </div>
   );

@@ -51,4 +51,8 @@ public class ProductoRequestDTO {
 
     /** Cantidad mínima para activar precio al por mayor. Si es null, se usa 1 por defecto. */
     private Integer cantidadMinimaMayor;
+
+    /** Stock mínimo requerido antes de alertar poca existencia. Si es null, se usa 5 por defecto. */
+    @jakarta.validation.constraints.Min(value = 0, message = "El stock mínimo no puede ser negativo")
+    private Integer stockMinimo;
 }

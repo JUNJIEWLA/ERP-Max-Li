@@ -40,4 +40,16 @@ public interface DevolucionRepository extends JpaRepository<Devolucion, Long> {
 
     @Query(value = "SELECT nextval('seq_numero_control_devolucion')", nativeQuery = true)
     Long obtenerSiguienteNumeroControl();
+
+    @Query("""
+            SELECT d FROM Devolucion d
+            WHERE (LOWER(d.numeroControl) = LOWER(:numero)
+               OR LOWER(d.ncf) = LOWER(:numero)
+               OR LOWER(d.numeroControlVenta) = LOWER(:numero)
+               OR LOWER(d.ncfAfectado) = LOWER(:numero)
+               OR CAST(d.venta.idVenta AS string) = :numero)
+              AND d.estado = 'CONFIRMADA'
+            ORDER BY d.idDevolucion DESC
+            """)
+    java.util.List<Devolucion> buscarPorNumero(@Param("numero") String numero);
 }

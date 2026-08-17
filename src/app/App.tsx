@@ -26,6 +26,7 @@ import Roles from './components/Roles';
 import CambioPasswordObligatorio from './components/CambioPasswordObligatorio';
 import NcfDashboard from './components/NcfDashboard';
 import Cupones from './components/Cupones';
+import ConfiguracionEmpresa from './components/ConfiguracionEmpresa';
 import { AUTH_EXPIRED_EVENT, authApi } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
@@ -52,6 +53,7 @@ const viewTitles: Record<string, string> = {
   ncf: 'Secuencias NCF',
   cupones: 'Gestión de Cupones',
   'cajas-registradoras': 'Cajas Registradoras',
+  'configuracion-empresa': 'Información de la Empresa',
 };
 
 /** Vista vacía: el usuario está autenticado pero sin ningún módulo asignado. */
@@ -242,6 +244,8 @@ export default function App() {
         return <NcfDashboard />;
       case 'cupones':
         return <Cupones />;
+      case 'configuracion-empresa':
+        return <ConfiguracionEmpresa />;
       default:
         // Todas las opciones del menú tienen su `case`; aquí solo cae el usuario
         // autenticado sin ningún módulo asignado.

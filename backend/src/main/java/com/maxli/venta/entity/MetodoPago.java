@@ -14,6 +14,7 @@ public enum MetodoPago {
     CHEQUE(false),
     TARJETA(false),
     CUPON(false),
+    NOTA_CREDITO(true),
     MIXTO(false); // se evalúa por componentes individuales
 
     private final boolean aplicaParaMayorista;

@@ -81,6 +81,9 @@ public class TurnoCaja {
     @Column(name = "total_devoluciones_efectivo", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalDevolucionesEfectivo = BigDecimal.ZERO;
 
+    @Column(name = "total_ventas_nota_credito", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalVentasNotaCredito = BigDecimal.ZERO;
+
     @Column(name = "monto_esperado", nullable = false, precision = 12, scale = 2)
     private BigDecimal montoEsperado = BigDecimal.ZERO;
 

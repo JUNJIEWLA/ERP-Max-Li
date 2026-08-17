@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bell } from 'lucide-react';
-import { alertasCostoApi, alertasRetrasoOcApi } from '../../imports/api';
+import { alertasCostoApi, alertasRetrasoOcApi, existenciasApi } from '../../imports/api';
 import Buzon from './Buzon';
 
 interface HeaderProps {
@@ -13,12 +13,12 @@ export default function Header({ title }: HeaderProps) {
 
   const fetchAlertsCount = useCallback(async () => {
     try {
-      // Promise.all para evitar parpadeo: actualizamos el badge solo cuando ambas resuelven
-      const [costosRes, retrasoRes] = await Promise.all([
+      const [costosRes, retrasoRes, stockRes] = await Promise.all([
         alertasCostoApi.contarPendientes(),
         alertasRetrasoOcApi.contarPendientes(),
+        existenciasApi.bajoStock(0, 100),
       ]);
-      setAlertCount((costosRes.count ?? 0) + (retrasoRes.count ?? 0));
+      setAlertCount((costosRes.count ?? 0) + (retrasoRes.count ?? 0) + (stockRes.totalElements ?? 0));
     } catch (e) {
       console.error('Error fetching alerts count', e);
     }

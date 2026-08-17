@@ -17,6 +17,7 @@ public class TurnoCajaMapper {
         dto.setTotalVentasEfectivo(turno.getTotalVentasEfectivo());
         dto.setTotalVentasTarjeta(turno.getTotalVentasTarjeta());
         dto.setTotalVentasTransferencia(turno.getTotalVentasTransferencia());
+        dto.setTotalVentasNotaCredito(turno.getTotalVentasNotaCredito());
         dto.setTotalOtrosIngresos(turno.getTotalOtrosIngresos());
         dto.setTotalEgresos(turno.getTotalEgresos());
         dto.setMontoEsperado(turno.getMontoEsperado());

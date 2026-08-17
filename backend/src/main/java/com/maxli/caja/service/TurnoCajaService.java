@@ -202,15 +202,13 @@ public class TurnoCajaService {
         BigDecimal totalVentasTransferencia = totalVentasTransferencia(turno);
         BigDecimal totalOtrosIngresos = totalOtrosIngresos(turno);
         BigDecimal totalEgresos = totalEgresos(turno);
-        // El efectivo devuelto por notas de crédito salió del cajón: se guarda
-        // en el turno (lo escribe DevolucionService) para que el cuadre lo reste
-        // aquí y en el recálculo tras cada venta.
+        // Las devoluciones generan Nota de Crédito y NUNCA reducen el efectivo físico del turno.
         BigDecimal totalDevolucionesEfectivo = valor(turno.getTotalDevolucionesEfectivo());
+        BigDecimal totalVentasNotaCredito = valor(turno.getTotalVentasNotaCredito());
         BigDecimal montoEsperado = normalizar(turno.getMontoInicial()
                 .add(totalVentasEfectivo)
                 .add(totalOtrosIngresos)
-                .subtract(totalEgresos)
-                .subtract(totalDevolucionesEfectivo));
+                .subtract(totalEgresos));
 
         CuadreTurnoCajaResponseDTO dto = new CuadreTurnoCajaResponseDTO();
         dto.setIdTurnoCaja(turno.getIdTurnoCaja());
@@ -220,6 +218,7 @@ public class TurnoCajaService {
         dto.setTotalOtrosIngresos(totalOtrosIngresos);
         dto.setTotalEgresos(totalEgresos);
         dto.setTotalDevolucionesEfectivo(totalDevolucionesEfectivo);
+        dto.setTotalVentasNotaCredito(totalVentasNotaCredito);
         dto.setMontoEsperado(montoEsperado);
         dto.setMontoFinalDeclarado(turno.getMontoFinalDeclarado());
         dto.setDiferencia(turno.getDiferencia());
@@ -236,6 +235,7 @@ public class TurnoCajaService {
         dto.setTotalOtrosIngresos(valor(turno.getTotalOtrosIngresos()));
         dto.setTotalEgresos(valor(turno.getTotalEgresos()));
         dto.setTotalDevolucionesEfectivo(valor(turno.getTotalDevolucionesEfectivo()));
+        dto.setTotalVentasNotaCredito(valor(turno.getTotalVentasNotaCredito()));
         dto.setMontoEsperado(valor(turno.getMontoEsperado()));
         dto.setMontoFinalDeclarado(turno.getMontoFinalDeclarado());
         dto.setDiferencia(turno.getDiferencia());
@@ -250,6 +250,7 @@ public class TurnoCajaService {
         turno.setTotalOtrosIngresos(cuadre.getTotalOtrosIngresos());
         turno.setTotalEgresos(cuadre.getTotalEgresos());
         turno.setTotalDevolucionesEfectivo(cuadre.getTotalDevolucionesEfectivo());
+        turno.setTotalVentasNotaCredito(cuadre.getTotalVentasNotaCredito());
         turno.setMontoEsperado(cuadre.getMontoEsperado());
     }
 

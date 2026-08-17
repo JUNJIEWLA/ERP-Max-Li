@@ -109,6 +109,9 @@ public class ProductoService {
         if (dto.getCantidadMinimaMayor() != null) {
             producto.setCantidadMinimaMayor(dto.getCantidadMinimaMayor());
         }
+        if (dto.getStockMinimo() != null) {
+            producto.setStockMinimo(dto.getStockMinimo());
+        }
 
         // Primer guardado: obtiene el ID generado y permite construir el SKU interno
         Producto guardado = productoRepository.save(producto);
@@ -137,6 +140,14 @@ public class ProductoService {
         }
         if (dto.getCantidadMinimaMayor() != null) {
             producto.setCantidadMinimaMayor(dto.getCantidadMinimaMayor());
+        }
+        if (dto.getStockMinimo() != null) {
+            producto.setStockMinimo(dto.getStockMinimo());
+            List<Existencia> existencias = existenciaRepository.findByProducto_IdProducto(producto.getIdProducto());
+            for (Existencia ex : existencias) {
+                ex.setCantidadMinima(dto.getStockMinimo());
+                existenciaRepository.save(ex);
+            }
         }
 
         // Recalcular precios desde costo + margen de categoría

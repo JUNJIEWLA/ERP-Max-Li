@@ -124,6 +124,14 @@ public class Devolucion {
     @Column(name = "total", nullable = false, precision = 14, scale = 2)
     private BigDecimal total = BigDecimal.ZERO;
 
+    /** Saldo disponible de la Nota de Crédito para pagar compras futuras. */
+    @Column(name = "monto_disponible", nullable = false, precision = 14, scale = 2)
+    private BigDecimal montoDisponible = BigDecimal.ZERO;
+
+    /** Monto acumulado consumido de esta Nota de Crédito. */
+    @Column(name = "monto_usado", nullable = false, precision = 14, scale = 2)
+    private BigDecimal montoUsado = BigDecimal.ZERO;
+
     @Column(name = "fecha_devolucion", nullable = false)
     private LocalDateTime fechaDevolucion;
 

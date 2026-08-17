@@ -20,6 +20,7 @@ public class ProductoResponseDTO {
     private BigDecimal costo;
     private BigDecimal tasaItbis;
     private Integer cantidadMinimaMayor;
+    private Integer stockMinimo;
     private String estado;
     private Long idCategoria;
     private String categoriaNombre;
