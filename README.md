@@ -131,12 +131,16 @@ contienen datos de clientes y hashes de contraseña.
 ## E2E del flujo principal (Task 5)
 
 Un único E2E recorre en el navegador, contra backend y base reales, el flujo que
-sostiene el piloto: **login → apertura de turno → venta con NCF → cierre
-cuadrado**. Lo ejecuta también GitHub Actions (`.github/workflows/ci.yml`) en
-cada PR hacia `main`.
+sostiene el piloto: **login → apertura de turno → venta con NCF → devolución
+con Nota de Crédito B04 → cierre cuadrado**. Lo ejecuta también GitHub Actions
+(`.github/workflows/ci.yml`) en cada PR hacia `main`.
 
-> ⚠️ **Nunca se ejecuta contra `maxli_db`.** El E2E borra ventas, movimientos y
-> turnos. Solo puede correr sobre la base exclusiva **`maxli_e2e`**: el fixture
+La devolución cierra el círculo del efectivo: la venta cobra RD$118.00, la nota
+de crédito los reembolsa y el turno cierra en los RD$500.00 del fondo inicial,
+con diferencia cero.
+
+> ⚠️ **Nunca se ejecuta contra `maxli_db`.** El E2E borra devoluciones, ventas,
+> movimientos y turnos. Solo puede correr sobre la base exclusiva **`maxli_e2e`**: el fixture
 > aborta con error si `current_database()` no es exactamente ese nombre.
 
 ### Prerrequisitos
@@ -162,7 +166,8 @@ CORS_ALLOWED_ORIGINS=http://127.0.0.1:5173 \
 mvn spring-boot:run
 
 # 3. Fixture determinista (almacén, caja, producto RD$118.00 con stock 10,
-#    resolución NCF B02). Repetible: limpia lo transaccional en cada pasada.
+#    resoluciones NCF B02 y B04). Repetible: limpia lo transaccional en
+#    cada pasada, con las devoluciones antes que las ventas.
 npm run e2e:fixture
 
 # 4. Frontend
