@@ -405,6 +405,24 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
         @Test
         @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER"})
+        @DisplayName("una venta ya DEVUELTA no admite otra devolución")
+        void rechazaVentaYaDevuelta() throws Exception {
+            VentaResponseDTO venta = venderGravado(2);
+            devolver(venta, 2, "REF-YA-DEVUELTA");
+            assertThat(estadoVenta(venta.getIdVenta())).isEqualTo("DEVUELTA");
+
+            mockMvc.perform(post("/api/devoluciones").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-YA-DEVUELTA-2",
+                                    linea(venta, 0, 1))))
+                    .andExpect(status().isUnprocessableEntity());
+
+            assertThat(devoluciones()).isEqualTo(1);
+            assertThat(stock(idProductoGravado)).isEqualTo(100);
+        }
+
+        @Test
+        @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER"})
         @DisplayName("cantidad cero se rechaza con 400 por formato")
         void rechazaCantidadCero() throws Exception {
             VentaResponseDTO venta = venderGravado(2);
