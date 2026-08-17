@@ -748,6 +748,65 @@ class DevolucionB04Test extends PostgresIntegrationTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    //  8 bis. B04 es exclusivo de las devoluciones
+    // ═══════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("B04 fuera del POS")
+    class B04NoEsDeVentas {
+
+        @Test
+        @WithMockUser(username = CAJERO, authorities = {"VENTA_CREAR", "VENTA_VER", "DEVOLUCION_CREAR"})
+        @DisplayName("una venta con tipoNcf B04 se rechaza con 422 y no consume la secuencia de notas de crédito")
+        void laVentaNoPuedeEmitirB04() throws Exception {
+            long secuenciaAntes = secuenciaB04();
+
+            mockMvc.perform(post("/api/ventas").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"idTurnoCaja":%d,"tipoNcf":"B04","metodoPago":"EFECTIVO",
+                                     "detalles":[{"idProducto":%d,"cantidad":1}],
+                                     "ingresos":[{"metodoPago":"EFECTIVO","monto":118.00}]}
+                                    """.formatted(idTurnoCaja, idProductoGravado)))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("B04")));
+
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM venta", Long.class))
+                    .as("sin venta persistida").isZero();
+            assertThat(stock(idProductoGravado)).as("stock intacto").isEqualTo(100);
+            assertThat(secuenciaB04()).as("la secuencia B04 no avanza").isEqualTo(secuenciaAntes);
+            assertThat(montoEsperadoTurno()).as("la caja no se mueve").isEqualByComparingTo(MONTO_INICIAL);
+        }
+
+        @Test
+        @WithMockUser(username = CAJERO, authorities = {"VENTA_CREAR", "VENTA_VER"})
+        @DisplayName("el preview de factura también rechaza B04")
+        void elRecalculoTampocoAceptaB04() throws Exception {
+            mockMvc.perform(post("/api/ventas/recalcular").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"tipoNcf":"B04","metodoPago":"EFECTIVO",
+                                     "detalles":[{"idProducto":%d,"cantidad":1}]}
+                                    """.formatted(idProductoGravado)))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+
+        @Test
+        @WithMockUser(username = CAJERO, authorities = {"VENTA_CREAR", "VENTA_VER", "DEVOLUCION_CREAR"})
+        @DisplayName("cerrada esa puerta, la devolución sigue emitiendo su B04")
+        void laDevolucionSigueEmitiendoB04() throws Exception {
+            VentaResponseDTO venta = venderGravado(1);
+
+            mockMvc.perform(post("/api/devoluciones").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-B04-VIVE",
+                                    linea(venta, 0, 1))))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.ncf").value(org.hamcrest.Matchers.startsWith("B04")));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     //  9. Autorización
     // ═══════════════════════════════════════════════════════════════════
 
