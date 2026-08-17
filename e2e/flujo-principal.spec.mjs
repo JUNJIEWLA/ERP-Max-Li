@@ -358,7 +358,9 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await expect(page.locator('#resultado-total')).toHaveText('RD$118.00');
     await expect(page.locator('#resultado-reembolso')).toContainText('EFECTIVO');
 
-    await page.locator('#btn-cerrar-resultado-devolucion').click();
+    // Se cierra por la X y no por el botón inferior: el historial que hay
+    // detrás tiene que quedar al día salga el usuario por donde salga.
+    await page.locator('#btn-cerrar-modal-devolucion').click();
   });
 
   await test.step('el historial muestra la devolución persistida', async () => {

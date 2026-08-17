@@ -377,6 +377,7 @@ function NuevaDevolucionModal({ onClose, onRegistrada }: { onClose: () => void; 
             <h2 className="text-base font-semibold">Nueva devolución</h2>
           </div>
           <button
+            id="btn-cerrar-modal-devolucion"
             onClick={onClose}
             disabled={enviando}
             title="Cerrar"

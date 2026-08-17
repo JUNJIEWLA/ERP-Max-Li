@@ -177,6 +177,59 @@ test('la referencia de operación es una llave de idempotencia del cliente', () 
   );
 });
 
+test('cerrar la devolución por cualquier vía deja el historial al día', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  // Una sola salida: la X, el fondo y los botones pasan por `cerrar`, que
+  // arrastra consigo si hay que recargar. Cerrar por un atajo que llame
+  // directamente a la prop se saltaría el refresco.
+  assert.match(
+    Devoluciones,
+    /const cerrar = \(\) => onCerrar\(debeRefrescar\.current\)/,
+    'Devoluciones.tsx no centraliza el cierre en `cerrar`'
+  );
+  assert.ok(
+    !/onClick=\{onCerrar\}/.test(Devoluciones),
+    'algún control llama a onCerrar sin pasar por `cerrar`'
+  );
+});
+
+test('un 409 refresca el historial y cierra ese intento', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  // La operación pudo haberse confirmado antes: el historial es la única
+  // forma de saberlo, así que se recarga y se corta el reenvío.
+  assert.match(
+    Devoluciones,
+    /yaRegistrada:[\s\S]{0,120}status === 409/,
+    'Devoluciones.tsx no distingue el 409 del resto de errores'
+  );
+  assert.match(
+    Devoluciones,
+    /!errorEnvio\?\.yaRegistrada/,
+    'el botón de confirmar sigue habilitado después de un 409'
+  );
+  assert.match(
+    Devoluciones,
+    /id="btn-ver-historial-devolucion"/,
+    'tras un 409 no hay salida hacia el historial'
+  );
+});
+
+test('el historial no anuncia "sin devoluciones" cuando la carga falló', () => {
+  const Devoluciones = read('src/app/components/Devoluciones.tsx');
+  const cuerpo = Devoluciones.slice(
+    Devoluciones.indexOf('<tbody>', Devoluciones.indexOf('N° Devolución')),
+    Devoluciones.indexOf('</tbody>', Devoluciones.indexOf('N° Devolución'))
+  );
+  assert.ok(cuerpo.length > 0, 'no se encontró el cuerpo de la tabla del historial');
+  const rama = cuerpo.indexOf('error ?');
+  const vacio = cuerpo.indexOf('Todavía no hay devoluciones registradas');
+  assert.ok(rama !== -1, 'la tabla no contempla el fallo de carga');
+  assert.ok(
+    rama < vacio,
+    'el estado vacío se muestra antes de descartar el error: un fallo se lee como base vacía'
+  );
+});
+
 // ─── 2 bis. Historial de Ventas (vista real, de solo lectura) ─────────────
 test('el Historial de Ventas está en el menú tras VENTA_VER', () => {
   assert.ok(

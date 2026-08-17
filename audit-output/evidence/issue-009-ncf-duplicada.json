@@ -1,0 +1,15 @@
+{
+  "creacionDuplicada": {
+    "httpStatus": 201,
+    "idResolucion": 3,
+    "tipoNcf": "B02",
+    "secuenciaInicio": 100,
+    "secuenciaFinal": 200,
+    "estado": "ACTIVO"
+  },
+  "generacionPosterior": {
+    "httpStatus": 500,
+    "error": "Internal Server Error",
+    "path": "/api/ncf/generar/B02"
+  }
+}
