@@ -21,7 +21,7 @@ siendo ISSUE-015 y no forma parte de este documento.
 | `CORS_ALLOWED_ORIGINS` | prod | **Sí** | Lista separada por comas de los orígenes del frontend, por ejemplo `https://erp.plazamax.do`. Sin comodines y solo `https://`: la sesión viaja en cookie y la API responde con `allowCredentials=true`. |
 | `BOOTSTRAP_ADMIN_PASSWORD` | prod | Solo en la 1.ª instalación | Contraseña inicial de la cuenta `admin`. Mínimo 12 caracteres. Se consume una sola vez y nunca se escribe en logs. |
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | todos | **Sí** | Conexión a PostgreSQL. |
-| `SPRING_PROFILES_ACTIVE` | prod | **Sí** | Debe valer `prod`. El perfil por defecto es `dev`, que relaja HTTPS y admite localhost. |
+| `SPRING_PROFILES_ACTIVE` | todos | **Sí** | `dev`, `prod` o `test`. **No hay valor por defecto**: sin perfil declarado el arranque falla. Debe declararse exactamente uno. |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | todos | No | Freno de fuerza bruta. Por defecto 5 intentos por usuario+IP en 10 min y 15 min de bloqueo. |
 
 > **Si ya tenía un `application-dev.yml` local**, borre de él los bloques `jwt:`
@@ -38,9 +38,14 @@ ya había rotado la contraseña, `V35` no la toca.)
 Para recuperar el acceso, arranque **una vez** con la variable definida:
 
 ```bash
+cd backend
+export SPRING_PROFILES_ACTIVE=dev       # o prod; ya no hay valor por defecto
 export BOOTSTRAP_ADMIN_PASSWORD='...'   # mínimo 12 caracteres
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
+
+> El repositorio no incluye el wrapper `./mvnw`; use el `mvn` del sistema
+> (Maven 3.9+).
 
 - El bootstrap solo actúa mientras la cuenta siga bloqueada; en arranques
   posteriores no vuelve a tocar la contraseña, aunque la variable siga definida.
@@ -53,7 +58,7 @@ Retire la variable del entorno una vez completado el primer inicio de sesión.
 
 ### Contrato HTTPS / reverse proxy
 
-En producción la aplicación **no atiende tráfico en texto plano**: redirige toda
+En el perfil `prod` la aplicación **no atiende tráfico en texto plano**: redirige toda
 petición a `https://` y publica HSTS (`max-age=31536000; includeSubDomains`),
 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y
 `Referrer-Policy: same-origin`.
