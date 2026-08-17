@@ -308,7 +308,10 @@ public class DevolucionService {
     // ═════════════════════════════════════════════════════════════════════
 
     private TurnoCaja obtenerTurnoAbiertoDelUsuario(Long idTurnoCaja, Usuario usuario) {
-        TurnoCaja turno = turnoCajaRepository.findById(idTurnoCaja)
+        // Bloqueo antes de validar: si un cierre concurrente ya se confirmó,
+        // esta transacción espera y lee el estado real, en vez de guardar más
+        // tarde una copia vieja que reabriría el turno.
+        TurnoCaja turno = turnoCajaRepository.bloquearPorId(idTurnoCaja)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Turno de caja no encontrado con id: " + idTurnoCaja));
         if (!ABIERTO.equals(turno.getEstado())) {

@@ -203,7 +203,10 @@ public class VentaService {
             throw new BusinessException("No se puede procesar la venta: se requiere un turno de caja abierto.");
         }
 
-        TurnoCaja turno = turnoCajaRepository.findById(request.getIdTurnoCaja())
+        // El turno se bloquea antes de leerlo: el cuadre se recalcula al final
+        // de la venta, y sin bloqueo un cierre concurrente podría confirmarse
+        // entre medias y quedar pisado por el guardado de esta transacción.
+        TurnoCaja turno = turnoCajaRepository.bloquearPorId(request.getIdTurnoCaja())
                 .filter(t -> ABIERTO.equals(t.getEstado()))
                 .orElseThrow(() -> new BusinessException(
                         "No se puede procesar la venta: turno de caja no encontrado o no está abierto."));

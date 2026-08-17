@@ -114,7 +114,11 @@ public class TurnoCajaService {
 
     @Transactional
     public TurnoCajaResponseDTO cerrar(Long id, CerrarTurnoCajaRequestDTO dto, String username) {
-        TurnoCaja turno = obtenerPorId(id);
+        // El cierre congela el cuadre, así que toma la fila bloqueada y valida
+        // el estado ya con el bloqueo en mano: una venta o una devolución
+        // concurrente termina antes de que este cierre lea los totales.
+        TurnoCaja turno = turnoCajaRepository.bloquearPorId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Turno de caja no encontrado con id: " + id));
         validarEstado(turno, Set.of(ABIERTO), "cerrar");
 
         Usuario usuarioCierre = obtenerUsuarioActivo(username);
