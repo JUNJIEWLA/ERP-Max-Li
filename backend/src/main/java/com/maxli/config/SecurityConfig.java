@@ -85,12 +85,17 @@ public class SecurityConfig {
                 // ── Rutas públicas ────────────────────────────────────────────
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/login").permitAll()
+                // Logout es público a propósito: su trabajo es borrar la cookie,
+                // y quien más lo necesita es justamente quien tiene una cookie
+                // que ya no autentica. Exigir sesión válida para poder cerrarla
+                // dejaba al usuario sin forma de limpiar el estado. Sigue
+                // protegido por CSRF, así que un tercero no puede forzarlo.
+                .requestMatchers("/api/auth/logout").permitAll()
                 .requestMatchers("/error").permitAll()
 
                 // ── Sesión propia: alcanzable incluso con cambio de contraseña
                 //    pendiente (PWD_CHANGE_REQUIRED es la única autoridad en ese caso) ─
                 .requestMatchers("/api/auth/cambiar-password").authenticated()
-                .requestMatchers("/api/auth/logout").authenticated()
                 .requestMatchers("/api/auth/me").authenticated()
 
                 // ── Gestión de usuarios y roles ────────────────────────────────
