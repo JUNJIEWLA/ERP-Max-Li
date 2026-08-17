@@ -36,6 +36,10 @@ BEGIN;
 -- ── 1. Limpieza de lo transaccional ─────────────────────────────────
 --  Permite repetir el E2E sobre la misma base: cada ejecución arranca
 --  sin ventas, sin movimientos y sin ningún turno abierto.
+--  Las devoluciones van primero: apuntan a venta y a detalle_venta, así
+--  que borrar la venta antes chocaría contra sus FK.
+DELETE FROM detalle_devolucion;
+DELETE FROM devolucion;
 DELETE FROM ingreso_venta;
 DELETE FROM detalle_venta;
 DELETE FROM venta;
