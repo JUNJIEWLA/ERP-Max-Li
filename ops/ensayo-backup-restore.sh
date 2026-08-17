@@ -64,6 +64,10 @@ readonly SUFIJO="$(date -u +%Y%m%d%H%M%S)_$$"
 readonly BASE_ORIGEN="maxli_ensayo_origen_${SUFIJO}"
 readonly BASE_DESTINO="maxli_ensayo_destino_${SUFIJO}"
 readonly DIRECTORIO_BACKUPS="$(mktemp -d)"
+# En el piloto este directorio vive en OTRA máquina o en un disco que no está
+# conectado al servidor; aquí basta con que sea otro directorio, porque lo que
+# se ensaya es el mecanismo, no la topología.
+readonly DIRECTORIO_EXTERNO="$(mktemp -d)"
 
 # Guardia explícita: si alguien edita los nombres, el ensayo se niega a correr
 # antes de crear o borrar nada.
@@ -88,8 +92,8 @@ limpiar() {
                 || informar "  no existía: $base"
         fi
     done
-    rm -rf "$DIRECTORIO_BACKUPS"
-    informar "  eliminado el directorio temporal de dumps"
+    rm -rf "$DIRECTORIO_BACKUPS" "$DIRECTORIO_EXTERNO"
+    informar "  eliminados los directorios temporales de dumps (local y externo)"
     exit $estado
 }
 trap limpiar EXIT INT TERM
@@ -143,13 +147,36 @@ informar "Marcador insertado: $MARCADOR"
 
 # ── Backup ────────────────────────────────────────────────────────────
 
-paso "Backup con ops/backup-postgres.sh"
+paso "Backup con ops/backup-postgres.sh y copia externa exigida"
+# --exigir-externo convierte la copia fuera del servidor en parte del contrato:
+# si el destino no está configurado o la copia no llega íntegra, el backup falla
+# en lugar de dejar un respaldo que solo existe en el disco que puede perderse.
 DB_URL="$(url_de "$BASE_ORIGEN")" "$DIRECTORIO_OPS/backup-postgres.sh" "$DIRECTORIO_BACKUPS" \
+    --externo "$DIRECTORIO_EXTERNO" --exigir-externo \
     || fallar "el backup falló."
 
 archivo_dump="$(ls -1 "$DIRECTORIO_BACKUPS"/*.dump 2>/dev/null | head -1)"
 [[ -n "$archivo_dump" ]] || fallar "el backup no dejó ningún .dump en $DIRECTORIO_BACKUPS"
 [[ -f "${archivo_dump}.sha256" ]] || fallar "el backup no dejó checksum junto al dump."
+
+paso "Comprobando la copia externa"
+copia_externa="$DIRECTORIO_EXTERNO/$(basename "$archivo_dump")"
+[[ -f "$copia_externa" ]] \
+    || fallar "el backup no dejó copia externa en $DIRECTORIO_EXTERNO"
+[[ -f "${copia_externa}.sha256" ]] \
+    || fallar "la copia externa llegó sin su checksum: nadie podría verificarla al restaurar."
+# Ningún .parcial superviviente: la publicación en el destino es atómica, así
+# que quien mire el directorio ve el archivo entero o no lo ve.
+[[ -z "$(ls -1 "$DIRECTORIO_EXTERNO"/*.parcial 2>/dev/null)" ]] \
+    || fallar "quedó un archivo .parcial en el destino externo: la publicación no fue atómica."
+cmp -s "$archivo_dump" "$copia_externa" \
+    || fallar "la copia externa no es idéntica al dump local."
+informar "Copia externa íntegra: $copia_externa"
+
+# El dump que se restaura a continuación es el de la copia externa, no el local:
+# el día del incidente el servidor original no está, y lo que hay que probar es
+# que se puede volver a operar desde lo que salió de la máquina.
+archivo_dump="$copia_externa"
 
 paso "Comprobando que el checksum detecta alteraciones"
 # Un backup verificado tiene que notar un archivo tocado: se prueba sobre una
