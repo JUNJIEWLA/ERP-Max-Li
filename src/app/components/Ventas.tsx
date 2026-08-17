@@ -310,13 +310,15 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
                     <span>Cupón {venta.codigoCupon ? `(${venta.codigoCupon})` : ''}</span>
                     <span>{venta.codigoCupon ? fmtMoneda(venta.descuentoCupon) : 'No aplica'}</span>
                   </div>
-                  <div className="flex justify-between"><span>ITBIS</span><span>{fmtMoneda(venta.itbis)}</span></div>
+                  <div className="flex justify-between">
+                    <span>ITBIS</span><span id="detalle-itbis">{fmtMoneda(venta.itbis)}</span>
+                  </div>
                   <div className="flex justify-between font-bold text-base border-t border-border pt-1 mt-1">
                     <span>Total</span><span id="detalle-total">{fmtMoneda(venta.total)}</span>
                   </div>
                 </div>
 
-                <div className="border border-border rounded-xl p-4 text-sm space-y-1">
+                <div id="detalle-pagos" className="border border-border rounded-xl p-4 text-sm space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Pagos</p>
                   {venta.ingresos.map(i => (
                     <div key={i.idIngresoVenta} className="flex justify-between">

@@ -96,6 +96,7 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
   });
 
   let idTurno;
+  let ventaCreada;
 
   await test.step(`abrir turno con fondo RD$${FONDO_INICIAL}`, async () => {
     await page.locator('#btn-iniciar-apertura-turno').click();
@@ -158,6 +159,7 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
     expect(venta.status()).toBe(201);
 
     const cuerpo = await venta.json();
+    ventaCreada = cuerpo;
     expect(cuerpo.ncf).toMatch(/^B02\d{8}$/);
     expect(cuerpo.total).toBe(118);
     expect(cuerpo.cambio).toBe(82);
@@ -166,6 +168,84 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
     await expect(page.getByText(`N° Control: ${cuerpo.numeroControl}`)).toBeVisible();
     await expect(page.getByText(`NCF: ${cuerpo.ncf}`)).toBeVisible();
     await expect(page.getByText(`Cambio: RD$${CAMBIO_ESPERADO}`)).toBeVisible();
+  });
+
+  await test.step('encontrar la venta en el Historial buscando su número de control', async () => {
+    // El modal de éxito se cierra solo; navegar antes taparía el menú.
+    await expect(page.getByRole('heading', { name: '¡Venta Procesada!' })).toBeHidden();
+
+    await abrirVista(page, 'Ventas', 'Historial de Ventas');
+    // El Header repite el título de la vista: se ancla al contenido principal.
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: 'Historial de Ventas' }),
+    ).toBeVisible();
+
+    // La búsqueda viaja al backend: se comprueba sobre la respuesta real que
+    // el filtro lo aplicó el servidor y no el navegador.
+    const respuesta = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return url.pathname === '/api/ventas'
+        && url.searchParams.get('q') === ventaCreada.numeroControl;
+    });
+    await page.locator('#filtro-ventas-q').fill(ventaCreada.numeroControl);
+    await page.locator('#btn-buscar-ventas').click();
+
+    const pagina = await (await respuesta).json();
+    expect(pagina.totalElements).toBe(1);
+    expect(pagina.content[0].idVenta).toBe(ventaCreada.idVenta);
+
+    const fila = page.getByRole('row', { name: new RegExp(ventaCreada.numeroControl) });
+    await expect(fila).toContainText(ventaCreada.ncf);
+    await expect(fila).toContainText('RD$118.00');
+    await expect(fila).toContainText(USUARIO);
+    await expect(fila).toContainText('COMPLETADA');
+  });
+
+  await test.step('abrir el detalle real de la venta', async () => {
+    await page.locator(`#btn-detalle-venta-${ventaCreada.idVenta}`).click();
+
+    const modal = page.getByRole('heading', { name: 'Detalle de venta' });
+    await expect(modal).toBeVisible();
+
+    await expect(page.getByText(NOMBRE_PRODUCTO)).toBeVisible();
+    await expect(page.locator('#detalle-total')).toHaveText('RD$118.00');
+    await expect(page.locator('#detalle-recibido')).toHaveText(`RD$${EFECTIVO_RECIBIDO}`);
+    await expect(page.locator('#detalle-cambio')).toHaveText(`RD$${CAMBIO_ESPERADO}`);
+    // ITBIS persistido: base 100 + 18 %.
+    await expect(page.locator('#detalle-itbis')).toHaveText('RD$18.00');
+    await expect(page.locator('#detalle-pagos')).toContainText('EFECTIVO');
+  });
+
+  await test.step('la copia imprimible lleva los datos persistidos de la venta', async () => {
+    // Se sustituye únicamente window.print: el diálogo nativo del navegador no
+    // es automatizable y no forma parte de lo que hay que comprobar.
+    await page.evaluate(() => {
+      window.__impresiones = 0;
+      window.print = () => { window.__impresiones += 1; };
+    });
+
+    await page.locator('#btn-reimprimir-venta').click();
+
+    const ticket = page.locator('#ticket-reimpresion');
+    await expect(ticket).toBeVisible();
+    await expect(ticket).toContainText('COPIA');
+    await expect(ticket).toContainText(ventaCreada.numeroControl);
+    await expect(ticket).toContainText(ventaCreada.ncf);
+    await expect(ticket).toContainText(NOMBRE_PRODUCTO);
+    await expect(page.locator('#ticket-total')).toHaveText('RD$118.00');
+    await expect(page.locator('#ticket-cambio')).toHaveText(`RD$${CAMBIO_ESPERADO}`);
+
+    await page.locator('#btn-imprimir-copia').click();
+    expect(await page.evaluate(() => window.__impresiones)).toBe(1);
+
+    // Reimprimir no emite comprobante nuevo: el NCF sigue siendo el mismo.
+    const revision = await page.request.get(`/api/ventas/${ventaCreada.idVenta}`);
+    expect(revision.status()).toBe(200);
+    expect((await revision.json()).ncf).toBe(ventaCreada.ncf);
+
+    await page.getByRole('button', { name: 'Volver al detalle' }).click();
+    // `exact` distingue el botón del modal del «Cerrar sesión» del menú.
+    await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
   });
 
   await test.step('navegar a Turnos de Caja', async () => {
