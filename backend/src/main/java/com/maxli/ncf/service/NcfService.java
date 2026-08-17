@@ -31,7 +31,9 @@ public class NcfService {
     private static final String CHK_ESTADO = "chk_resolucion_ncf_estado";
     private static final String CHK_TIPO_PREFIJO = "chk_resolucion_ncf_tipo_prefijo";
     private static final String CHK_RANGO = "chk_resolucion_ncf_rango";
-    private static final Set<String> TIPOS_VALIDOS = Set.of("B01", "B02", "B14", "B15");
+    // B04 es la Nota de Crédito: la emiten las devoluciones de venta, siempre
+    // referenciando el NCF afectado (ver DevolucionService).
+    private static final Set<String> TIPOS_VALIDOS = Set.of("B01", "B02", "B04", "B14", "B15");
 
     private final ResolucionNcfRepository resolucionNcfRepository;
 
@@ -257,7 +259,7 @@ public class NcfService {
         }
         String tipoNormalizado = tipoNcf.trim().toUpperCase();
         if (!TIPOS_VALIDOS.contains(tipoNormalizado)) {
-            throw new BusinessException("El tipo NCF es inválido. Valores permitidos: B01, B02, B14, B15.");
+            throw new BusinessException("El tipo NCF es inválido. Valores permitidos: B01, B02, B04, B14, B15.");
         }
         return tipoNormalizado;
     }

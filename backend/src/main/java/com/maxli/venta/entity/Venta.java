@@ -121,7 +121,8 @@ public class Venta {
 
     // ── Estado ───────────────────────────────────────────────────────────
 
-    @Column(name = "estado", nullable = false, length = 20)
+    /** COMPLETADA, PARCIALMENTE_DEVUELTA o DEVUELTA. */
+    @Column(name = "estado", nullable = false, length = 30)
     private String estado = "COMPLETADA";
 
     @Column(name = "fecha_venta", nullable = false)

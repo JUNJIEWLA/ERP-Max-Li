@@ -601,8 +601,12 @@ class DevolucionB04Test extends PostgresIntegrationTest {
         @DisplayName("sin turno abierto no se devuelve")
         void exigeTurnoAbierto() throws Exception {
             VentaResponseDTO venta = venderGravado(2);
-            jdbcTemplate.update("UPDATE turno_caja SET estado = 'CERRADO' WHERE id_turno_caja = ?",
-                    idTurnoCaja);
+            jdbcTemplate.update("""
+                    UPDATE turno_caja
+                    SET estado = 'CERRADO', fecha_cierre = NOW(),
+                        id_usuario_cierre = id_usuario_apertura, monto_final_declarado = monto_esperado
+                    WHERE id_turno_caja = ?
+                    """, idTurnoCaja);
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)

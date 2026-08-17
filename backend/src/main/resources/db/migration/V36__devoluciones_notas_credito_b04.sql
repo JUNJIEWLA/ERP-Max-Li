@@ -45,10 +45,15 @@ ALTER TABLE movimiento
 ALTER TABLE turno_caja
     ADD COLUMN total_devoluciones_efectivo DECIMAL(12, 2) NOT NULL DEFAULT 0.00;
 
--- ── 4. Numeración interna de devoluciones ───────────────────────────
+-- ── 4. Venta: caben los estados de devolución ───────────────────────
+--  'PARCIALMENTE_DEVUELTA' tiene 21 caracteres y no entra en VARCHAR(20).
+--  Solo se ensancha la columna: ningún estado existente cambia.
+ALTER TABLE venta ALTER COLUMN estado TYPE VARCHAR(30);
+
+-- ── 5. Numeración interna de devoluciones ───────────────────────────
 CREATE SEQUENCE IF NOT EXISTS seq_numero_control_devolucion START WITH 1 INCREMENT BY 1;
 
--- ── 5. Tabla: devolucion ────────────────────────────────────────────
+-- ── 6. Tabla: devolucion ────────────────────────────────────────────
 CREATE TABLE devolucion (
     id_devolucion           BIGSERIAL       PRIMARY KEY,
 
@@ -103,7 +108,7 @@ CREATE INDEX idx_devolucion_venta ON devolucion (id_venta);
 CREATE INDEX idx_devolucion_turno ON devolucion (id_turno_caja);
 CREATE INDEX idx_devolucion_fecha ON devolucion (fecha_devolucion);
 
--- ── 6. Tabla: detalle_devolucion ────────────────────────────────────
+-- ── 7. Tabla: detalle_devolucion ────────────────────────────────────
 --  Los importes son snapshots acreditados, calculados desde
 --  `detalle_venta` y nunca desde el precio vigente del producto.
 CREATE TABLE detalle_devolucion (

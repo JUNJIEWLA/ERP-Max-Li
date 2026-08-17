@@ -849,10 +849,14 @@ public class VentaService {
         turno.setTotalVentasTransferencia(ventaRepository.sumarVentasTransferenciaPorTurno(idTurno));
         turno.setTotalVentasCheque(ventaRepository.sumarVentasChequePorTurno(idTurno));
 
+        // El efectivo devuelto por notas de crédito ya salió del cajón y vive en
+        // el turno: restarlo aquí evita que una venta posterior borre el ajuste
+        // que hizo la devolución.
         BigDecimal montoEsperado = turno.getMontoInicial()
                 .add(turno.getTotalVentasEfectivo())
                 .add(valor(turno.getTotalOtrosIngresos()))
-                .subtract(valor(turno.getTotalEgresos()));
+                .subtract(valor(turno.getTotalEgresos()))
+                .subtract(valor(turno.getTotalDevolucionesEfectivo()));
         turno.setMontoEsperado(normalizar(montoEsperado));
 
         turnoCajaRepository.save(turno);
