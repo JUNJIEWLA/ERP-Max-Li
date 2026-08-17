@@ -91,6 +91,69 @@ debe_fallar_con "rechaza una DB_URL que no es de PostgreSQL" "no parece una URL 
 debe_fallar_con "rechaza una DB_URL sin nombre de base" "no incluye el nombre de la base" \
     env DB_URL="jdbc:postgresql://localhost:5432/" DB_USER="u" DB_PASSWORD="p" bash "$BACKUP"
 
+# ── Copia externa del backup ──────────────────────────────────────────
+#
+# Un backup en el mismo disco que la base no protege del caso que importa: el
+# servidor que se pierde entero. Estas comprobaciones exigen que el destino
+# externo se valide ANTES de volcar nada: descubrir que la ruta no existe
+# después de un pg_dump de varios minutos es descubrirlo demasiado tarde.
+
+echo
+echo "backup-postgres.sh — copia externa"
+
+readonly ENTORNO_BACKUP=(DB_URL="jdbc:postgresql://localhost:5432/inexistente"
+                         DB_USER="u" DB_PASSWORD="p")
+
+debe_fallar_con "--externo exige un valor" "necesita un valor" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" --externo
+
+debe_fallar_con "--exigir-externo sin destino avisa qué falta" "BACKUP_EXTERNO_DIR" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" --exigir-externo
+
+debe_fallar_con "BACKUP_EXTERNO_OBLIGATORIO sin destino avisa qué falta" "BACKUP_EXTERNO_DIR" \
+    env "${ENTORNO_BACKUP[@]}" BACKUP_EXTERNO_OBLIGATORIO=si bash "$BACKUP"
+
+debe_fallar_con "rechaza un destino externo inexistente antes de volcar" "destino externo" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" \
+        --externo /no/existe/este/destino/externo-maxli
+
+debe_fallar_con "rechaza un argumento desconocido" "no reconocido" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" --borrar-los-viejos
+
+# ── El destino externo tiene que estar realmente fuera ────────────────
+#
+# El fallo que esto persigue no es teórico: /mnt/respaldo-maxli existe porque es
+# el punto de montaje, el recurso remoto se desmontó, el directorio sigue ahí
+# escribible y vacío, y la «copia externa» acaba en el mismo disco que la base.
+# El día que se pierde el servidor se pierden las dos copias a la vez.
+#
+# Dos mktemp -d viven siempre en el mismo sistema de archivos: es exactamente la
+# situación del punto de montaje caído, y sirve de banco de pruebas.
+
+echo
+echo "backup-postgres.sh — el destino externo tiene que estar fuera"
+
+local_mismo_fs="$(mktemp -d)"
+externo_mismo_fs="$(mktemp -d)"
+trap 'rm -f "$archivo_falso" "$archivo_falso.sha256" "$archivo_sin_checksum"; \
+      rm -rf "$local_mismo_fs" "$externo_mismo_fs"' EXIT
+
+debe_fallar_con "rechaza un destino externo en el mismo sistema de archivos" "sistema de archivos" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" "$local_mismo_fs" --externo "$externo_mismo_fs"
+
+# Y lo hace antes de volcar: el mensaje no puede llegar después de un pg_dump de
+# varios minutos, y aquí ni siquiera hay una base a la que conectarse.
+debe_fallar_con "lo detecta antes de tocar PostgreSQL" "sistema de archivos" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" "$local_mismo_fs" \
+        --externo "$externo_mismo_fs" --exigir-externo
+
+# La excepción existe para los ensayos, se pide por su nombre y no puede ser lo
+# único que separe un backup bueno de uno que solo existe en el disco que se va
+# a perder: con ella, el script avanza y falla más adelante, por otra razón.
+debe_fallar_con "con --permitir-mismo-filesystem avanza y falla por otra razón" "pg_dump" \
+    env "${ENTORNO_BACKUP[@]}" bash "$BACKUP" "$local_mismo_fs" \
+        --externo "$externo_mismo_fs" --permitir-mismo-filesystem
+
 # ── Contrato de argumentos del restore ────────────────────────────────
 
 echo

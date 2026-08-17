@@ -117,14 +117,20 @@ o reenviar `X-Forwarded-Proto: https`, o leerá un `302` como si fuera una caíd
 
 | Script | Qué hace |
 |---|---|
-| `ops/backup-postgres.sh` | Dump en formato custom, publicado solo tras verificarlo con `pg_restore --list`, con checksum SHA-256. |
+| `ops/verificar-prepiloto.sh` | **Gate de salida a piloto.** Un comando que dice si el entorno puede recibir operación real: perfil, variables, PostgreSQL, migraciones, sondas, rechazo del anónimo, configuración operativa, resoluciones B02/B04 y backups. No muta nada. |
+| `ops/backup-postgres.sh` | Dump en formato custom, publicado solo tras verificarlo con `pg_restore --list`, con checksum SHA-256 y copia externa verificada (`--externo`, `--exigir-externo`). |
 | `ops/restore-postgres.sh` | Restauración que exige nombrar la base destino en la confirmación y que esa base esté **vacía**; verifica checksum y dump antes de tocar nada. |
-| `ops/ensayo-backup-restore.sh` | Ensayo completo backup→restore sobre bases desechables. Correr antes de cada despliegue con migraciones. |
-| `ops/verificar-scripts.sh` | Comprueba la sintaxis y la validación de entrada de los tres anteriores. |
+| `ops/ensayo-backup-restore.sh` | Ensayo completo backup→copia externa→restore sobre bases desechables. Correr antes de cada despliegue con migraciones. |
+| `ops/verificar-scripts.sh` | Sintaxis y validación de entrada de los scripts de backup y restore. Sin PostgreSQL. |
+| `ops/verificar-gate-prepiloto.sh` | Pruebas del gate contra una base desechable `maxli_gate_*` y un servidor de sondas de prueba. |
 
-Los tres primeros reutilizan `DB_URL`, `DB_USER` y `DB_PASSWORD`. La contraseña
-viaja por el entorno, nunca como argumento. **Los dumps no entran en Git**:
-contienen datos de clientes y hashes de contraseña.
+Todos reutilizan `DB_URL`, `DB_USER` y `DB_PASSWORD`. La contraseña viaja por el
+entorno, nunca como argumento. **Los dumps no entran en Git**: contienen datos
+de clientes y hashes de contraseña.
+
+Antes del primer día del piloto se completa
+[`docs/CHECKLIST_SALIDA_PILOTO.md`](docs/CHECKLIST_SALIDA_PILOTO.md), que decide
+el go/no-go e incluye los pasos que ningún script puede hacer.
 
 ---
 

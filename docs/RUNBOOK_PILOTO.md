@@ -3,6 +3,10 @@
 Procedimiento operativo mínimo para poner el piloto en marcha, respaldarlo,
 verificarlo y volver atrás cuando algo sale mal. Cubre ISSUE-015.
 
+> Este documento explica **cómo se opera**. La decisión de **si se abre** vive
+> en [`CHECKLIST_SALIDA_PILOTO.md`](CHECKLIST_SALIDA_PILOTO.md), que se completa
+> una vez, en el servidor y con el hardware reales, antes del primer día.
+
 Alcance: **un solo servidor** con PostgreSQL y la aplicación detrás de un
 reverse proxy que termina TLS. No hay contenedores, orquestador ni monitoreo
 centralizado; nada de eso hace falta para un piloto y todo lo que se añada hay
@@ -37,6 +41,8 @@ Las mismas que documenta el `README.md`. Las de este runbook:
 | `CORS_ALLOWED_ORIGINS` | Origen del frontend, solo `https://`. |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Solo en la primera instalación. |
 | `BACKUP_DIR` | Opcional. Destino de los dumps; por defecto `ops/backups/`. |
+| `BACKUP_EXTERNO_DIR` | Destino de la copia fuera del servidor. Debe existir ya y residir **fuera** de esta máquina. |
+| `BACKUP_EXTERNO_OBLIGATORIO` | `si` para que el backup falle sin copia externa. Recomendado en el cron. |
 
 > `DB_URL` va en formato JDBC (`jdbc:postgresql://host:5432/maxli_db`). Los
 > scripts le retiran el prefijo `jdbc:` y conservan el resto —incluido
@@ -115,6 +121,10 @@ export DB_PASSWORD='...'          # del gestor de secretos, no del historial del
 
 ops/backup-postgres.sh                 # deja el dump en ops/backups/
 ops/backup-postgres.sh /var/backups/maxli   # o en la ruta que se indique
+
+# Con copia fuera del servidor, que es como debe correr en el piloto:
+ops/backup-postgres.sh /var/backups/maxli \
+    --externo /mnt/respaldo-maxli --exigir-externo
 ```
 
 El script vuelca en formato custom, escribe primero un archivo temporal y solo
@@ -129,7 +139,8 @@ ordenen bien aunque cambie el huso o el servidor esté en otra zona).
 ```cron
 # Backup de MaxLi todas las madrugadas a las 02:15 (hora del servidor).
 15 2 * * * /usr/bin/env bash -lc 'set -a; . /etc/maxli/backup.env; set +a; \
-    /opt/maxli/ops/backup-postgres.sh /var/backups/maxli' \
+    /opt/maxli/ops/backup-postgres.sh /var/backups/maxli \
+        --externo /mnt/respaldo-maxli --exigir-externo' \
     >> /var/log/maxli-backup.log 2>&1
 ```
 
@@ -155,14 +166,47 @@ comando que los distinga, y una retención que la documentación promete pero el
 `cron` no aplica es peor que ninguna. Si el negocio pide conservar más, la copia
 off-host es el sitio para hacerlo, con su propia política.
 
-### Copia fuera del servidor — responsabilidad operativa
+### Copia fuera del servidor
 
 Un backup en el mismo disco que la base **no protege del caso que importa**: el
-servidor que se pierde entero. Sacar la copia de la máquina es una decisión de
-operación que este repositorio no toma por nadie, y aquí no se integra ningún
-proveedor de nube.
+servidor que se pierde entero.
 
-Lo mínimo exigible:
+`ops/backup-postgres.sh` copia el dump y su `.sha256` a un directorio externo
+con `--externo <ruta>` (o `BACKUP_EXTERNO_DIR`), y `--exigir-externo` (o
+`BACKUP_EXTERNO_OBLIGATORIO=si`) hace que el backup **falle** si esa copia no
+está configurada o no llega íntegra. Aquí no se integra ningún proveedor de
+nube: cualquier destino ya montado en el sistema de archivos sirve.
+
+Qué hace y qué no:
+
+- Copia **después** de verificar y publicar el dump local. Copiar un archivo que
+  todavía no se sabe si sirve solo multiplica el archivo inútil.
+- **Valida el destino antes de volcar.** Un `pg_dump` del piloto tarda minutos;
+  descubrir entonces que la ruta no existe deja sin ventana al operador.
+- **No crea el directorio externo.** Si el recurso remoto no está montado, el
+  punto de montaje es un directorio local vacío: crearlo y escribir dentro
+  produciría una "copia externa" en el mismo disco que la base, que es
+  exactamente el fallo que esta copia existe para evitar.
+- **Comprueba que el destino esté en otro sistema de archivos.** Que el
+  directorio exista no dice nada: un punto de montaje cuyo recurso remoto se
+  cayó sigue siendo un directorio escribible y vacío. Compartir dispositivo con
+  el dump local aborta el backup y sugiere `mount | grep <ruta>`. Para ensayar
+  sobre un solo disco existe `--permitir-mismo-filesystem`, que hay que pedir
+  por su nombre y avisa a gritos de que esa copia no protege de nada.
+- **Recalcula el checksum releyendo el archivo ya escrito en el destino.** Lo
+  que puede fallar es el trayecto: una red que corta, un disco lleno, un montaje
+  que se cae a mitad.
+- **Publica el checksum primero y el dump al final.** El dump es el marcador de
+  operación completa: si está publicado, su `.sha256` está. Un fallo entre medias
+  no deja un `.dump` con aspecto de respaldo bueno y sin forma de verificarlo.
+- **Se recupera solo** de los restos de una publicación interrumpida en la
+  ejecución siguiente, sin que nadie entre al destino externo a limpiar a mano.
+  Solo limpia archivos regulares: si encuentra otra cosa ocupando esos nombres,
+  se detiene y lo dice, porque un `rm -rf` a ciegas en un recurso compartido es
+  como se destruye algo que nadie pidió destruir.
+- **No borra backups.** La retención es del `find` de arriba.
+
+Lo que el script no puede hacer por nadie, y sigue siendo exigible:
 
 - **Cifrada en tránsito y en reposo.** El dump lleva datos de clientes, ventas y
   hashes de contraseña. Por ejemplo, `age -r <clave-pública>` o `gpg -c` antes
@@ -182,9 +226,14 @@ ops/ensayo-backup-restore.sh
 ```
 
 Crea dos bases desechables (`maxli_ensayo_*`), aplica las migraciones reales,
-siembra un marcador, respalda, restaura en la segunda base, comprueba el
-marcador y `flyway_schema_history`, y borra las bases pase lo que pase. Nunca
-toca `maxli_db`.
+siembra un marcador, respalda **exigiendo copia externa**, comprueba que esa
+copia llegó íntegra y sin `.parcial` sobreviviente, restaura **desde la copia
+externa** en la segunda base, comprueba el marcador y `flyway_schema_history`, y
+borra las bases pase lo que pase. Nunca toca `maxli_db`.
+
+Restaura desde la copia externa a propósito: el día del incidente el servidor
+original no está, y lo que hay que probar es que se puede volver a operar con lo
+que salió de la máquina.
 
 Para ensayar un backup **real** en vez de uno sintético, restaurarlo a mano
 sobre una base desechable (§4) y verificar que la última migración coincide con
@@ -335,6 +384,42 @@ Los cinco puntos, en orden. Cualquiera que falle es un despliegue fallido.
    ```
    Todas con `success = true`.
 
+### El gate, de una sola vez
+
+Los puntos 1, 2 y 5 —y bastante más— los comprueba un solo comando, que además
+no muta nada y se puede correr con el piloto en marcha:
+
+```bash
+export SPRING_PROFILES_ACTIVE=prod
+set -a; . /etc/maxli/maxli.env; set +a
+
+ops/verificar-prepiloto.sh \
+    --url-base http://127.0.0.1:8080 \
+    --backup-dir /var/backups/maxli \
+    --backup-externo /mnt/respaldo-maxli
+```
+
+Termina con `ENTORNO LISTO` y estado 0 solo si están en su sitio el perfil
+`prod`, las variables de base, JWT, CORS, HTTPS y cookie; la conexión con
+PostgreSQL; el esquema al día y sin migraciones fallidas; `liveness` y
+`readiness` en 200; el rechazo del anónimo en `/api/productos`; almacén, caja
+con almacén asignado y stock vendible; personas con permiso efectivo para
+`CAJA_OPERAR`, `VENTA_CREAR`, `DEVOLUCION_CREAR`, `USUARIO_GESTIONAR` y
+`NCF_GESTIONAR`; las resoluciones B02 y B04 vigentes con números; y el backup
+local y su copia externa recientes, con checksum válido y **restaurables**
+(`pg_restore --list`), en un sistema de archivos distinto.
+
+Un checksum válido solo dice que el archivo llegó entero: puede haber llegado
+entero y no ser un respaldo. Por eso el gate lee el índice del dump, y no se
+conforma con el `.sha256`.
+
+Si alguna comprobación se relajó a petición explícita, el veredicto lo dice:
+`ENTORNO LISTO CON EXCEPCIONES`. Eso **no** vale como gate de un piloto real.
+
+El umbral de antigüedad del backup es `--max-horas` (24 por omisión, alineado
+con el RPO). Los puntos 3 y 4 del smoke test —login y consulta desde el
+navegador— siguen siendo manuales: el gate lo dice él mismo al terminar.
+
 ---
 
 ## 7. Criterios para declarar el despliegue fallido
@@ -471,7 +556,9 @@ resuelto en el código y debe seguir así.
 
 | Situación | Acción |
 |---|---|
-| Antes de cualquier despliegue | `ops/backup-postgres.sh` |
+| Antes de abrir el piloto | [`CHECKLIST_SALIDA_PILOTO.md`](CHECKLIST_SALIDA_PILOTO.md) completo |
+| Antes de cualquier despliegue | `ops/backup-postgres.sh --externo … --exigir-externo` |
+| Después de cualquier despliegue | `ops/verificar-prepiloto.sh` + smoke test manual (§6) |
 | Todos los días | Backup por cron + revisar el log |
 | Cada mes | `ops/ensayo-backup-restore.sh` |
 | `readiness` en `503` | Sacar de rotación; revisar PostgreSQL. **No** reiniciar por esto. |
