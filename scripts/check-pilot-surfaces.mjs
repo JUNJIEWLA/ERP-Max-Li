@@ -38,9 +38,13 @@ function sourceFiles(dir = src, out = []) {
   return out;
 }
 
-/** IDs de los items navegables declarados en el Sidebar. */
+/**
+ * IDs de los items navegables declarados en el Sidebar. Los items se declaran
+ * en una sola línea (`{ id, label, icon, requiredPermission }`), a diferencia
+ * de las secciones contenedoras, que no son navegables.
+ */
 function sidebarItemIds() {
-  return [...Sidebar.matchAll(/\{\s*id:\s*'([^']+)'\s*,\s*label:/g)].map((m) => m[1]);
+  return [...Sidebar.matchAll(/\{ id: '([^']+)', label: '[^']*', icon: /g)].map((m) => m[1]);
 }
 
 /** IDs con `case` propio en el switch de renderView de App.tsx. */
