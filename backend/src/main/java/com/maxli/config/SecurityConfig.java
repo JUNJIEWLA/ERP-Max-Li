@@ -1,6 +1,7 @@
 package com.maxli.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -9,12 +10,14 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -33,18 +36,46 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity          // habilita @PreAuthorize en controllers
+@EnableConfigurationProperties({
+        JwtProperties.class, CorsProperties.class,
+        SecurityProperties.class, LoginProtectionProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final JsonAuthResponseHandler jsonAuthResponseHandler;
+    private final CorsProperties corsProperties;
+    private final SecurityProperties securityProperties;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(AbstractHttpConfigurer::disable)
+            .csrf(csrf -> csrf
+                // La sesión viaja en cookie, así que el navegador la adjunta sola
+                // en peticiones cross-site: hace falta un token sincronizador.
+                // El repositorio deja XSRF-TOKEN legible por el SPA, que lo
+                // reenvía en la cabecera X-XSRF-TOKEN; un sitio ajeno no puede
+                // leer esa cookie ni fijar esa cabecera.
+                .csrfTokenRepository(csrfTokenRepository())
+                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                // El login es la petición que estrena el token; forzarlo antes
+                // dejaría al usuario sin forma de autenticarse.
+                .ignoringRequestMatchers("/api/auth/login")
+                // Un cliente que se identifica solo con Bearer no expone
+                // credenciales ambientales y por tanto no es forjable.
+                .ignoringRequestMatchers(new PeticionSinCookieDeSesionMatcher(
+                        securityProperties.getCookie().getName()))
+            )
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .headers(headers -> headers
+                .frameOptions(frame -> frame.deny())
+                .httpStrictTransportSecurity(hsts -> hsts
+                        .includeSubDomains(true)
+                        .maxAgeInSeconds(31_536_000))     // 1 año
+                .referrerPolicy(referrer -> referrer
+                        .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
+            )
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(jsonAuthResponseHandler)
                 .accessDeniedHandler(jsonAuthResponseHandler)
@@ -59,6 +90,7 @@ public class SecurityConfig {
                 // ── Sesión propia: alcanzable incluso con cambio de contraseña
                 //    pendiente (PWD_CHANGE_REQUIRED es la única autoridad en ese caso) ─
                 .requestMatchers("/api/auth/cambiar-password").authenticated()
+                .requestMatchers("/api/auth/logout").authenticated()
                 .requestMatchers("/api/auth/me").authenticated()
 
                 // ── Gestión de usuarios y roles ────────────────────────────────
@@ -150,9 +182,27 @@ public class SecurityConfig {
                 .anyRequest().denyAll()
 
             )
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(new CsrfCookieFilter(), UsernamePasswordAuthenticationFilter.class);
+
+        // En producción no se atiende nada en texto plano: detrás del reverse
+        // proxy, `server.forward-headers-strategy: framework` hace que
+        // X-Forwarded-Proto decida si la petición llegó cifrada.
+        if (securityProperties.isRequireHttps()) {
+            http.requiresChannel(channel -> channel.anyRequest().requiresSecure());
+        }
 
         return http.build();
+    }
+
+    @Bean
+    public CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repositorio = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repositorio.setCookiePath("/");
+        repositorio.setCookieCustomizer(cookie -> cookie
+                .secure(securityProperties.getCookie().isSecure())
+                .sameSite(securityProperties.getCookie().getSameSite()));
+        return repositorio;
     }
 
     @Bean
@@ -166,12 +216,22 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Orígenes tomados de {@code CORS_ALLOWED_ORIGINS}. Antes estaban fijados a
+     * localhost en el código, así que ningún despliegue real podía declarar su
+     * dominio y el del desarrollo quedaba permitido en producción (ISSUE-010).
+     *
+     * <p>Se usa {@code setAllowedOrigins} —coincidencia exacta— y nunca patrones:
+     * con {@code allowCredentials=true} un comodín entregaría la cookie de sesión
+     * a cualquier sitio. {@link GuardaSeguridadProduccion} rechaza el arranque si
+     * la lista viene vacía o con comodines.
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"));
+        config.setAllowedOrigins(corsProperties.getAllowedOrigins());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(List.of("Content-Type", "Authorization", "X-XSRF-TOKEN", "X-Requested-With"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 

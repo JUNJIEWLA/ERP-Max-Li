@@ -1,5 +1,8 @@
-# Copiar a application-dev.yml y completar con valores locales
-# NUNCA commitear application-dev.yml (está en .gitignore)
+# Copiar a application-dev.yml y completar con valores locales.
+# NUNCA commitear application-dev.yml (está en .gitignore).
+#
+# Los valores de JWT y CORS para desarrollo ya vienen en el documento `dev`
+# de application.yml; aquí solo hace falta la conexión a la base local.
 spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/maxli_db}
@@ -12,9 +15,10 @@ spring:
       hibernate:
         format_sql: true
 
-jwt:
-  secret: ${JWT_SECRET:cambia-esto-en-produccion-minimo-256-bits}
-  expiration: ${JWT_EXPIRATION:86400000}
-
-cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+maxli:
+  security:
+    bootstrap:
+      # Contraseña de la cuenta admin en la primera instalación local.
+      # La migración V35 deja esa cuenta bloqueada; sin este valor nadie puede
+      # entrar. Se consume una sola vez y obliga a cambiarla al primer ingreso.
+      admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}

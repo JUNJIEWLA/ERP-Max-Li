@@ -58,10 +58,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(controllers = {ProveedorController.class, GastoController.class, NcfController.class,
         AuthController.class, TurnoCajaController.class})
-@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class, JsonAuthResponseHandler.class})
+@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class,
+        JsonAuthResponseHandler.class, SessionCookieService.class, ClockConfig.class,
+        com.maxli.auth.service.LoginAttemptService.class,
+        com.maxli.exception.GlobalExceptionHandler.class})
 @TestPropertySource(properties = {
         "jwt.secret=test-secret-key-minimo-256-bits-para-pruebas-de-autorizacion-backend",
-        "jwt.expiration=86400000"
+        "jwt.expiration=86400000",
+        "cors.allowed-origins=http://localhost:5173"
 })
 class AutorizacionEndpointsTest {
 

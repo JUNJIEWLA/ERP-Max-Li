@@ -5,15 +5,22 @@ import lombok.Getter;
 
 import java.util.Set;
 
+/**
+ * Respuesta del login. <b>No contiene el token</b>: el JWT viaja en la cookie
+ * {@code HttpOnly} de sesión, fuera del alcance del JavaScript de la página
+ * (ISSUE-010).
+ */
 @Getter
 @AllArgsConstructor
 public class LoginResponseDTO {
 
-    private String token;
     private String username;
     private String email;
     private Set<String> roles;
     private Set<String> permisos;
-    private long expiresIn; // milisegundos
+
+    /** Vigencia real del token, tomada de la configuración (jwt.expiration). */
+    private long expiresIn;
+
     private boolean requiereCambioPassword;
 }

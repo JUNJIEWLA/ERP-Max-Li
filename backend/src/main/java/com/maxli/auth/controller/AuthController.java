@@ -1,18 +1,23 @@
 package com.maxli.auth.controller;
 
+import com.maxli.auth.LoginBloqueadoException;
 import com.maxli.auth.dto.CambiarPasswordDTO;
 import com.maxli.auth.dto.LoginRequestDTO;
 import com.maxli.auth.dto.LoginResponseDTO;
+import com.maxli.auth.dto.MeResponseDTO;
+import com.maxli.auth.service.LoginAttemptService;
 import com.maxli.config.JwtUtil;
-import com.maxli.permiso.entity.Permiso;
+import com.maxli.config.SessionCookieService;
 import com.maxli.usuario.entity.Usuario;
 import com.maxli.usuario.repository.UsuarioRepository;
 import com.maxli.usuario.service.UsuarioService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -27,7 +32,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -41,51 +48,88 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final UsuarioRepository usuarioRepository;
     private final UsuarioService usuarioService;
+    private final SessionCookieService sessionCookieService;
+    private final LoginAttemptService loginAttemptService;
 
     /**
      * POST /api/auth/login
-     * Autentica al usuario y devuelve un JWT.
+     *
+     * <p>Autentica al usuario y deja la sesión en una cookie {@code HttpOnly}:
+     * el JWT ya no viaja en el cuerpo ni se guarda en {@code localStorage}, así
+     * que un XSS no puede leerlo (ISSUE-010).
+     *
+     * <p>Cada fallo se contabiliza por usuario+IP; superado el umbral responde
+     * 429 con {@code Retry-After}. El mensaje de error es siempre el mismo, tanto
+     * si el usuario no existe como si la contraseña es incorrecta, para no
+     * permitir enumeración de cuentas.
      */
     @PostMapping("/login")
     @Transactional(readOnly = true)
-    public LoginResponseDTO login(@Valid @RequestBody LoginRequestDTO dto) {
+    public ResponseEntity<LoginResponseDTO> login(@Valid @RequestBody LoginRequestDTO dto,
+                                                  HttpServletRequest request) {
+        String ip = request.getRemoteAddr();
+
+        Optional<Duration> bloqueo = loginAttemptService.bloqueoRestante(dto.getUsername(), ip);
+        if (bloqueo.isPresent()) {
+            throw new LoginBloqueadoException(bloqueo.get());
+        }
+
         try {
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(dto.getUsername(), dto.getPassword()));
         } catch (AuthenticationException e) {
+            loginAttemptService.registrarFallo(dto.getUsername(), ip);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales incorrectas");
         }
 
+        loginAttemptService.registrarExito(dto.getUsername(), ip);
+
         UserDetails userDetails = userDetailsService.loadUserByUsername(dto.getUsername());
 
-        // Obtener datos adicionales del usuario desde la BD
         Usuario usuario = usuarioRepository.findByUsername(dto.getUsername())
-                .orElseThrow();
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "Credenciales incorrectas"));
 
         String token = jwtUtil.generarToken(userDetails, usuario.getTokenVersion());
+        ResponseCookie cookie = sessionCookieService.construir(token);
 
         var roles = usuario.getRoles().stream()
                 .map(rol -> rol.getNombre())
                 .collect(Collectors.toSet());
 
-        // Calculate effective permissions: from roles + extra permissions
-        Set<String> permisos = calcularPermisosEfectivos(usuario);
-
-        return new LoginResponseDTO(
-                token,
+        LoginResponseDTO cuerpo = new LoginResponseDTO(
                 usuario.getUsername(),
                 usuario.getEmail(),
                 roles,
-                permisos,
-                86400000L,
+                calcularPermisosEfectivos(usuario),
+                jwtUtil.getExpirationMs(),
                 usuario.isRequiereCambioPassword()
         );
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .body(cuerpo);
+    }
+
+    /**
+     * POST /api/auth/logout
+     *
+     * <p>Borra la cookie de sesión. Es la única forma de cerrar sesión ahora que
+     * el token no está al alcance del JavaScript de la página.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout() {
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, sessionCookieService.construirBorrado().toString())
+                .build();
     }
 
     /**
      * GET /api/auth/me
-     * Devuelve los permisos actuales del usuario autenticado.
-     * Usado para polling en tiempo real.
+     *
+     * <p>Identidad y permisos vigentes del usuario autenticado. El SPA la usa
+     * para recuperar la sesión al recargar —ya no puede leer nada de la cookie—
+     * y para refrescar permisos revocados sin esperar al vencimiento del token.
      */
     @GetMapping("/me")
     @Transactional(readOnly = true)
@@ -93,27 +137,31 @@ public class AuthController {
         Usuario usuario = usuarioRepository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        Set<String> permisos = calcularPermisosEfectivos(usuario);
-
         var roles = usuario.getRoles().stream()
                 .map(rol -> rol.getNombre())
                 .collect(Collectors.toSet());
 
         MeResponseDTO response = new MeResponseDTO();
-        response.setPermisos(permisos);
+        response.setUsername(usuario.getUsername());
+        response.setEmail(usuario.getEmail());
+        response.setPermisos(calcularPermisosEfectivos(usuario));
         response.setRoles(roles);
         response.setTokenVersion(usuario.getTokenVersion());
+        response.setRequiereCambioPassword(usuario.isRequiereCambioPassword());
         return response;
     }
 
     /**
      * POST /api/auth/cambiar-password
-     * Permite al usuario autenticado cambiar su propia contraseña.
-     * Usado para el cambio obligatorio en primer login.
+     *
+     * <p>Cambio de contraseña propia (obligatorio en el primer inicio). El
+     * servicio incrementa {@code tokenVersion}, así que la sesión en curso queda
+     * invalidada; se borra también la cookie para que el cliente no reintente
+     * con un token muerto.
      */
     @PostMapping("/cambiar-password")
-    public void cambiarPassword(@AuthenticationPrincipal UserDetails userDetails,
-                                 @Valid @RequestBody CambiarPasswordDTO dto) {
+    public ResponseEntity<Void> cambiarPassword(@AuthenticationPrincipal UserDetails userDetails,
+                                                 @Valid @RequestBody CambiarPasswordDTO dto) {
         Usuario usuario = usuarioRepository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
@@ -122,27 +170,19 @@ public class AuthController {
                 dto.getPasswordActual(),
                 dto.getPasswordNueva()
         );
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, sessionCookieService.construirBorrado().toString())
+                .build();
     }
 
     /** Calcula permisos efectivos = permisos de todos los roles + permisos extra. */
     private Set<String> calcularPermisosEfectivos(Usuario usuario) {
         Set<String> permisos = new HashSet<>();
-        // Permisos heredados de roles
         usuario.getRoles().forEach(rol ->
                 rol.getPermisos().forEach(p -> permisos.add(p.getNombreClave()))
         );
-        // Permisos extra asignados directamente
         usuario.getPermisosExtra().forEach(p -> permisos.add(p.getNombreClave()));
         return permisos;
     }
-
-    /** DTO de respuesta para /api/auth/me */
-    @Getter
-    @Setter
-    static class MeResponseDTO {
-        private Set<String> permisos;
-        private Set<String> roles;
-        private int tokenVersion;
-    }
 }
-
