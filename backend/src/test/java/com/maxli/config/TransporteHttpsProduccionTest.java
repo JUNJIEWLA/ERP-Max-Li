@@ -14,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -35,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code server.forward-headers-strategy: framework}. Sin él, toda petición
  * parecería llegar en claro y el sitio entraría en un bucle de redirecciones.
  */
+@ActiveProfiles("test")   // el perfil es obligatorio desde ISSUE-010
 @WebMvcTest(controllers = AuthController.class)
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class,
         JsonAuthResponseHandler.class, SessionCookieService.class, ClockConfig.class,

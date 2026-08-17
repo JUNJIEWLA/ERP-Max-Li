@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -50,6 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>El tiempo avanza con un {@link Clock} controlado, no con {@code Thread.sleep}:
  * comprobar que un bloqueo de 15 minutos vence no puede costar 15 minutos.
  */
+@ActiveProfiles("test")   // el perfil es obligatorio desde ISSUE-010
 @WebMvcTest(controllers = AuthController.class)
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class,
         JsonAuthResponseHandler.class, SessionCookieService.class,
@@ -60,7 +62,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "cors.allowed-origins=https://erp.plazamax.do",
         "maxli.security.login.max-intentos=3",
         "maxli.security.login.ventana=10m",
-        "maxli.security.login.bloqueo=15m"
+        "maxli.security.login.bloqueo=15m",
+        // Este slice habla HTTP en claro; la exigencia de HTTPS se prueba
+        // aparte, en TransporteHttpsProduccionTest.
+        "maxli.security.require-https=false"
 })
 @DisplayName("Login — freno de fuerza bruta")
 class LoginFuerzaBrutaTest {

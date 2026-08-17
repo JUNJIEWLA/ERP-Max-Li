@@ -35,6 +35,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -56,6 +57,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * cookie {@code HttpOnly}, con protección CSRF, logout real y recuperación de
  * sesión por {@code /api/auth/me}.
  */
+@ActiveProfiles("test")   // el perfil es obligatorio desde ISSUE-010
 @WebMvcTest(controllers = {AuthController.class, ProveedorController.class})
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class,
         JsonAuthResponseHandler.class, SessionCookieService.class, ClockConfig.class,
@@ -64,7 +66,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "jwt.secret=clave-de-pruebas-sesion-cookie-maxli-erp-2026-suficientemente-larga",
         "jwt.expiration=8h",
         "cors.allowed-origins=http://localhost:5173",
-        "maxli.security.cookie.name=maxli_session"
+        "maxli.security.cookie.name=maxli_session",
+        // Este slice habla HTTP en claro; la exigencia de HTTPS se prueba
+        // aparte, en TransporteHttpsProduccionTest.
+        "maxli.security.require-https=false"
 })
 @DisplayName("Sesión en cookie HttpOnly")
 class SesionCookieTest {

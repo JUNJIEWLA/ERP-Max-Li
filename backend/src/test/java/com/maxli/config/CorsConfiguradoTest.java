@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -24,13 +25,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code CORS_ALLOWED_ORIGINS}. Se comprueba con orígenes productivos, de modo
  * que localhost solo pasaría si estuviera explícitamente declarado.
  */
+@ActiveProfiles("test")   // el perfil es obligatorio desde ISSUE-010
 @WebMvcTest(controllers = AuthController.class)
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class, UserDetailsServiceImpl.class,
         JsonAuthResponseHandler.class, SessionCookieService.class, ClockConfig.class,
         LoginAttemptService.class, GlobalExceptionHandler.class})
 @TestPropertySource(properties = {
         "jwt.secret=clave-de-pruebas-cors-maxli-erp-2026-suficientemente-larga-ok",
-        "cors.allowed-origins=https://erp.plazamax.do,https://caja.plazamax.do"
+        "cors.allowed-origins=https://erp.plazamax.do,https://caja.plazamax.do",
+        // Este slice habla HTTP en claro; la exigencia de HTTPS se prueba
+        // aparte, en TransporteHttpsProduccionTest.
+        "maxli.security.require-https=false"
 })
 @DisplayName("CORS admite exclusivamente los orígenes configurados")
 class CorsConfiguradoTest {
