@@ -38,6 +38,12 @@ jobs:
       - name: Superficies del piloto
         run: npm run check:pilot
 
+      # Los scripts de operación son código: deciden si se abre la tienda y si
+      # un respaldo sirve. Sin CI, un cambio que los rompa pasa inadvertido
+      # hasta el día del incidente. No necesitan PostgreSQL.
+      - name: Contratos de los scripts de operación
+        run: bash ops/verificar-scripts.sh
+
       # Salida temporal: el dist/ versionado del piloto no se toca.
       - name: Build del frontend
         run: npm run build -- --outDir "$RUNNER_TEMP/dist-ci" --emptyOutDir
@@ -159,6 +165,40 @@ jobs:
       - name: E2E del flujo principal
         timeout-minutes: 10
         run: npm run test:e2e
+
+      # ── Operación ────────────────────────────────────────────────
+      # Van al final para no retrasar el feedback del flujo principal, pero
+      # cuentan igual: si fallan, el check E2E queda en rojo.
+      #
+      # Reutilizan el PostgreSQL efímero de este job, que nace y muere con él.
+      # Crean sus propias bases (maxli_gate_*, maxli_ensayo_*) y las borran
+      # pase lo que pase; maxli_e2e no se toca.
+
+      # El cliente tiene que ser al menos tan nuevo como el servidor: un pg_dump
+      # más viejo que la base se niega a volcar, y el fallo parecería del script.
+      - name: Cliente de PostgreSQL 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+
+      - name: Gate de salida a piloto
+        timeout-minutes: 10
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: ${{ env.DB_USER }}
+          PGPASSWORD: ${{ env.DB_PASSWORD }}
+        run: bash ops/verificar-gate-prepiloto.sh
+
+      - name: Ensayo backup, copia externa y restauración
+        timeout-minutes: 10
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: ${{ env.DB_USER }}
+          PGPASSWORD: ${{ env.DB_PASSWORD }}
+        run: bash ops/ensayo-backup-restore.sh
 
       - name: Evidencia del fallo
         if: failure()

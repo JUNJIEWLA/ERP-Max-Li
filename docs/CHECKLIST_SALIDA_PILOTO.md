@@ -35,6 +35,15 @@ existen; que sean *los correctos* solo lo sabe quien opera la tienda.
       > problema fiscal, no un error de formato.
 - [ ] **Usuarios y roles** — cuentas nominales creadas para cada persona que va
       a operar. Ninguna cuenta compartida.
+- [ ] **Permisos efectivos repartidos** — hay alguien habilitado que puede abrir
+      caja (`CAJA_OPERAR`), cobrar (`VENTA_CREAR`), autorizar una devolución
+      (`DEVOLUCION_CREAR`), administrar usuarios (`USUARIO_GESTIONAR`) y dar de
+      alta resoluciones fiscales (`NCF_GESTIONAR`).
+      > Cuentan igual los permisos heredados del rol y los concedidos
+      > directamente. Sin `NCF_GESTIONAR`, el día que la B02 se agote —y se
+      > agota— nadie podrá activar la siguiente y las ventas se detienen ahí.
+- [ ] **[manual]** Esas personas están **de turno** en el horario de la tienda.
+      Un permiso que solo tiene quien está de vacaciones no es un permiso.
 - [ ] **Credencial inicial retirada** — el `admin` de la instalación cambió su
       contraseña y `BOOTSTRAP_ADMIN_PASSWORD` ya **no** está en el
       `EnvironmentFile`.
@@ -72,15 +81,19 @@ ops/verificar-prepiloto.sh \
 ```
 
 - [ ] **Termina con `ENTORNO LISTO` y estado 0.**
+      > `ENTORNO LISTO CON EXCEPCIONES` **no vale**: significa que alguien
+      > relajó una comprobación a propósito. Resuelva la excepción o documente
+      > aquí quién la autorizó y por qué.
 - [ ] Los avisos (`aviso`) se leyeron y se decidió conscientemente sobre cada
       uno. Un aviso no bloquea, pero ignorarlo es una decisión, no un descuido.
 
 Qué cubre, para no repetirlo a mano: perfil `prod`, variables de base, JWT,
 CORS, HTTPS y cookie; conectividad con PostgreSQL; esquema al día y sin
 migraciones fallidas; aplicación alcanzable; `liveness` y `readiness` en 200;
-que un anónimo no pueda leer `/api/productos`; almacén, caja y usuarios
-habilitados; B02 y B04 vigentes con números; y backup local y externo recientes
-y con checksum válido.
+que un anónimo no pueda leer `/api/productos`; almacén, caja con almacén
+asignado, stock vendible y permisos efectivos repartidos; B02 y B04 vigentes con
+números; y backup local y externo recientes, con checksum válido, restaurables
+con `pg_restore --list` y en sistemas de archivos distintos.
 
 ## 4. Backup
 
@@ -94,7 +107,20 @@ ops/backup-postgres.sh /var/backups/maxli \
 - [ ] **[manual]** El destino externo reside **fuera de este servidor** — otra
       máquina, un disco que no vive conectado o un bucket montado — y se
       comprobó que el recurso está montado de verdad, no que exista el
-      directorio vacío del punto de montaje.
+      directorio vacío del punto de montaje:
+
+```bash
+mount | grep /mnt/respaldo-maxli      # debe aparecer
+```
+
+  > El script y el gate rechazan un destino que comparta sistema de archivos con
+  > el dump local, precisamente por este caso. No use
+  > `--permitir-mismo-filesystem` en el piloto: existe para los ensayos.
+
+- [ ] **[manual]** Prueba del desmontaje: con el recurso desmontado a propósito,
+      `ops/backup-postgres.sh --exigir-externo` **falla**. Si tuviera éxito, el
+      respaldo del piloto estaría viviendo en el mismo disco que la base sin que
+      nadie lo supiera.
 - [ ] **Cron diario instalado** (runbook §3) y su log revisado tras la primera
       ejecución real. Un cron que falla en silencio es peor que no tener
       backup: genera confianza sin respaldo detrás.
@@ -213,6 +239,11 @@ Pasos exactos, con un usuario con permiso de administración del repositorio:
    - `Quality`
    - `E2E`
 6. **Save changes**.
+
+> Esos dos checks ya ejecutan los scripts de operación: `Quality` corre
+> `ops/verificar-scripts.sh`, y `E2E` corre `ops/verificar-gate-prepiloto.sh` y
+> el ensayo de backup→copia externa→restauración sobre el PostgreSQL efímero del
+> propio job. Protegerlos protege también este código.
 
 - [ ] Regla creada y guardada.
 - [ ] **Verificado en la práctica**: un PR con `Quality` o `E2E` en rojo no

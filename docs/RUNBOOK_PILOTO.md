@@ -187,11 +187,24 @@ Qué hace y qué no:
   punto de montaje es un directorio local vacío: crearlo y escribir dentro
   produciría una "copia externa" en el mismo disco que la base, que es
   exactamente el fallo que esta copia existe para evitar.
+- **Comprueba que el destino esté en otro sistema de archivos.** Que el
+  directorio exista no dice nada: un punto de montaje cuyo recurso remoto se
+  cayó sigue siendo un directorio escribible y vacío. Compartir dispositivo con
+  el dump local aborta el backup y sugiere `mount | grep <ruta>`. Para ensayar
+  sobre un solo disco existe `--permitir-mismo-filesystem`, que hay que pedir
+  por su nombre y avisa a gritos de que esa copia no protege de nada.
 - **Recalcula el checksum releyendo el archivo ya escrito en el destino.** Lo
   que puede fallar es el trayecto: una red que corta, un disco lleno, un montaje
   que se cae a mitad.
-- **Publica de forma atómica** (`.parcial` + `mv` dentro del propio destino).
-- **No borra nada.** La retención es del `find` de arriba.
+- **Publica el checksum primero y el dump al final.** El dump es el marcador de
+  operación completa: si está publicado, su `.sha256` está. Un fallo entre medias
+  no deja un `.dump` con aspecto de respaldo bueno y sin forma de verificarlo.
+- **Se recupera solo** de los restos de una publicación interrumpida en la
+  ejecución siguiente, sin que nadie entre al destino externo a limpiar a mano.
+  Solo limpia archivos regulares: si encuentra otra cosa ocupando esos nombres,
+  se detiene y lo dice, porque un `rm -rf` a ciegas en un recurso compartido es
+  como se destruye algo que nadie pidió destruir.
+- **No borra backups.** La retención es del `find` de arriba.
 
 Lo que el script no puede hacer por nadie, y sigue siendo exigible:
 
@@ -389,9 +402,19 @@ ops/verificar-prepiloto.sh \
 Termina con `ENTORNO LISTO` y estado 0 solo si están en su sitio el perfil
 `prod`, las variables de base, JWT, CORS, HTTPS y cookie; la conexión con
 PostgreSQL; el esquema al día y sin migraciones fallidas; `liveness` y
-`readiness` en 200; el rechazo del anónimo en `/api/productos`; almacén, caja y
-usuarios habilitados; las resoluciones B02 y B04 vigentes con números; y el
-backup local y su copia externa recientes y con checksum válido.
+`readiness` en 200; el rechazo del anónimo en `/api/productos`; almacén, caja
+con almacén asignado y stock vendible; personas con permiso efectivo para
+`CAJA_OPERAR`, `VENTA_CREAR`, `DEVOLUCION_CREAR`, `USUARIO_GESTIONAR` y
+`NCF_GESTIONAR`; las resoluciones B02 y B04 vigentes con números; y el backup
+local y su copia externa recientes, con checksum válido y **restaurables**
+(`pg_restore --list`), en un sistema de archivos distinto.
+
+Un checksum válido solo dice que el archivo llegó entero: puede haber llegado
+entero y no ser un respaldo. Por eso el gate lee el índice del dump, y no se
+conforma con el `.sha256`.
+
+Si alguna comprobación se relajó a petición explícita, el veredicto lo dice:
+`ENTORNO LISTO CON EXCEPCIONES`. Eso **no** vale como gate de un piloto real.
 
 El umbral de antigüedad del backup es `--max-horas` (24 por omisión, alineado
 con el RPO). Los puntos 3 y 4 del smoke test —login y consulta desde el
