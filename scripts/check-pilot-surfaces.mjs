@@ -103,7 +103,7 @@ test('el Sidebar ofrece Devoluciones y Notas de Crédito tras VENTA_VER', () => 
   );
   assert.match(
     Sidebar,
-    /'devoluciones': 'VENTA_VER'/,
+    /'?devoluciones'?: 'VENTA_VER'/,
     "PERMISSION_MAP no protege 'devoluciones' con VENTA_VER"
   );
   assert.match(
