@@ -183,9 +183,34 @@ done
     || fallar "quedó un .parcial tras la publicación interrumpida."
 informar "Publicación interrumpida: ningún dump publicado sin checksum, ni restos .parcial."
 
-# Y la ejecución siguiente se recupera sola, sin que nadie limpie a mano.
 rm -rf "$trampa"
 rm -f "$DIRECTORIO_BACKUPS"/*
+
+paso "La ejecución siguiente se recupera sola de los restos"
+# Restos exactamente como los deja una interrupción real: un sidecar publicado
+# cuyo dump nunca llegó, y un .parcial a medio copiar. Nadie debería tener que
+# entrar al destino externo a limpiar esto a mano el día que el cron falle.
+sello_resto="$(date -u +%Y%m%dT%H%M%SZ)"
+huerfano="$DIRECTORIO_EXTERNO/${BASE_ORIGEN}-${sello_resto}.dump"
+printf 'sidecar de una publicación que nunca terminó\n' > "${huerfano}.sha256"
+printf 'copia a medias\n' > "${huerfano}.parcial"
+
+DB_URL="$(url_de "$BASE_ORIGEN")" "$DIRECTORIO_OPS/backup-postgres.sh" "$DIRECTORIO_BACKUPS" \
+    --externo "$DIRECTORIO_EXTERNO" --exigir-externo --permitir-mismo-filesystem >/dev/null \
+    || fallar "el backup no se recuperó de los restos de una publicación interrumpida."
+
+[[ -z "$(ls -1 "$DIRECTORIO_EXTERNO"/*.parcial 2>/dev/null)" ]] \
+    || fallar "la ejecución de recuperación dejó un .parcial en el destino externo."
+
+# Invariante que sostiene todo lo demás: ningún dump publicado sin su checksum.
+for publicado in "$DIRECTORIO_EXTERNO"/*.dump; do
+    [[ -f "$publicado" ]] || continue
+    [[ -f "${publicado}.sha256" ]] \
+        || fallar "quedó publicado $publicado sin su checksum."
+done
+informar "Recuperada sin intervención manual: restos limpiados y backup publicado."
+
+rm -f "$DIRECTORIO_EXTERNO"/* "$DIRECTORIO_BACKUPS"/*
 
 paso "Backup con ops/backup-postgres.sh y copia externa exigida"
 # --exigir-externo convierte la copia fuera del servidor en parte del contrato:

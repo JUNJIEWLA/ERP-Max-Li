@@ -54,9 +54,22 @@ Uso: $NOMBRE_SCRIPT [destino] [--externo <ruta>] [--exigir-externo]
                      \$BACKUP_EXTERNO_OBLIGATORIO=si. Recomendado en el cron
                      diario del piloto.
 
+  --permitir-mismo-filesystem
+                     Acepta un destino externo que comparte sistema de archivos
+                     con el dump local. SOLO para ensayos: en el piloto esa
+                     situación significa casi siempre un punto de montaje cuyo
+                     recurso remoto se cayó. Equivale a
+                     \$BACKUP_EXTERNO_PERMITIR_MISMO_FILESYSTEM=si.
+
 Variables: DB_URL, DB_USER, DB_PASSWORD (las mismas del backend).
 AYUDA
     exit 2
+}
+
+# Número de dispositivo del sistema de archivos donde vive una ruta. GNU y BSD
+# no comparten la sintaxis de stat, y el piloto se opera desde las dos.
+dispositivo_de() {
+    stat -c %d "$1" 2>/dev/null || stat -f %d "$1" 2>/dev/null
 }
 
 # Devuelve el sha256 a secas, sin el nombre de archivo que añaden las
@@ -110,6 +123,8 @@ destino_local=""
 destino_externo="${BACKUP_EXTERNO_DIR:-}"
 exigir_externo="no"
 [[ "${BACKUP_EXTERNO_OBLIGATORIO:-no}" == "si" ]] && exigir_externo="si"
+permitir_mismo_fs="no"
+[[ "${BACKUP_EXTERNO_PERMITIR_MISMO_FILESYSTEM:-no}" == "si" ]] && permitir_mismo_fs="si"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -118,6 +133,8 @@ while [[ $# -gt 0 ]]; do
             destino_externo="$2"; shift 2 ;;
         --exigir-externo)
             exigir_externo="si"; shift ;;
+        --permitir-mismo-filesystem)
+            permitir_mismo_fs="si"; shift ;;
         -h|--help)
             uso ;;
         -*)
@@ -143,6 +160,7 @@ mkdir -p "$DIRECTORIO_DESTINO"
 
 readonly DESTINO_EXTERNO="$destino_externo"
 readonly EXIGIR_EXTERNO="$exigir_externo"
+readonly PERMITIR_MISMO_FS="$permitir_mismo_fs"
 
 if [[ -z "$DESTINO_EXTERNO" && "$EXIGIR_EXTERNO" == "si" ]]; then
     fallar "se exige copia externa pero no hay destino: pase --externo <ruta> o
@@ -162,6 +180,41 @@ if [[ -n "$DESTINO_EXTERNO" ]]; then
        mismo disco que la base."
     [[ -w "$DESTINO_EXTERNO" ]] \
         || fallar "no se puede escribir en el destino externo: $DESTINO_EXTERNO"
+
+    # Que el directorio exista no dice nada. El caso real es este: el recurso
+    # remoto se desmontó y /mnt/respaldo-maxli volvió a ser lo que era debajo,
+    # un directorio local vacío y escribible. La copia se hace, el script dice
+    # que todo fue bien, y las dos copias viven en el disco que se va a perder.
+    #
+    # Compartir número de dispositivo con el dump local es la señal observable
+    # de esa situación, y no requiere ninguna herramienta que no esté ya aquí.
+    dispositivo_local="$(dispositivo_de "$DIRECTORIO_DESTINO")"
+    dispositivo_externo="$(dispositivo_de "$DESTINO_EXTERNO")"
+
+    if [[ -z "$dispositivo_local" || -z "$dispositivo_externo" ]]; then
+        # Sin stat utilizable no se puede afirmar nada, y afirmar de más en la
+        # dirección insegura es lo único que no vale: se avisa y se sigue.
+        informar "AVISO: no se pudo determinar el sistema de archivos del destino externo."
+        informar "AVISO: compruebe a mano que $DESTINO_EXTERNO está fuera de este servidor."
+    elif [[ "$dispositivo_local" == "$dispositivo_externo" ]]; then
+        if [[ "$PERMITIR_MISMO_FS" == "si" ]]; then
+            informar "AVISO GRAVE: el destino externo comparte sistema de archivos con el dump local."
+            informar "AVISO GRAVE: se continúa solo porque se pidió --permitir-mismo-filesystem."
+            informar "AVISO GRAVE: esta copia NO protege del servidor perdido entero."
+        else
+            fallar "el destino externo está en el mismo sistema de archivos que el dump local:
+         local:   $DIRECTORIO_DESTINO
+         externo: $DESTINO_EXTERNO
+
+       Casi siempre significa que el punto de montaje existe pero el recurso
+       remoto no está montado. Compruébelo con 'mount | grep $DESTINO_EXTERNO'
+       y vuelva a montarlo. Una copia en el mismo disco que la base no protege
+       del caso que importa, que es el servidor perdido entero.
+
+       Para un ensayo sobre un solo disco, pida la excepción por su nombre:
+       --permitir-mismo-filesystem."
+        fi
+    fi
 fi
 
 # UTC y no la hora local: el piloto opera en República Dominicana pero un
@@ -243,15 +296,37 @@ if [[ -n "$DESTINO_EXTERNO" ]]; then
     readonly NOMBRE_DUMP="$(basename "$ARCHIVO_FINAL")"
     readonly EXTERNO_FINAL="$DESTINO_EXTERNO/$NOMBRE_DUMP"
     readonly EXTERNO_PARCIAL="${EXTERNO_FINAL}.parcial"
-    readonly EXTERNO_CHECKSUM_PARCIAL="${EXTERNO_FINAL}.sha256.parcial"
 
     [[ -e "$EXTERNO_FINAL" ]] \
         && fallar "ya existe $EXTERNO_FINAL; no se sobrescribe la copia externa."
 
+    # Restos de una publicación anterior interrumpida. Como el dump es el último
+    # archivo que se publica, encontrar un sidecar sin su dump significa que
+    # aquella ejecución no llegó al final: se limpian y se sigue, sin obligar a
+    # nadie a entrar a mano en el destino externo el día que el cron falle.
+    #
+    # Solo archivos regulares, y con rm -f, nunca rm -rf: lo que este script
+    # deja a medias son archivos, así que cualquier otra cosa en esos nombres no
+    # la puso él. Borrar un directorio a ciegas en un recurso externo compartido
+    # es como se destruye algo que nadie había pedido destruir.
+    for resto in "$EXTERNO_PARCIAL" "${EXTERNO_FINAL}.sha256"; do
+        [[ -e "$resto" ]] || continue
+        [[ -f "$resto" ]] \
+            || fallar "en el destino externo hay algo que no es un archivo y ocupa un nombre
+       que este backup necesita: $resto
+
+       Este script solo deja archivos a medias, así que eso no lo puso él y no
+       se toca. Revíselo y retírelo a mano antes de volver a respaldar.
+       No se publica nada: un dump sin su checksum no se puede verificar."
+        informar "Limpiando resto de una publicación interrumpida: $resto"
+        rm -f "$resto"
+    done
+
     # Igual que en el destino local: un fallo a mitad de copia no puede dejar
-    # nada con pinta de backup bueno.
+    # nada con pinta de backup bueno. El sidecar entra aquí porque se publica
+    # antes que el dump, así que un fallo posterior debe llevárselo.
     limpiar_externo() {
-        rm -f "$EXTERNO_PARCIAL" "$EXTERNO_CHECKSUM_PARCIAL"
+        rm -f "$EXTERNO_PARCIAL" "${EXTERNO_FINAL}.sha256"
     }
     trap limpiar_externo EXIT
 
@@ -270,15 +345,21 @@ if [[ -n "$DESTINO_EXTERNO" ]]; then
         || fallar "el checksum de la copia externa no coincide con el del dump local:
        llegó alterada o incompleta. No se publica en $DESTINO_EXTERNO."
 
-    cp "${ARCHIVO_FINAL}.sha256" "$EXTERNO_CHECKSUM_PARCIAL" \
+    # Orden deliberado: primero el checksum, y el dump al final. Publicar el
+    # dump primero abría una ventana en la que un fallo dejaba un .dump con
+    # aspecto de respaldo bueno y sin forma de verificarlo — quien lo encontrara
+    # meses después no tendría manera de saber que estaba a medias. Así el dump
+    # es el marcador de «operación completa»: si está, su sidecar está.
+    cp "${ARCHIVO_FINAL}.sha256" "${EXTERNO_FINAL}.sha256" \
         || fallar "no se pudo copiar el checksum a $DESTINO_EXTERNO. Un dump sin su
-       .sha256 no se puede verificar el día que haya que restaurarlo."
+       .sha256 no se puede verificar el día que haya que restaurarlo, así que no
+       se publica el dump."
 
     # Publicación atómica dentro del propio destino: el mv ocurre en el mismo
     # sistema de archivos que el .parcial, así que quien mire el directorio
     # externo ve el backup entero o no lo ve.
-    mv "$EXTERNO_PARCIAL" "$EXTERNO_FINAL"
-    mv "$EXTERNO_CHECKSUM_PARCIAL" "${EXTERNO_FINAL}.sha256"
+    mv "$EXTERNO_PARCIAL" "$EXTERNO_FINAL" \
+        || fallar "no se pudo publicar el dump en $DESTINO_EXTERNO."
     trap - EXIT
 
     informar "Copia externa verificada: $EXTERNO_FINAL"
