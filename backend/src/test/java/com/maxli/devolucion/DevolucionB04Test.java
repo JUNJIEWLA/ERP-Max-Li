@@ -205,7 +205,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-COMPLETA",
+                        .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-COMPLETA",
                                 linea(venta, 0, 2))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.tipoNcf").value("B04"))
@@ -214,7 +214,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$.numeroControlVenta").value(venta.getNumeroControl()))
                 .andExpect(jsonPath("$.estado").value("CONFIRMADA"))
                 .andExpect(jsonPath("$.estadoVenta").value("DEVUELTA"))
-                .andExpect(jsonPath("$.metodoReembolso").value("EFECTIVO"))
+                .andExpect(jsonPath("$.metodoReembolso").value("NOTA_CREDITO"))
                 .andExpect(jsonPath("$.baseImponible").value(200.00))
                 .andExpect(jsonPath("$.itbis").value(36.00))
                 .andExpect(jsonPath("$.total").value(236.00))
@@ -266,7 +266,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-P1", linea(venta, 0, 1))))
+                        .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-P1", linea(venta, 0, 1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estadoVenta").value("PARCIALMENTE_DEVUELTA"))
                 .andExpect(jsonPath("$.baseImponible").value(47.18))
@@ -277,14 +277,14 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-P2", linea(venta, 0, 1))))
+                        .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-P2", linea(venta, 0, 1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estadoVenta").value("PARCIALMENTE_DEVUELTA"));
 
         // Remanente: acredita la diferencia, no el prorrateo
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-P3", linea(venta, 0, 1))))
+                        .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-P3", linea(venta, 0, 1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estadoVenta").value("DEVUELTA"))
                 .andExpect(jsonPath("$.baseImponible").value(47.17))
@@ -329,7 +329,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-MIXTA",
+                        .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-MIXTA",
                                 linea(venta, 0, 2) + "," + linea(venta, 1, 1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estadoVenta").value("DEVUELTA"));
@@ -371,7 +371,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-SOBRE",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-SOBRE",
                                     linea(venta, 0, 3))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -389,13 +389,13 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-ACUM-1",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-ACUM-1",
                                     linea(venta, 0, 1))))
                     .andExpect(status().isCreated());
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-ACUM-2",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-ACUM-2",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -413,7 +413,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-YA-DEVUELTA-2",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-YA-DEVUELTA-2",
                                     linea(venta, 0, 1))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -429,7 +429,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-CERO",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-CERO",
                                     linea(venta, 0, 0))))
                     .andExpect(status().isBadRequest());
 
@@ -446,7 +446,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-AJENA",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-AJENA",
                                     linea(ajena, 0, 1))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -462,7 +462,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-DUP",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-DUP",
                                     linea(venta, 0, 1) + "," + linea(venta, 0, 1))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -478,7 +478,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"idVenta":999999999,"idTurnoCaja":%d,"motivo":"Prueba",
-                                     "metodoReembolso":"EFECTIVO","referenciaOperacion":"REF-404",
+                                     "metodoReembolso":"NOTA_CREDITO","referenciaOperacion":"REF-404",
                                      "detalles":[{"idDetalleVenta":1,"cantidad":1}]}
                                     """.formatted(idTurnoCaja)))
                     .andExpect(status().isNotFound());
@@ -502,7 +502,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-SIN-B04",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-SIN-B04",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isNotFound());
 
@@ -520,7 +520,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-VENCIDA",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-VENCIDA",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -536,7 +536,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-AGOTADA",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-AGOTADA",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -566,52 +566,90 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
         @Test
         @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER", "CAJA_OPERAR"})
-        @DisplayName("el reembolso en efectivo baja el esperado del turno y una venta posterior no lo borra")
-        void reembolsoEnEfectivoBajaElEsperado() throws Exception {
+        @DisplayName("la devolución no saca efectivo del cajón y el cierre sigue cuadrando")
+        void laDevolucionNoTocaElEfectivoDelTurno() throws Exception {
             VentaResponseDTO venta = venderGravado(2);   // 236.00 en efectivo
             assertThat(montoEsperadoTurno()).isEqualByComparingTo("1236.00");
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-CAJA-EFECTIVO",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-CAJA-NC",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isCreated());
 
+            // El cliente se llevó una Nota de Crédito, no billetes: el efectivo
+            // cobrado por esa venta sigue físicamente en el cajón.
             assertThat(montoEsperadoTurno())
-                    .as("el efectivo devuelto salió del cajón")
-                    .isEqualByComparingTo("1000.00");
+                    .as("la devolución acredita saldo, no vacía la caja")
+                    .isEqualByComparingTo("1236.00");
 
-            // Una venta posterior recalcula el cuadre: el ajuste debe sobrevivir.
+            // Una venta posterior recalcula el cuadre sin arrastrar la devolución.
             venderGravado(1);   // 118.00 en efectivo
-            assertThat(montoEsperadoTurno())
-                    .as("la venta posterior no borra la devolución")
-                    .isEqualByComparingTo("1118.00");
+            assertThat(montoEsperadoTurno()).isEqualByComparingTo("1354.00");
 
-            // Y el cierre cuadra con lo que hay físicamente en el cajón.
             mockMvc.perform(get("/api/cajas/turnos/" + idTurnoCaja + "/cuadre"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.montoEsperado").value(1118.00));
+                    .andExpect(jsonPath("$.montoEsperado").value(1354.00))
+                    .andExpect(jsonPath("$.totalDevolucionesEfectivo").value(0.00));
         }
 
         @Test
         @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER"})
-        @DisplayName("un reembolso no efectivo queda registrado pero no altera el efectivo esperado")
-        void reembolsoNoEfectivoNoAlteraElCajon() throws Exception {
+        @DisplayName("la devolución queda registrada como Nota de Crédito con saldo redimible")
+        void laDevolucionAcreditaSaldoRedimible() throws Exception {
             VentaResponseDTO venta = venderGravado(2);
-            assertThat(montoEsperadoTurno()).isEqualByComparingTo("1236.00");
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "TARJETA", "REF-CAJA-TARJETA",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-CAJA-SALDO",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.metodoReembolso").value("TARJETA"));
+                    .andExpect(jsonPath("$.metodoReembolso").value("NOTA_CREDITO"));
 
-            assertThat(montoEsperadoTurno())
-                    .as("una devolución por tarjeta no saca efectivo del cajón")
-                    .isEqualByComparingTo("1236.00");
+            assertThat(montoEsperadoTurno()).isEqualByComparingTo("1236.00");
             assertThat(devoluciones()).isEqualTo(1);
             assertThat(stock(idProductoGravado)).isEqualTo(100);
+
+            // El saldo nace completo y sin consumir: es lo que el POS podrá cobrar.
+            assertThat(saldoDisponible("REF-CAJA-SALDO")).isEqualByComparingTo("236.00");
+            assertThat(saldoUsado("REF-CAJA-SALDO")).isEqualByComparingTo("0.00");
+        }
+
+        @Test
+        @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER"})
+        @DisplayName("no se puede pedir el reembolso en efectivo: la tienda solo emite Nota de Crédito")
+        void rechazaReembolsoEnEfectivo() throws Exception {
+            VentaResponseDTO venta = venderGravado(2);
+
+            mockMvc.perform(post("/api/devoluciones").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-CAJA-EFECTIVO",
+                                    linea(venta, 0, 2))))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.error").value(
+                            org.hamcrest.Matchers.containsString("Nota de Crédito")));
+
+            // Rechazo limpio: ni stock repuesto, ni B04 consumida, ni caja movida.
+            assertThat(devoluciones()).isZero();
+            assertThat(stock(idProductoGravado)).isEqualTo(98);
+            assertThat(montoEsperadoTurno()).isEqualByComparingTo("1236.00");
+        }
+
+        @Test
+        @WithMockUser(username = CAJERO, authorities = {"DEVOLUCION_CREAR", "VENTA_VER"})
+        @DisplayName("omitir el método de reembolso es válido: la Nota de Crédito es el único destino")
+        void metodoOmitidoEmiteNotaDeCredito() throws Exception {
+            VentaResponseDTO venta = venderGravado(2);
+
+            mockMvc.perform(post("/api/devoluciones").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"idVenta":%d,"idTurnoCaja":%d,"motivo":"Producto defectuoso",
+                                     "referenciaOperacion":"REF-SIN-METODO",
+                                     "detalles":[%s]}
+                                    """.formatted(venta.getIdVenta(), idTurnoCaja, linea(venta, 0, 2))))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.metodoReembolso").value("NOTA_CREDITO"));
         }
 
         @Test
@@ -628,7 +666,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-SIN-TURNO",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-SIN-TURNO",
                                     linea(venta, 0, 2))))
                     .andExpect(status().isUnprocessableEntity());
 
@@ -646,7 +684,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
     @DisplayName("repetir la referencia de operación responde 409 sin repetir stock, caja ni NCF")
     void referenciaRepetidaNoDuplicaLaDevolucion() throws Exception {
         VentaResponseDTO venta = venderGravado(2);
-        String cuerpo = cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-IDEMPOTENTE", linea(venta, 0, 1));
+        String cuerpo = cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-IDEMPOTENTE", linea(venta, 0, 1));
 
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
@@ -680,7 +718,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
             VentaResponseDTO venta = venderGravado(2);
             String respuesta = mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-DETALLE",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-DETALLE",
                                     linea(venta, 0, 1))))
                     .andExpect(status().isCreated())
                     .andReturn().getResponse().getContentAsString();
@@ -799,7 +837,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
 
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-B04-VIVE",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-B04-VIVE",
                                     linea(venta, 0, 1))))
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.ncf").value(org.hamcrest.Matchers.startsWith("B04")));
@@ -835,7 +873,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
                     .andExpect(status().isOk());
             mockMvc.perform(post("/api/devoluciones").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(cuerpo(venta.getIdVenta(), "EFECTIVO", "REF-403",
+                            .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", "REF-403",
                                     linea(venta, 0, 1))))
                     .andExpect(status().isForbidden());
 
@@ -929,7 +967,7 @@ class DevolucionB04Test extends PostgresIntegrationTest {
     private void devolver(VentaResponseDTO venta, int cantidad, String referencia) throws Exception {
         mockMvc.perform(post("/api/devoluciones").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo(venta.getIdVenta(), "EFECTIVO", referencia,
+                        .content(cuerpo(venta.getIdVenta(), "NOTA_CREDITO", referencia,
                                 linea(venta, 0, cantidad))))
                 .andExpect(status().isCreated());
     }
@@ -1004,5 +1042,17 @@ class DevolucionB04Test extends PostgresIntegrationTest {
         return jdbcTemplate.queryForObject(
                 "SELECT monto_esperado FROM turno_caja WHERE id_turno_caja = ?",
                 BigDecimal.class, idTurnoCaja);
+    }
+
+    private BigDecimal saldoDisponible(String referenciaOperacion) {
+        return jdbcTemplate.queryForObject(
+                "SELECT monto_disponible FROM devolucion WHERE referencia_operacion = ?",
+                BigDecimal.class, referenciaOperacion);
+    }
+
+    private BigDecimal saldoUsado(String referenciaOperacion) {
+        return jdbcTemplate.queryForObject(
+                "SELECT monto_usado FROM devolucion WHERE referencia_operacion = ?",
+                BigDecimal.class, referenciaOperacion);
     }
 }

@@ -4,8 +4,7 @@ import {
 } from 'lucide-react';
 import {
   ApiError, devolucionesApi, turnosCajaApi, ventasApi,
-  METODOS_REEMBOLSO,
-  type DevolucionResponse, type DevolucionResumen, type MetodoReembolso,
+  type DevolucionResponse, type DevolucionResumen,
   type TurnoCaja, type VentaDevoluble, type VentaResumen,
 } from '../../imports/api';
 
@@ -23,6 +22,13 @@ const fmtFechaHora = (iso: string) =>
 
 /** Una venta sin cliente identificado es, fiscalmente, consumidor final. */
 const nombreCliente = (nombre: string | null) => nombre || 'Consumidor Final';
+
+/**
+ * Las devoluciones nuevas siempre acreditan Nota de Crédito, pero el historial
+ * anterior a esa política conserva el método con el que se reembolsó de verdad.
+ */
+const etiquetaReembolso = (metodo: string) =>
+  metodo === 'NOTA_CREDITO' ? 'Nota de Crédito' : metodo;
 
 const PAGE_SIZE = 15;
 
@@ -142,7 +148,7 @@ function DetalleDevolucionModal({ idDevolucion, onClose }: { idDevolucion: numbe
                 </div>
                 <div className="border border-border rounded-xl px-3 py-2.5">
                   <p className="text-xs text-muted-foreground">Método de reembolso</p>
-                  <p className="mt-0.5 font-semibold">{devolucion.metodoReembolso}</p>
+                  <p className="mt-0.5 font-semibold">{etiquetaReembolso(devolucion.metodoReembolso)}</p>
                 </div>
               </div>
 
@@ -240,7 +246,6 @@ function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
 
   // Paso 3: confirmación.
   const [motivo, setMotivo] = useState('');
-  const [metodo, setMetodo] = useState<MetodoReembolso>('EFECTIVO');
   const [enviando, setEnviando] = useState(false);
   const [errorEnvio, setErrorEnvio] = useState<{ mensaje: string; yaRegistrada: boolean } | null>(null);
   const [resultado, setResultado] = useState<DevolucionResponse | null>(null);
@@ -347,7 +352,7 @@ function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
       idVenta: venta.idVenta,
       idTurnoCaja: turno.idTurnoCaja,
       motivo: motivo.trim(),
-      metodoReembolso: metodo,
+      metodoReembolso: 'NOTA_CREDITO',
       referenciaOperacion: referenciaDelIntento(),
       detalles,
     })
@@ -378,7 +383,6 @@ function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
     setVenta(null);
     setCantidades({});
     setMotivo('');
-    setMetodo('EFECTIVO');
     // El historial de detrás se pone al día aquí y ya no vuelve a pedirse al
     // cerrar: una sola carga por operación registrada.
     if (debeRefrescar.current) {
@@ -455,7 +459,7 @@ function NuevaDevolucionModal({ onCerrar, onRefrescar }: {
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">A reembolsar al cliente</p>
                   <p id="resultado-reembolso" className="font-semibold">
-                    {fmtMoneda(resultado.total)} en {resultado.metodoReembolso}
+                    {fmtMoneda(resultado.total)} en {etiquetaReembolso(resultado.metodoReembolso)}
                   </p>
                 </div>
               </div>
@@ -931,7 +935,7 @@ export default function Devoluciones({ userPermisos = [] }: DevolucionesProps) {
                     <td className="px-3 py-3 font-mono text-xs">{d.ncfAfectado || 'Sin NCF'}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">{fmtFechaHora(d.fechaDevolucion)}</td>
                     <td className="px-3 py-3 text-sm">{d.cajeroNombre}</td>
-                    <td className="px-3 py-3 text-xs">{d.metodoReembolso}</td>
+                    <td className="px-3 py-3 text-xs">{etiquetaReembolso(d.metodoReembolso)}</td>
                     <td className="px-3 py-3 text-right font-semibold">{fmtMoneda(d.total)}</td>
                     <td className="px-3 py-3 text-center">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-amber-100 text-amber-700 border-amber-200">

@@ -212,13 +212,17 @@ class TurnoCajaConcurrenciaTest extends PostgresIntegrationTest {
                 .as("un turno cerrado no vuelve a abrirse por una devolución que llegó tarde")
                 .isEqualTo("CERRADO");
 
+        // El efectivo esperado es el mismo gane quien gane: la devolución emite
+        // una Nota de Crédito y no toca el cajón. Lo que distingue una rama de
+        // la otra es el stock repuesto y la devolución registrada.
+        assertThat(devolucionesEfectivoTurno()).isEqualByComparingTo("0.00");
+        assertThat(montoEsperadoTurno())
+                .as("1000 inicial + 236 vendidos; la devolución no saca efectivo")
+                .isEqualByComparingTo("1236.00");
+
         if (estadoDevolucion == 201) {
             // La devolución ganó la carrera: el cierre la vio y cuadró con ella.
             assertThat(devoluciones()).isEqualTo(1);
-            assertThat(devolucionesEfectivoTurno()).isEqualByComparingTo("236.00");
-            assertThat(montoEsperadoTurno())
-                    .as("1000 inicial + 236 vendidos - 236 devueltos")
-                    .isEqualByComparingTo("1000.00");
             assertThat(stock()).isEqualTo(100);
         } else {
             // El cierre ganó: la devolución se rechaza por turno no abierto.
@@ -226,14 +230,12 @@ class TurnoCajaConcurrenciaTest extends PostgresIntegrationTest {
                     .as("sobre un turno cerrado, la devolución es una regla de negocio incumplida")
                     .isEqualTo(422);
             assertThat(devoluciones()).isZero();
-            assertThat(devolucionesEfectivoTurno()).isEqualByComparingTo("0.00");
-            assertThat(montoEsperadoTurno()).isEqualByComparingTo("1236.00");
             assertThat(stock()).isEqualTo(98);
         }
     }
 
     @Test
-    @DisplayName("una venta simultánea a una devolución no pierde el efectivo devuelto")
+    @DisplayName("una venta simultánea a una devolución conserva el cobro y la reposición")
     void ventaYDevolucionSimultaneasConservanAmbosAjustes() throws Exception {
         CyclicBarrier salida = new CyclicBarrier(2);
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -254,11 +256,11 @@ class TurnoCajaConcurrenciaTest extends PostgresIntegrationTest {
         }
 
         assertThat(devolucionesEfectivoTurno())
-                .as("la venta posterior no pisa el efectivo devuelto")
-                .isEqualByComparingTo("236.00");
+                .as("ninguna devolución entrega efectivo")
+                .isEqualByComparingTo("0.00");
         assertThat(montoEsperadoTurno())
-                .as("1000 inicial + 236 + 118 vendidos - 236 devueltos")
-                .isEqualByComparingTo("1118.00");
+                .as("1000 inicial + 236 + 118 vendidos; la devolución no descuenta del cajón")
+                .isEqualByComparingTo("1354.00");
         assertThat(stock()).as("100 - 2 vendidas + 2 devueltas - 1 vendida").isEqualTo(99);
     }
 
@@ -272,7 +274,7 @@ class TurnoCajaConcurrenciaTest extends PostgresIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"idVenta":%d,"idTurnoCaja":%d,"motivo":"Devolución concurrente",
-                                     "metodoReembolso":"EFECTIVO","referenciaOperacion":"%s",
+                                     "metodoReembolso":"NOTA_CREDITO","referenciaOperacion":"%s",
                                      "detalles":[{"idDetalleVenta":%d,"cantidad":%d}]}
                                     """.formatted(ventaPrevia.getIdVenta(), idTurnoCaja, referencia,
                                     ventaPrevia.getDetalles().get(0).getIdDetalleVenta(), cantidad)))

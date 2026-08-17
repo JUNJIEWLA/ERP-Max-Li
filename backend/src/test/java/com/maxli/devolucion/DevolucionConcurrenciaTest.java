@@ -247,7 +247,7 @@ class DevolucionConcurrenciaTest extends PostgresIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"idVenta":%d,"idTurnoCaja":%d,"motivo":"Devolución concurrente",
-                                     "metodoReembolso":"EFECTIVO","referenciaOperacion":"%s",
+                                     "metodoReembolso":"NOTA_CREDITO","referenciaOperacion":"%s",
                                      "detalles":[{"idDetalleVenta":%d,"cantidad":%d}]}
                                     """.formatted(venta.getIdVenta(), idTurnoCaja, referencia,
                                     venta.getDetalles().get(0).getIdDetalleVenta(),

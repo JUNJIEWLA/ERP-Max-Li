@@ -26,9 +26,9 @@ const FONDO_INICIAL = '500.00';
 const EFECTIVO_RECIBIDO = '200.00';
 const CAMBIO_ESPERADO = '82.00';
 const MOTIVO_DEVOLUCION = 'Producto defectuoso reportado por el cliente';
-// 500 iniciales + 118 vendidos − 118 devueltos: la devolución en efectivo
-// deja el cajón exactamente como estaba al abrir el turno.
-const DECLARADO_AL_CIERRE = '500.00';
+// 500 iniciales + 118 cobrados en efectivo. La devolución acredita una Nota de
+// Crédito, no billetes: el dinero de esa venta sigue en el cajón al cerrar.
+const DECLARADO_AL_CIERRE = '618.00';
 
 // ── Credenciales de la base efímera ─────────────────────────────────────
 const USUARIO = process.env.E2E_ADMIN_USER ?? 'admin';
@@ -278,7 +278,7 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
   });
 
-  // ── Devolución completa en efectivo con Nota de Crédito B04 ───────────
+  // ── Devolución completa acreditada como Nota de Crédito B04 ──────────
   let devolucionCreada;
   let idLineaVenta;
 
@@ -327,10 +327,9 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await expect(page.locator(`#disponible-linea-${idLineaVenta}`)).toHaveText('1');
   });
 
-  await test.step('devolver la unidad en efectivo y emitir el B04', async () => {
+  await test.step('devolver la unidad y emitir el B04 como Nota de Crédito', async () => {
     await page.locator(`#input-cantidad-devolver-${idLineaVenta}`).fill('1');
     await page.locator('#input-motivo-devolucion').fill(MOTIVO_DEVOLUCION);
-    await page.locator('#select-metodo-reembolso').selectOption('EFECTIVO');
 
     const respuesta = page.waitForResponse(
       (r) => new URL(r.url()).pathname === '/api/devoluciones' && r.request().method() === 'POST',
@@ -344,7 +343,7 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     expect(devolucionCreada.ncf).toMatch(/^B04\d{8}$/);
     expect(devolucionCreada.tipoNcf).toBe('B04');
     expect(devolucionCreada.ncfAfectado).toBe(ventaCreada.ncf);
-    expect(devolucionCreada.metodoReembolso).toBe('EFECTIVO');
+    expect(devolucionCreada.metodoReembolso).toBe('NOTA_CREDITO');
     expect(devolucionCreada.total).toBe(118);
     expect(devolucionCreada.baseImponible).toBe(100);
     expect(devolucionCreada.itbis).toBe(18);
@@ -356,7 +355,7 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await expect(page.locator('#resultado-base')).toHaveText('RD$100.00');
     await expect(page.locator('#resultado-itbis')).toHaveText('RD$18.00');
     await expect(page.locator('#resultado-total')).toHaveText('RD$118.00');
-    await expect(page.locator('#resultado-reembolso')).toContainText('EFECTIVO');
+    await expect(page.locator('#resultado-reembolso')).toContainText('Nota de Crédito');
 
     // Se cierra por la X y no por el botón inferior: el historial que hay
     // detrás tiene que quedar al día salga el usuario por donde salga.
@@ -369,7 +368,7 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await expect(fila).toContainText(devolucionCreada.ncf);
     await expect(fila).toContainText(ventaCreada.ncf);
     await expect(fila).toContainText(USUARIO);
-    await expect(fila).toContainText('EFECTIVO');
+    await expect(fila).toContainText('Nota de Crédito');
     await expect(fila).toContainText('RD$118.00');
     await expect(fila).toContainText('CONFIRMADA');
   });
@@ -425,9 +424,10 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
     await page.locator(`#btn-cerrar-turno-${idTurno}`).click();
     await expect(page.getByRole('heading', { name: 'Cerrar Turno de Caja' })).toBeVisible();
 
-    // El cuadre lo calcula el backend: 500 de fondo + 118 vendidos − 118
-    // devueltos en efectivo. La resta aparece como línea propia.
-    await expect(page.locator('#cierre-devoluciones-efectivo')).toHaveText(`-RD$${PRECIO}`);
+    // El cuadre lo calcula el backend: 500 de fondo + 118 vendidos, sin restar
+    // la devolución del paso anterior —salió como Nota de Crédito y no tocó el
+    // cajón—. Ese saldo tampoco se redimió aquí, así que la línea va en cero.
+    await expect(page.locator('#cierre-ventas-nota-credito')).toHaveText('RD$0.00');
     await expect(page.locator('#cierre-monto-esperado')).toHaveText(`RD$${DECLARADO_AL_CIERRE}`);
     await page.locator('#input-cierre-monto-declarado').fill(DECLARADO_AL_CIERRE);
     await expect(page.getByText('Diferencia Calculada: RD$0.00')).toBeVisible();
