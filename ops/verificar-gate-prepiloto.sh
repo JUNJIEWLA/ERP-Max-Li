@@ -575,7 +575,7 @@ pg_dump --host="$HOST" --port="$PUERTO" --username="$USUARIO" --dbname="$BASE" \
         --no-password --format=custom --no-owner --no-acl \
         --file="$BACKUPS_EXTERNOS/$DUMP" 2>/dev/null
 checksum_de "$BACKUPS_EXTERNOS/$DUMP"
-debe_fallar_con "una copia externa que es otro dump distinto se rechaza" "checksum"
+debe_fallar_con "una copia externa que es otro dump distinto se rechaza" "distinto"
 sembrar_backups
 
 debe_fallar_con "sin destino externo configurado se rechaza" "BACKUP_EXTERNO_DIR" \

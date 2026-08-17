@@ -30,6 +30,10 @@ readonly RAIZ="$(cd "$DIRECTORIO_OPS/.." && pwd)"
 
 fallos=0
 avisos=0
+# Excepciones pedidas explícitamente que relajan una comprobación. No bloquean,
+# pero salen en el veredicto: un «ENTORNO LISTO» que esconde una excepción es
+# justo el verde silencioso que este gate existe para no dar.
+excepciones=0
 
 ok()   { printf '  \033[32mok\033[0m    %s\n' "$1"; }
 mal()  { printf '  \033[31mFALLA\033[0m %s\n' "$1"; fallos=$((fallos + 1)); }
@@ -92,7 +96,7 @@ done
 [[ "$MAX_HORAS" =~ ^[0-9]+$ && "$MAX_HORAS" -gt 0 ]] \
     || abortar "--max-horas debe ser un entero positivo (recibido: '$MAX_HORAS')."
 
-for herramienta in psql curl; do
+for herramienta in psql pg_restore curl; do
     command -v "$herramienta" >/dev/null 2>&1 \
         || abortar "falta '$herramienta'. Instale los clientes de PostgreSQL y curl."
 done
@@ -115,6 +119,49 @@ hash_de() {
 # `stat` no es el mismo en GNU y en BSD, y el piloto se opera desde las dos.
 epoch_de() {
     stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null
+}
+
+dispositivo_de() {
+    stat -c %d "$1" 2>/dev/null || stat -f %d "$1" 2>/dev/null
+}
+
+# Número de objetos restaurables del dump. Un checksum válido solo dice que el
+# archivo llegó entero; puede haber llegado entero y no ser un respaldo. Leer el
+# índice obliga a recorrer la cabecera y la tabla de contenidos, que es donde se
+# nota un archivo truncado o que nunca fue un dump.
+objetos_restaurables_de() {
+    pg_restore --list "$1" 2>/dev/null | grep -cvE '^;|^[[:space:]]*$' || true
+}
+
+# Verifica un dump y su sidecar: que el .sha256 exista, que su contenido cuadre
+# con el archivo y que el archivo sea restaurable. Escribe el motivo en
+# MOTIVO_DUMP y devuelve 1 si algo falla.
+MOTIVO_DUMP=""
+verificar_dump() {
+    local archivo="$1" etiqueta="$2"
+    MOTIVO_DUMP=""
+
+    if [[ ! -f "${archivo}.sha256" ]]; then
+        MOTIVO_DUMP="no tiene checksum: falta ${archivo}.sha256"
+        return 1
+    fi
+    # El sidecar puede existir y no decir nada: vacío tras un disco lleno, o
+    # truncado a mitad de copia. Se compara su contenido, no su presencia.
+    local esperado
+    esperado="$(cut -d' ' -f1 < "${archivo}.sha256" | head -1)"
+    if [[ ! "$esperado" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        MOTIVO_DUMP="el checksum de $etiqueta está vacío o no es un sha256: ${archivo}.sha256"
+        return 1
+    fi
+    if [[ "$(hash_de "$archivo")" != "$esperado" ]]; then
+        MOTIVO_DUMP="el checksum de $etiqueta no coincide: el archivo está alterado o incompleto"
+        return 1
+    fi
+    if [[ "$(objetos_restaurables_de "$archivo")" -le 0 ]]; then
+        MOTIVO_DUMP="$etiqueta no es un dump restaurable: no supera 'pg_restore --list'"
+        return 1
+    fi
+    return 0
 }
 
 # ── 1. Perfil y variables del entorno ─────────────────────────────────
@@ -422,23 +469,76 @@ else
         detalle "una vez con BOOTSTRAP_ADMIN_PASSWORD y cree desde ahí las cuentas reales."
     fi
 
-    administradores="$(consultar "SELECT count(*) FROM usuario u
-                                    JOIN usuario_rol ur ON ur.id_usuario = u.id_usuario
-                                    JOIN rol r ON r.id_rol = ur.id_rol
-                                   WHERE u.estado = 'ACTIVO'
-                                     AND u.password_hash NOT LIKE 'LOCKED::%'
-                                     AND r.nombre = 'ADMIN'")"
+    # Un usuario activo con rol asignado no basta: cuatro cuentas de
+    # AUXILIAR_INVENTARIO son cuatro cuentas que no pueden abrir caja, ni
+    # cobrar, ni autorizar una devolución. Lo que decide si la tienda puede
+    # operar es lo que la gente puede HACER.
+    #
+    # Los permisos efectivos son la unión de los heredados del rol y los
+    # concedidos directamente (usuario_permiso), tal como los arma
+    # AuthController al emitir la sesión. No hay revocación: son aditivos.
+    contar_con_permiso() {
+        consultar "SELECT count(DISTINCT u.id_usuario)
+                     FROM usuario u
+                    WHERE u.estado = 'ACTIVO'
+                      AND u.password_hash NOT LIKE 'LOCKED::%'
+                      AND EXISTS (
+                          SELECT 1 FROM usuario_rol ur
+                            JOIN rol_permiso rp ON rp.id_rol = ur.id_rol
+                            JOIN permiso p ON p.id_permiso = rp.id_permiso
+                           WHERE ur.id_usuario = u.id_usuario
+                             AND p.nombre_clave = '$1'
+                          UNION ALL
+                          SELECT 1 FROM usuario_permiso up
+                            JOIN permiso p ON p.id_permiso = up.id_permiso
+                           WHERE up.id_usuario = u.id_usuario
+                             AND p.nombre_clave = '$1')"
+    }
+
+    exigir_permiso() {
+        local permiso="$1" para="$2" consecuencia="$3"
+        local cuantos
+        cuantos="$(contar_con_permiso "$permiso")"
+        if [[ "${cuantos:-0}" -gt 0 ]]; then
+            ok "$permiso: $cuantos usuario(s) habilitado(s) — $para"
+        else
+            mal "Ningún usuario habilitado tiene $permiso ($para)."
+            detalle "$consecuencia"
+            detalle "Asigne el permiso por rol o directamente al usuario; ambos valen."
+        fi
+    }
+
+    exigir_permiso "CAJA_OPERAR" "abrir y cerrar turnos" \
+        "Sin turno abierto no se puede vender: la tienda no llega ni a la primera venta."
+    exigir_permiso "VENTA_CREAR" "cobrar en el POS" \
+        "Nadie puede facturar. El piloto no tiene forma de operar."
+    exigir_permiso "DEVOLUCION_CREAR" "emitir notas de crédito" \
+        "La resolución B04 dada de alta no la podría usar nadie del turno."
+    exigir_permiso "USUARIO_GESTIONAR" "administrar usuarios" \
+        "No hay administrador operativo: nadie puede dar de alta ni bloquear cuentas."
+
+    administradores="$(contar_con_permiso "NCF_GESTIONAR")"
     if [[ "${administradores:-0}" -eq 0 ]]; then
-        nota "Ningún usuario habilitado tiene el rol ADMIN."
-        detalle "Sin administrador operativo no hay quien dé de alta resoluciones ni usuarios."
+        mal "Ningún usuario habilitado tiene NCF_GESTIONAR (gestión fiscal)."
+        detalle "Cuando la B02 se agote a mitad del piloto —y se agota— no habrá quien"
+        detalle "registre y active la siguiente. Las ventas se detienen ahí."
+    else
+        ok "NCF_GESTIONAR: $administradores usuario(s) habilitado(s) — gestión fiscal"
     fi
 
-    con_stock="$(consultar "SELECT count(*) FROM existencia WHERE cantidad_actual > 0")"
-    if [[ "${con_stock:-0}" -eq 0 ]]; then
-        nota "No hay ninguna existencia con cantidad_actual > 0: no se puede vender nada."
-        detalle "El stock inicial es un paso del checklist, no de este script."
+    # Sin stock no hay nada que vender, por muy bien configurado que esté todo
+    # lo demás. Es un no-go, no un detalle a recordar.
+    con_stock="$(consultar "SELECT count(*) FROM existencia e
+                              JOIN producto p ON p.id_producto = e.id_producto
+                              JOIN almacen a ON a.id_almacen = e.id_almacen
+                             WHERE e.cantidad_actual > 0
+                               AND p.estado = 'ACTIVO' AND a.estado = 'ACTIVO'")"
+    if [[ "${con_stock:-0}" -gt 0 ]]; then
+        ok "Productos activos con stock en almacén activo: $con_stock"
     else
-        ok "Existencias con stock: $con_stock"
+        mal "No hay ningún producto activo con stock en un almacén activo."
+        detalle "No se puede vender nada. Cargue el catálogo y cuadre las existencias"
+        detalle "contra un conteo físico antes de abrir."
     fi
 fi
 
@@ -558,15 +658,14 @@ else
             ok "Último backup: $(basename "$ultimo_dump") ($edad_horas h, máximo $MAX_HORAS h)"
         fi
 
-        if [[ ! -f "${ultimo_dump}.sha256" ]]; then
-            mal "El último backup no tiene checksum: falta ${ultimo_dump}.sha256"
-            detalle "Sin él no se puede saber si el dump llegó entero, y eso se descubre"
-            detalle "en mitad de la restauración de emergencia."
-        elif [[ "$(hash_de "$ultimo_dump")" != "$(cut -d' ' -f1 < "${ultimo_dump}.sha256")" ]]; then
-            mal "El checksum del último backup no coincide: el dump está alterado o incompleto."
-            detalle "Archivo: $ultimo_dump"
+        if verificar_dump "$ultimo_dump" "el backup local"; then
+            ok "Backup local íntegro y restaurable ($(objetos_restaurables_de "$ultimo_dump") objetos)"
         else
-            ok "Checksum del backup local verificado"
+            mal "El último backup $MOTIVO_DUMP."
+            detalle "Archivo: $ultimo_dump"
+            detalle "Un checksum válido solo dice que el archivo llegó entero: puede haber"
+            detalle "llegado entero y no ser un respaldo. Ejecute ops/backup-postgres.sh de"
+            detalle "nuevo y no abra la tienda hasta tener un dump que se deje leer."
         fi
     fi
 fi
@@ -583,21 +682,58 @@ if [[ -z "$BACKUP_EXTERNO" ]]; then
 elif [[ ! -d "$BACKUP_EXTERNO" ]]; then
     mal "El destino de la copia externa no existe o no es un directorio: $BACKUP_EXTERNO"
     detalle "Compruebe que el recurso remoto está montado."
-elif [[ -z "$ultimo_dump" ]]; then
-    sin "Copia externa: no comprobada (no hay backup local que buscar allí)."
 else
-    copia="$BACKUP_EXTERNO/$(basename "$ultimo_dump")"
-    if [[ ! -f "$copia" ]]; then
-        mal "El último backup no tiene copia externa: falta $(basename "$ultimo_dump") en $BACKUP_EXTERNO"
-        detalle "Ejecute ops/backup-postgres.sh --externo '$BACKUP_EXTERNO' --exigir-externo"
-    elif [[ ! -f "${copia}.sha256" ]]; then
-        mal "La copia externa llegó sin su checksum: falta ${copia}.sha256"
-        detalle "Un dump que no se puede verificar no se puede restaurar con confianza."
-    elif [[ "$(hash_de "$copia")" != "$(hash_de "$ultimo_dump")" ]]; then
-        mal "El checksum de la copia externa no coincide con el del backup local."
-        detalle "Llegó alterada o incompleta: $copia"
+    # Que el directorio exista no dice nada: un punto de montaje cuyo recurso
+    # remoto se cayó sigue siendo un directorio escribible y vacío, y la copia
+    # acaba en el mismo disco que la base. Se pierde el servidor y se pierden
+    # las dos copias a la vez.
+    referencia_local="${ultimo_dump:+$(dirname "$ultimo_dump")}"
+    referencia_local="${referencia_local:-$BACKUP_DIRECTORIO}"
+    dispositivo_local="$(dispositivo_de "$referencia_local")"
+    dispositivo_externo="$(dispositivo_de "$BACKUP_EXTERNO")"
+
+    if [[ -z "$dispositivo_local" || -z "$dispositivo_externo" ]]; then
+        nota "No se pudo determinar el sistema de archivos del destino externo."
+        detalle "Compruebe a mano que $BACKUP_EXTERNO está fuera de este servidor."
+    elif [[ "$dispositivo_local" == "$dispositivo_externo" ]]; then
+        if [[ "${BACKUP_EXTERNO_PERMITIR_MISMO_FILESYSTEM:-no}" == "si" ]]; then
+            nota "El destino externo comparte sistema de archivos con los backups locales."
+            detalle "Se acepta solo porque BACKUP_EXTERNO_PERMITIR_MISMO_FILESYSTEM=si."
+            detalle "Esta copia NO protege del servidor perdido entero."
+            excepciones=$((excepciones + 1))
+        else
+            mal "El destino externo está en el mismo sistema de archivos que los backups locales."
+            detalle "  local:   $referencia_local"
+            detalle "  externo: $BACKUP_EXTERNO"
+            detalle "Casi siempre significa que el punto de montaje existe pero el recurso"
+            detalle "remoto no está montado. Compruébelo con 'mount | grep $BACKUP_EXTERNO'."
+        fi
     else
-        ok "Copia externa presente y verificada: $copia"
+        ok "El destino externo está en otro sistema de archivos"
+    fi
+
+    if [[ -z "$ultimo_dump" ]]; then
+        sin "Copia externa: no comprobada (no hay backup local que buscar allí)."
+    else
+        copia="$BACKUP_EXTERNO/$(basename "$ultimo_dump")"
+        if [[ ! -f "$copia" ]]; then
+            mal "El último backup no tiene copia externa: falta $(basename "$ultimo_dump") en $BACKUP_EXTERNO"
+            detalle "Ejecute ops/backup-postgres.sh --externo '$BACKUP_EXTERNO' --exigir-externo"
+        elif ! verificar_dump "$copia" "la copia externa"; then
+            # Se verifica la copia por su cuenta —sidecar propio incluido—
+            # porque es la que se restaurará el día que el servidor no esté, y
+            # restore-postgres.sh comprobará ese mismo sidecar, no el local.
+            mal "La copia externa $MOTIVO_DUMP."
+            detalle "Archivo: $copia"
+        elif [[ "$(hash_de "$copia")" != "$(hash_de "$ultimo_dump")" ]]; then
+            mal "La copia externa es un archivo distinto del backup local que dice acompañar."
+            detalle "  local:   $ultimo_dump"
+            detalle "  externo: $copia"
+            detalle "Ambos son dumps válidos, pero no el mismo: uno de los dos no es el que"
+            detalle "cree tener. Vuelva a publicar la copia con ops/backup-postgres.sh."
+        else
+            ok "Copia externa presente, íntegra y restaurable: $copia"
+        fi
     fi
 fi
 
@@ -624,6 +760,17 @@ MANUAL
 
 seccion "Veredicto"
 
+if [[ "$fallos" -eq 0 && "$excepciones" -gt 0 ]]; then
+    # No es «listo» a secas: alguien pidió relajar una comprobación y el
+    # veredicto tiene que decirlo con todas las letras, o la excepción se
+    # convierte en el estado normal sin que nadie lo haya decidido.
+    echo "  ENTORNO LISTO CON EXCEPCIONES — $excepciones excepción(es) y $avisos aviso(s)."
+    echo
+    echo "  Se relajó una comprobación a petición explícita. Esto NO vale como gate"
+    echo "  de un piloto real: revise las excepciones antes de abrir la tienda."
+    exit 0
+fi
+
 if [[ "$fallos" -eq 0 ]]; then
     echo "  ENTORNO LISTO — $avisos aviso(s)."
     echo
@@ -632,7 +779,7 @@ if [[ "$fallos" -eq 0 ]]; then
     exit 0
 fi
 
-echo "  ENTORNO NO LISTO — $fallos fallo(s) y $avisos aviso(s)."
+echo "  ENTORNO NO LISTO — $fallos fallo(s), $avisos aviso(s) y $excepciones excepción(es)."
 echo
 echo "  Corrija cada FALLA y vuelva a ejecutar este comando."
 exit 1
