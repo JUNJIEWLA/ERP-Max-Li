@@ -93,6 +93,16 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/logout").permitAll()
                 .requestMatchers("/error").permitAll()
 
+                // ── Sondas de salud (ISSUE-015) ───────────────────────────────
+                // El reverse proxy y el arranque del despliegue las consultan sin
+                // sesión. Se listan una por una y nunca con comodín: /actuator/**
+                // dejaría entrar cualquier endpoint que se habilitara después por
+                // descuido. El cuerpo va recortado a {"status":"UP"} desde
+                // application.yml, así que no revelan nada aunque sean públicas.
+                .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                .requestMatchers(HttpMethod.GET, "/actuator/health/liveness").permitAll()
+                .requestMatchers(HttpMethod.GET, "/actuator/health/readiness").permitAll()
+
                 // ── Sesión propia: alcanzable incluso con cambio de contraseña
                 //    pendiente (PWD_CHANGE_REQUIRED es la única autoridad en ese caso) ─
                 .requestMatchers("/api/auth/cambiar-password").authenticated()

@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.actuate.health.HealthEndpointGroup;
+import org.springframework.boot.actuate.health.HealthEndpointGroups;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -46,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HealthchecksPilotoTest extends PostgresIntegrationTest {
 
     @Autowired private TestRestTemplate cliente;
+    @Autowired private HealthEndpointGroups grupos;
     @LocalServerPort private int puerto;
 
     // ── Las tres sondas son públicas y responden UP ───────────────────────
@@ -84,20 +87,53 @@ class HealthchecksPilotoTest extends PostgresIntegrationTest {
             "/actuator/health",
             "/actuator/health/liveness",
             "/actuator/health/readiness"})
-    @DisplayName("las sondas devuelven solo el estado, sin componentes ni datos de conexión")
+    @DisplayName("las sondas no revelan componentes, versiones ni datos de conexión")
     void lasSondasNoRevelanDetalles(String ruta) {
         String cuerpo = sondear(ruta).getBody();
 
-        // El cuerpo es exactamente el estado: cualquier añadido sería
-        // inventario gratis para quien sondee el endpoint sin credenciales.
-        assertThat(cuerpo).isEqualTo("{\"status\":\"UP\"}");
         assertThat(cuerpo)
                 .doesNotContainIgnoringCase("components")
                 .doesNotContainIgnoringCase("details")
                 .doesNotContainIgnoringCase("postgres")
                 .doesNotContainIgnoringCase("jdbc")
+                .doesNotContainIgnoringCase("localhost")
                 .doesNotContainIgnoringCase("diskSpace")
+                .doesNotContainIgnoringCase("exception")
                 .doesNotContainIgnoringCase("version");
+    }
+
+    @ParameterizedTest(name = "{0} devuelve solo el estado")
+    @ValueSource(strings = {"/actuator/health/liveness", "/actuator/health/readiness"})
+    @DisplayName("cada sonda concreta se reduce al estado y nada más")
+    void cadaSondaSeReduceAlEstado(String ruta) {
+        assertThat(sondear(ruta).getBody()).isEqualTo("{\"status\":\"UP\"}");
+    }
+
+    @Test
+    @DisplayName("la sonda agregada solo añade los nombres de grupo, que son parte del contrato")
+    void laSondaAgregadaSoloListaSusGrupos() {
+        // Spring Boot enumera los grupos disponibles en la raíz de /actuator/health.
+        // Son los dos nombres estándar que este runbook ya publica: no dicen nada
+        // del despliegue —ni motor, ni host, ni versión— así que se aceptan tal
+        // cual, pero se fija el cuerpo exacto para que ningún cambio de
+        // configuración empiece a añadir campos sin que salte esta prueba.
+        assertThat(sondear("/actuator/health").getBody())
+                .isEqualTo("{\"status\":\"UP\",\"groups\":[\"liveness\",\"readiness\"]}");
+    }
+
+    @Test
+    @DisplayName("liveness responde por el proceso; readiness es la que exige PostgreSQL")
+    void livenessNoDependeDeLaBaseYReadinessSi() {
+        // Sobre la aplicación en marcha ambas sondas dan UP, así que el estado
+        // por sí solo no distingue una de otra. Lo que las separa es de qué
+        // responde cada grupo: si liveness incluyera la base, una caída de
+        // PostgreSQL provocaría reinicios del proceso que no arreglan nada.
+        assertThat(grupo("liveness").isMember("db"))
+                .as("liveness no puede depender de PostgreSQL")
+                .isFalse();
+        assertThat(grupo("readiness").isMember("db"))
+                .as("readiness debe comprobar que la aplicación puede usar PostgreSQL")
+                .isTrue();
     }
 
     // ── Todo lo demás de Actuator queda fuera del alcance del piloto ──────
@@ -156,6 +192,13 @@ class HealthchecksPilotoTest extends PostgresIntegrationTest {
     }
 
     // ── Infraestructura ──────────────────────────────────────────────────
+
+    /** Grupo de salud realmente registrado por Actuator, no lo que diga el yml. */
+    private HealthEndpointGroup grupo(String nombre) {
+        HealthEndpointGroup grupo = grupos.get(nombre);
+        assertThat(grupo).as("debe existir el grupo de salud %s", nombre).isNotNull();
+        return grupo;
+    }
 
     /** Sondea como lo haría el reverse proxy: sin sesión y declarando el TLS que él terminó. */
     private ResponseEntity<String> sondear(String ruta) {
