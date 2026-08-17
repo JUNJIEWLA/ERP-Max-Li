@@ -7,6 +7,12 @@ interface TicketImpresionProps {
   empresa: ConfiguracionEmpresa | null;
   cart?: CartItem[];
   montoRecibido?: number;
+  /**
+   * Marca el papel como reimpresión. Un comprobante fiscal se emite una vez: si
+   * la copia sale idéntica al original, dos papeles con el mismo e-NCF circulan
+   * sin que nada los distinga.
+   */
+  esCopia?: boolean;
 }
 
 // ── Generador vectorial SVG de Código de Barras Code 128 ─────────────
@@ -77,7 +83,7 @@ function generateCode128Svg(text: string): React.ReactNode {
 
 // ── Componente Principal del Ticket 80mm ─────────────────────────────
 
-export default function TicketImpresion({ venta, empresa, cart, montoRecibido }: TicketImpresionProps) {
+export default function TicketImpresion({ venta, empresa, cart, montoRecibido, esCopia = false }: TicketImpresionProps) {
   const nombreComercial = empresa?.nombreComercial || 'PLAZA MAX';
   const razonSocial = empresa?.razonSocial || 'Comercial Plaza Max, S.R.L.';
   const rncEmpresa = empresa?.rnc || '13338823';
@@ -126,6 +132,14 @@ export default function TicketImpresion({ venta, empresa, cart, montoRecibido }:
     <div id="printable-ticket" className="hidden print:block text-black font-mono text-[11px] leading-tight w-[80mm] mx-auto p-1 bg-white">
       
       {/* ── 1. Encabezado y Datos Fiscales ───────────────────────────── */}
+      {esCopia && (
+        <div
+          id="ticket-marca-copia"
+          className="text-center font-bold text-[12px] tracking-widest uppercase border border-black py-0.5 mb-1"
+        >
+          COPIA — Reimpresión
+        </div>
+      )}
       <div className="text-center font-bold text-base tracking-wider uppercase mb-1">
         {nombreComercial}
       </div>

@@ -4,6 +4,12 @@ import { ConfiguracionEmpresa, VentaResponse } from '../../../imports/api';
 interface FacturaImpresionA4Props {
   venta: VentaResponse;
   empresa: ConfiguracionEmpresa | null;
+  /**
+   * Marca la hoja como reimpresión. Un comprobante fiscal se emite una vez: si
+   * la copia sale idéntica al original, dos papeles con el mismo e-NCF circulan
+   * sin que nada los distinga.
+   */
+  esCopia?: boolean;
 }
 
 // ── Generador vectorial SVG de Código de Barras Code 128 ─────────────
@@ -79,7 +85,7 @@ const fmtFechaHora = (iso: string) =>
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
 
-export default function FacturaImpresionA4({ venta, empresa }: FacturaImpresionA4Props) {
+export default function FacturaImpresionA4({ venta, empresa, esCopia = false }: FacturaImpresionA4Props) {
   const nombreComercial = empresa?.nombreComercial || 'PLAZA MAX';
   const razonSocial = empresa?.razonSocial || 'Comercial Plaza Max, S.R.L.';
   const rncEmpresa = empresa?.rnc || '13338823';
@@ -101,6 +107,15 @@ export default function FacturaImpresionA4({ venta, empresa }: FacturaImpresionA
   return (
     <div id="printable-a4" className="hidden print:block text-black font-sans text-xs w-[210mm] max-w-[210mm] mx-auto p-8 bg-white box-border">
       
+      {esCopia && (
+        <div
+          id="factura-marca-copia"
+          className="text-center font-bold text-sm tracking-widest uppercase border-2 border-slate-900 py-1 mb-4"
+        >
+          COPIA — Reimpresión
+        </div>
+      )}
+
       {/* ── Encabezado Principal ─────────────────────────────────────── */}
       <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
         {/* Lado Izquierdo: Datos de la Empresa */}
