@@ -14,10 +14,10 @@
 #
 # El destino debe ser una base NUEVA Y VACÍA: `pg_restore --clean` solo borra
 # los objetos que el dump contiene, así que restaurar sobre una base ya migrada
-# dejaría en pie lo creado después del backup. Ver docs/RUNBOOK_PILOTO.md §4.
+# dejaría en pie lo creado después del backup. Ver el runbook de operación §4.
 #
 # IMPORTANTE: la aplicación debe estar detenida —o al menos sin escrituras—
-# durante la restauración. Ver docs/RUNBOOK_PILOTO.md.
+# durante la restauración. Ver el runbook de operación.
 
 set -Eeuo pipefail
 umask 077
@@ -195,7 +195,7 @@ if [[ "$OBJETOS_PREVIOS" != "0" ]]; then
                           --confirmar RESTAURAR:${BASE_DESTINO}_restaurada
 
        Y luego, con la aplicación detenida, apunte DB_URL a esa base o
-       renómbrela. Ver docs/RUNBOOK_PILOTO.md §4."
+       renómbrela. Ver el runbook de operación §4."
 fi
 
 informar "Destino: base '$BASE_DESTINO' en ${autoridad} (vacía, como debe ser)"

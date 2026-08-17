@@ -11,7 +11,7 @@
 #         ops/backup-postgres.sh [destino] [--externo <ruta>] [--exigir-externo]
 #
 # El destino por defecto es ops/backups/ (ignorado por Git). Ver
-# docs/RUNBOOK_PILOTO.md para la programación diaria y la copia off-host.
+# el runbook de operación para la programación diaria y la copia off-host.
 #
 # La copia externa es opcional en el comando y obligatoria en la práctica: un
 # backup en el mismo disco que la base no protege del caso que importa, que es
@@ -370,5 +370,5 @@ elif [[ "$EXIGIR_EXTERNO" == "si" ]]; then
 else
     informar "AVISO: sin copia externa. Un backup en el mismo disco que la base no"
     informar "AVISO: protege del servidor perdido entero. Use --externo <ruta> o"
-    informar "AVISO: copie el dump cifrado a mano (ver docs/RUNBOOK_PILOTO.md §3)."
+    informar "AVISO: copie el dump cifrado a mano (ver el runbook de operación §3)."
 fi

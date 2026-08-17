@@ -9,8 +9,8 @@
 ## Seguridad y despliegue (ISSUE-010)
 
 Esta sección cubre el contrato mínimo de autenticación y transporte. La
-operación del piloto —healthchecks, backup/restore y rollback— está en
-**[`docs/RUNBOOK_PILOTO.md`](docs/RUNBOOK_PILOTO.md)** (ISSUE-015).
+operación del piloto —healthchecks, backup/restore y rollback— está en el
+**runbook de operación**, que se mantiene fuera de este repositorio (ISSUE-015).
 
 ### Variables de entorno
 
@@ -97,7 +97,8 @@ incrementa `token_version` e invalida de inmediato los tokens ya emitidos.
 ## Operación del piloto (ISSUE-015)
 
 El procedimiento completo —backup diario, restauración, despliegue, criterios de
-fallo y rollback— está en **[`docs/RUNBOOK_PILOTO.md`](docs/RUNBOOK_PILOTO.md)**.
+fallo y rollback— está en el **runbook de operación**, que no se versiona aquí;
+pídalo a quien lleve la operación antes de tocar el servidor del piloto.
 Resumen de lo que este repositorio aporta:
 
 ### Healthchecks
@@ -128,9 +129,9 @@ Todos reutilizan `DB_URL`, `DB_USER` y `DB_PASSWORD`. La contraseña viaja por e
 entorno, nunca como argumento. **Los dumps no entran en Git**: contienen datos
 de clientes y hashes de contraseña.
 
-Antes del primer día del piloto se completa
-[`docs/CHECKLIST_SALIDA_PILOTO.md`](docs/CHECKLIST_SALIDA_PILOTO.md), que decide
-el go/no-go e incluye los pasos que ningún script puede hacer.
+Antes del primer día del piloto se completa el **checklist de salida a piloto**
+—tampoco versionado aquí—, que decide el go/no-go e incluye los pasos que ningún
+script puede hacer.
 
 ---
 

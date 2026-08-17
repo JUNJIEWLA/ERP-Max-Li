@@ -1,6 +1,12 @@
 node_modules/
 dist/
 
+# Documentación de operación y salidas de auditoría: se mantienen fuera del
+# repositorio a propósito. Siguen existiendo en local; ignorarlas evita que
+# vuelvan a entrar sin decidirlo.
+docs/
+audit-output/
+
 # Copias de seguridad (ISSUE-015). Un dump del piloto contiene datos de
 # clientes, ventas y hashes de contraseña: no entra en Git bajo ningún nombre.
 ops/backups/

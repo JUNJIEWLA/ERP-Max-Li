@@ -14,7 +14,7 @@
 # Tampoco sustituye al checklist: hay verificaciones —el hardware, la red de la
 # tienda, la identidad fiscal de la empresa— que ningún script puede hacer desde
 # aquí. Se listan al final de la salida y viven en
-# docs/CHECKLIST_SALIDA_PILOTO.md.
+# el checklist de salida a piloto.
 #
 # Recorre todas las comprobaciones aunque una falle: el operador necesita la
 # lista entera de lo que hay que arreglar, no la primera piedra del camino.
@@ -743,7 +743,7 @@ seccion "Fuera del alcance de este script"
 
 cat <<'MANUAL'
   Estas verificaciones no se pueden hacer desde aquí y siguen siendo
-  obligatorias. Van en docs/CHECKLIST_SALIDA_PILOTO.md:
+  obligatorias. Van en el checklist de salida a piloto:
 
   · Identidad fiscal de la empresa (RNC, razón social, dirección). El sistema
     no la almacena: hoy vive en la plantilla del comprobante y en la
@@ -775,7 +775,7 @@ if [[ "$fallos" -eq 0 ]]; then
     echo "  ENTORNO LISTO — $avisos aviso(s)."
     echo
     echo "  Esto no autoriza el piloto por sí solo: acredita lo comprobable desde"
-    echo "  este servidor. Complete docs/CHECKLIST_SALIDA_PILOTO.md antes de abrir."
+    echo "  este servidor. Complete el checklist de salida a piloto antes de abrir."
     exit 0
 fi
 
