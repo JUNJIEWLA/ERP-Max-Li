@@ -73,9 +73,10 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
             )}
 
             <div>
-              <label className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Contraseña Temporal / Actual</label>
-              <input 
-                type="password" 
+              <label htmlFor="pwd-actual" className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Contraseña Temporal / Actual</label>
+              <input
+                id="pwd-actual"
+                type="password"
                 autoComplete="current-password"
                 required 
                 value={passwordActual} 
@@ -86,9 +87,10 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
             </div>
 
             <div className="pt-2">
-              <label className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Nueva Contraseña</label>
-              <input 
-                type="password" 
+              <label htmlFor="pwd-nueva" className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Nueva Contraseña</label>
+              <input
+                id="pwd-nueva"
+                type="password"
                 autoComplete="new-password"
                 required 
                 value={passwordNueva} 
@@ -99,9 +101,10 @@ export default function CambioPasswordObligatorio({ username, onSuccess, onLogou
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Confirmar Nueva Contraseña</label>
-              <input 
-                type="password" 
+              <label htmlFor="pwd-confirmar" className="block text-xs font-semibold uppercase mb-1.5 text-muted-foreground">Confirmar Nueva Contraseña</label>
+              <input
+                id="pwd-confirmar"
+                type="password"
                 autoComplete="new-password"
                 required 
                 value={confirmarPassword} 

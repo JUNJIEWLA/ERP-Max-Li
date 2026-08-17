@@ -401,12 +401,13 @@ export default function CheckoutModal({
           <section className="bg-muted/30 rounded-lg p-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
+                <label htmlFor="input-monto-recibido" className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
                   Monto recibido
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">RD$</span>
                   <input
+                    id="input-monto-recibido"
                     ref={montoInputRef}
                     type="number"
                     step="0.01"
@@ -432,7 +433,7 @@ export default function CheckoutModal({
                 <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
                   Cambio / Vuelto
                 </label>
-                <div className={`w-full px-3 py-3 rounded-lg text-xl font-bold text-right ${
+                <div id="checkout-cambio" className={`w-full px-3 py-3 rounded-lg text-xl font-bold text-right ${
                   cambio >= 0
                     ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
                     : 'bg-red-50 text-red-600 border border-red-200'

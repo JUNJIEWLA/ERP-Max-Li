@@ -8,3 +8,10 @@ ops/backups/
 *.dump.parcial
 *.dump.sha256
 *.sql.gz
+
+# Salidas del E2E (Playwright): trazas, capturas e informes se generan en cada
+# ejecución y solo se publican como artefacto de CI cuando el job falla.
+test-results/
+playwright-report/
+blob-report/
+/playwright/.cache/

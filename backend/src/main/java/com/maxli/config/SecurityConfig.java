@@ -18,6 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.session.SessionManagementFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -198,7 +199,17 @@ public class SecurityConfig {
 
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(new CsrfCookieFilter(), UsernamePasswordAuthenticationFilter.class);
+            // Después de SessionManagementFilter, no antes. Como la sesión es
+            // stateless y JwtAuthFilter autentica en cada petición,
+            // CsrfAuthenticationStrategy rota el token en todas: borra la cookie
+            // XSRF-TOKEN y deja el token nuevo en diferido, que solo se emite si
+            // alguien lo lee. Con este filtro antes de esa rotación, quien leía
+            // era el token viejo y la respuesta salía con la cookie borrada: el
+            // SPA se quedaba sin nada que enviar y la siguiente mutación moría
+            // en 403 (el cobro del POS, que encadena /ventas/recalcular y
+            // /ventas). Colocado después, materializa el token rotado y la misma
+            // respuesta ya lo reemite.
+            .addFilterAfter(new CsrfCookieFilter(), SessionManagementFilter.class);
 
         // En producción no se atiende nada en texto plano: detrás del reverse
         // proxy, `server.forward-headers-strategy: framework` hace que

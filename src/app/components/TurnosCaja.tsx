@@ -1165,8 +1165,9 @@ export default function TurnosCaja({ username, userPermisos }: TurnosCajaProps) 
               </div>
 
               <div>
-                <label className="block font-semibold text-foreground mb-1">Monto Final Declarado en Efectivo</label>
+                <label htmlFor="input-cierre-monto-declarado" className="block font-semibold text-foreground mb-1">Monto Final Declarado en Efectivo</label>
                 <input
+                  id="input-cierre-monto-declarado"
                   type="number"
                   min="0"
                   step="0.01"

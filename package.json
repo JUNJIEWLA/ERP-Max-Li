@@ -6,7 +6,9 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "check:pilot": "node --test scripts/check-pilot-surfaces.mjs"
+    "check:pilot": "node --test scripts/check-pilot-surfaces.mjs",
+    "e2e:fixture": "bash scripts/e2e-fixture.sh",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -66,6 +68,7 @@
     "vaul": "1.1.2"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@tailwindcss/vite": "4.1.12",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "4.7.0",
