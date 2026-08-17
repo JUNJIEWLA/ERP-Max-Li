@@ -30,6 +30,20 @@ const USUARIO = process.env.E2E_ADMIN_USER ?? 'admin';
 const PASSWORD_BOOTSTRAP = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? 'E2eBootstrap#2026';
 const PASSWORD_NUEVA = process.env.E2E_ADMIN_NEW_PASSWORD ?? 'E2eFlujoPrincipal#2026';
 
+/**
+ * Abre una vista desde el menú lateral. La sección que contiene la vista activa
+ * ya viene desplegada, así que pulsarla la plegaría: solo se despliega cuando la
+ * opción no está a la vista.
+ */
+async function abrirVista(page, seccion, vista) {
+  const menu = page.locator('aside');
+  const opcion = menu.getByRole('button', { name: vista, exact: true });
+  if (!(await opcion.isVisible())) {
+    await menu.getByRole('button', { name: seccion, exact: true }).click();
+  }
+  await opcion.click();
+}
+
 /** Envía el formulario de login y devuelve la respuesta real del backend. */
 async function enviarLogin(page, password) {
   await page.locator('#login-username').fill(USUARIO);
@@ -76,7 +90,9 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
   });
 
   await test.step('entrar al POS', async () => {
-    await expect(page.getByRole('heading', { name: 'Punto de Venta' })).toBeVisible();
+    // `exact` distingue el título de la vista (h2 «Punto de Venta») del
+    // encabezado del propio POS (h3 «Punto de venta»).
+    await expect(page.getByRole('heading', { name: 'Punto de Venta', exact: true })).toBeVisible();
   });
 
   let idTurno;
@@ -153,10 +169,8 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
   });
 
   await test.step('navegar a Turnos de Caja', async () => {
-    const menu = page.locator('aside');
-    await menu.getByRole('button', { name: 'Caja', exact: true }).click();
-    await menu.getByRole('button', { name: 'Turnos de Caja' }).click();
-    await expect(page.getByRole('heading', { name: 'Turnos de Caja' })).toBeVisible();
+    await abrirVista(page, 'Caja', 'Turnos de Caja');
+    await expect(page.getByRole('heading', { name: 'Turnos de Caja', exact: true })).toBeVisible();
   });
 
   await test.step(`cerrar el turno declarando RD$${DECLARADO_AL_CIERRE}`, async () => {
@@ -188,9 +202,7 @@ test('login, apertura de turno, venta con NCF y cierre cuadrado', async ({ page 
   });
 
   await test.step('ya no hay turno abierto para el usuario', async () => {
-    const menu = page.locator('aside');
-    await menu.getByRole('button', { name: 'Ventas', exact: true }).click();
-    await menu.getByRole('button', { name: 'Punto de Venta' }).click();
+    await abrirVista(page, 'Ventas', 'Punto de Venta');
     await expect(page.getByRole('heading', { name: 'No tienes un Turno de Caja Abierto' })).toBeVisible();
   });
 });
