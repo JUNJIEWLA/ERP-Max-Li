@@ -74,6 +74,14 @@ public class VentaService {
     private static final String DETALLE = "DETALLE";
     private static final String MAYOR = "MAYOR";
     private static final String B01 = "B01";
+    /**
+     * Tipos que puede emitir una venta. B04 queda fuera a propósito: es la Nota
+     * de Crédito y solo la emite DevolucionService. NcfService lo acepta —la
+     * administración de resoluciones y las devoluciones lo necesitan—, así que
+     * el POS tiene que cerrar la puerta por su cuenta o una venta común
+     * consumiría la secuencia de notas de crédito.
+     */
+    private static final Set<String> TIPOS_NCF_VENTA = Set.of("B01", "B02", "B14", "B15");
 
     private final VentaRepository ventaRepository;
     private final TurnoCajaRepository turnoCajaRepository;
@@ -104,6 +112,7 @@ public class VentaService {
      */
     @Transactional(readOnly = true)
     public RecalcularFacturaResponseDTO recalcularFactura(RecalcularFacturaRequestDTO request) {
+        validarTipoNcfDeVenta(request.getTipoNcf());
         validarDescuentos(request.getDescuentoGlobal(), request.getDetalles());
 
         MetodoPago metodo = parseMetodoPago(request.getMetodoPago());
@@ -186,6 +195,7 @@ public class VentaService {
         // ── 0. Validar descuentos ─────────────────────────────────────────
         // Antes de cualquier efecto secundario: una solicitud con descuento
         // inválido no debe consumir NCF ni tocar stock o caja (ISSUE-008).
+        validarTipoNcfDeVenta(request.getTipoNcf());
         validarDescuentos(request.getDescuentoGlobal(), request.getDetalles());
 
         // ── 1. Validar turno abierto ─────────────────────────────────────
@@ -193,7 +203,10 @@ public class VentaService {
             throw new BusinessException("No se puede procesar la venta: se requiere un turno de caja abierto.");
         }
 
-        TurnoCaja turno = turnoCajaRepository.findById(request.getIdTurnoCaja())
+        // El turno se bloquea antes de leerlo: el cuadre se recalcula al final
+        // de la venta, y sin bloqueo un cierre concurrente podría confirmarse
+        // entre medias y quedar pisado por el guardado de esta transacción.
+        TurnoCaja turno = turnoCajaRepository.bloquearPorId(request.getIdTurnoCaja())
                 .filter(t -> ABIERTO.equals(t.getEstado()))
                 .orElseThrow(() -> new BusinessException(
                         "No se puede procesar la venta: turno de caja no encontrado o no está abierto."));
@@ -659,6 +672,23 @@ public class VentaService {
     // ═════════════════════════════════════════════════════════════════════
 
     /**
+     * Rechaza en el POS los tipos de comprobante que no corresponden a una
+     * venta. Un {@code tipoNcf} nulo o en blanco sigue siendo válido: significa
+     * venta sin comprobante fiscal y no consume secuencia.
+     */
+    private void validarTipoNcfDeVenta(String tipoNcf) {
+        if (tipoNcf == null || tipoNcf.isBlank()) {
+            return;
+        }
+        if (!TIPOS_NCF_VENTA.contains(tipoNcf.trim().toUpperCase())) {
+            throw new BusinessException(String.format(
+                    "El tipo de NCF '%s' no puede emitirse desde una venta. Permitidos: B01, B02, B14, B15. "
+                            + "B04 corresponde a Notas de Crédito y solo lo emite una devolución.",
+                    tipoNcf));
+        }
+    }
+
+    /**
      * Rechaza descuentos fuera de rango antes de cualquier efecto secundario
      * (bloqueo de stock, generación de NCF, cuadre de caja).
      */
@@ -849,10 +879,14 @@ public class VentaService {
         turno.setTotalVentasTransferencia(ventaRepository.sumarVentasTransferenciaPorTurno(idTurno));
         turno.setTotalVentasCheque(ventaRepository.sumarVentasChequePorTurno(idTurno));
 
+        // El efectivo devuelto por notas de crédito ya salió del cajón y vive en
+        // el turno: restarlo aquí evita que una venta posterior borre el ajuste
+        // que hizo la devolución.
         BigDecimal montoEsperado = turno.getMontoInicial()
                 .add(turno.getTotalVentasEfectivo())
                 .add(valor(turno.getTotalOtrosIngresos()))
-                .subtract(valor(turno.getTotalEgresos()));
+                .subtract(valor(turno.getTotalEgresos()))
+                .subtract(valor(turno.getTotalDevolucionesEfectivo()));
         turno.setMontoEsperado(normalizar(montoEsperado));
 
         turnoCajaRepository.save(turno);

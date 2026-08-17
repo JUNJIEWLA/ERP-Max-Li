@@ -1,0 +1,42 @@
+package com.maxli.devolucion.dto;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.List;
+
+@Getter
+@Setter
+public class CrearDevolucionRequestDTO {
+
+    @NotNull(message = "El id de la venta es obligatorio")
+    private Long idVenta;
+
+    @NotNull(message = "El id del turno de caja es obligatorio")
+    private Long idTurnoCaja;
+
+    @NotBlank(message = "El motivo de la devolución es obligatorio")
+    @Size(max = 300, message = "El motivo no puede superar 300 caracteres")
+    private String motivo;
+
+    /** EFECTIVO, TARJETA, TRANSFERENCIA o CHEQUE. */
+    @NotBlank(message = "El método de reembolso es obligatorio")
+    private String metodoReembolso;
+
+    /**
+     * Llave de idempotencia generada por el cliente. Repetirla devuelve 409 sin
+     * volver a reponer stock, ajustar caja ni consumir un comprobante.
+     */
+    @NotBlank(message = "La referencia de operación es obligatoria")
+    @Size(max = 80, message = "La referencia de operación no puede superar 80 caracteres")
+    private String referenciaOperacion;
+
+    @NotEmpty(message = "Debe incluir al menos una línea a devolver")
+    @Valid
+    private List<DetalleDevolucionRequestDTO> detalles;
+}

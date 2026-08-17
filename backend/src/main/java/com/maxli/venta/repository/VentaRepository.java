@@ -5,7 +5,9 @@ import com.maxli.venta.entity.MetodoPago;
 import com.maxli.venta.entity.Venta;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -66,6 +68,19 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
                                         @Param("metodoPago") MetodoPago metodoPago,
                                         Pageable pageable);
 
+    /**
+     * Carga la venta tomando bloqueo pesimista de fila.
+     * <p>
+     * Lo usa el flujo de devoluciones: validar "cuánto se devolvió ya" y
+     * persistir la nueva devolución es un check-then-act, así que sin este
+     * bloqueo dos solicitudes simultáneas sobre la misma venta leen el mismo
+     * acumulado, ambas lo consideran suficiente y la venta termina
+     * sobredevuelta, con stock inventado y dos notas de crédito.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT v FROM Venta v WHERE v.idVenta = :id")
+    java.util.Optional<Venta> bloquearPorId(@Param("id") Long id);
+
     Page<Venta> findByEstado(String estado, Pageable pageable);
 
     Page<Venta> findByTurnoCaja_IdTurnoCaja(Long idTurnoCaja, Pageable pageable);
@@ -78,7 +93,7 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             FROM IngresoVenta iv
             JOIN iv.venta v
             WHERE v.turnoCaja.idTurnoCaja = :idTurno
-              AND v.estado = 'COMPLETADA'
+              AND v.estado IN ('COMPLETADA', 'PARCIALMENTE_DEVUELTA', 'DEVUELTA')
               AND iv.metodoPago = com.maxli.venta.entity.MetodoPago.EFECTIVO
             """)
     java.math.BigDecimal sumarVentasEfectivoPorTurno(@Param("idTurno") Long idTurno);
@@ -88,7 +103,7 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             FROM IngresoVenta iv
             JOIN iv.venta v
             WHERE v.turnoCaja.idTurnoCaja = :idTurno
-              AND v.estado = 'COMPLETADA'
+              AND v.estado IN ('COMPLETADA', 'PARCIALMENTE_DEVUELTA', 'DEVUELTA')
               AND iv.metodoPago = com.maxli.venta.entity.MetodoPago.TARJETA
             """)
     java.math.BigDecimal sumarVentasTarjetaPorTurno(@Param("idTurno") Long idTurno);
@@ -98,7 +113,7 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             FROM IngresoVenta iv
             JOIN iv.venta v
             WHERE v.turnoCaja.idTurnoCaja = :idTurno
-              AND v.estado = 'COMPLETADA'
+              AND v.estado IN ('COMPLETADA', 'PARCIALMENTE_DEVUELTA', 'DEVUELTA')
               AND iv.metodoPago = com.maxli.venta.entity.MetodoPago.TRANSFERENCIA
             """)
     java.math.BigDecimal sumarVentasTransferenciaPorTurno(@Param("idTurno") Long idTurno);
@@ -108,7 +123,7 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             FROM IngresoVenta iv
             JOIN iv.venta v
             WHERE v.turnoCaja.idTurnoCaja = :idTurno
-              AND v.estado = 'COMPLETADA'
+              AND v.estado IN ('COMPLETADA', 'PARCIALMENTE_DEVUELTA', 'DEVUELTA')
               AND iv.metodoPago = com.maxli.venta.entity.MetodoPago.CHEQUE
             """)
     java.math.BigDecimal sumarVentasChequePorTurno(@Param("idTurno") Long idTurno);
@@ -124,7 +139,7 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             SELECT COALESCE(SUM(v.cambio), 0)
             FROM Venta v
             WHERE v.turnoCaja.idTurnoCaja = :idTurno
-              AND v.estado = 'COMPLETADA'
+              AND v.estado IN ('COMPLETADA', 'PARCIALMENTE_DEVUELTA', 'DEVUELTA')
             """)
     java.math.BigDecimal sumarCambioEntregadoPorTurno(@Param("idTurno") Long idTurno);
 }

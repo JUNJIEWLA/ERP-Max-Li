@@ -72,6 +72,15 @@ public class TurnoCaja {
     @Column(name = "total_egresos", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalEgresos = BigDecimal.ZERO;
 
+    /**
+     * Efectivo devuelto a clientes durante el turno (notas de crédito B04
+     * reembolsadas en efectivo). Baja el monto esperado del cierre: ese dinero
+     * salió del cajón. Los reembolsos por tarjeta, transferencia o cheque no
+     * entran aquí porque no tocan el efectivo físico.
+     */
+    @Column(name = "total_devoluciones_efectivo", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalDevolucionesEfectivo = BigDecimal.ZERO;
+
     @Column(name = "monto_esperado", nullable = false, precision = 12, scale = 2)
     private BigDecimal montoEsperado = BigDecimal.ZERO;
 
