@@ -20,6 +20,7 @@ public class VentaResponseDTO {
     // Cliente
     private Long idCliente;
     private String clienteNombre;
+    private String clienteRncCedula;
     private String nombreClienteTemporal;
     private String rncTemporal;
 

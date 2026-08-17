@@ -934,6 +934,7 @@ public class VentaService {
         }
         dto.setIdCliente(venta.getCliente() != null ? venta.getCliente().getIdCliente() : null);
         dto.setClienteNombre(venta.getCliente() != null ? venta.getCliente().getNombreCompleto() : null);
+        dto.setClienteRncCedula(venta.getCliente() != null ? venta.getCliente().getRncCedula() : null);
         dto.setNombreClienteTemporal(venta.getNombreClienteTemporal());
         dto.setRncTemporal(venta.getRncTemporal());
         dto.setNumeroControl(venta.getNumeroControl());

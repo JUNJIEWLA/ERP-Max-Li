@@ -1381,6 +1381,7 @@ export interface VentaResponse {
   almacenNombre: string | null;
   idCliente: number | null;
   clienteNombre: string | null;
+  clienteRncCedula: string | null;
   nombreClienteTemporal: string | null;
   rncTemporal: string | null;
   numeroControl: string;

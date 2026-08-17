@@ -304,6 +304,7 @@ class HistorialVentasTest extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$.numeroControl").value("VT-HIST-001"))
                 .andExpect(jsonPath("$.ncf").value("B0200000001"))
                 .andExpect(jsonPath("$.clienteNombre").value("Maria Historica"))
+                .andExpect(jsonPath("$.clienteRncCedula").value("001-0000000-1"))
                 .andExpect(jsonPath("$.almacenNombre").value("Almacen Historial"));
     }
 

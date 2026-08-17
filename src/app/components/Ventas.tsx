@@ -3,7 +3,7 @@ import {
   Receipt, Search, Eye, Loader2, AlertTriangle, X, Printer, RotateCcw,
 } from 'lucide-react';
 import {
-  ventasApi, type VentaFiltros, type VentaResumen, type VentaResponse,
+  ventasApi, type DetalleVentaResponse, type VentaFiltros, type VentaResumen, type VentaResponse,
 } from '../../imports/api';
 
 // ── Formato ──────────────────────────────────────────────
@@ -20,6 +20,11 @@ const fmtFechaHora = (iso: string) =>
 
 /** Una venta sin cliente identificado es, fiscalmente, consumidor final. */
 const nombreCliente = (nombre: string | null) => nombre || 'Consumidor Final';
+
+/** Convierte el porcentaje de línea y los demás descuentos a un monto real. */
+const descuentoMonetario = (detalle: DetalleVentaResponse) =>
+  Math.max(0, detalle.precioUnitario * detalle.cantidad - detalle.importe)
+    + detalle.descuentoProrrateado;
 
 const METODOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'CHEQUE', 'CUPON', 'MIXTO'];
 
@@ -41,7 +46,7 @@ const PAGE_SIZE = 15;
  * turno); no se inventa RNC ni dirección que no exista en configuración.
  */
 function ComprobanteImprimible({ venta, onVolver }: { venta: VentaResponse; onVolver: () => void }) {
-  const rnc = venta.rncTemporal;
+  const rnc = venta.clienteRncCedula || venta.rncTemporal;
 
   return (
     <>
@@ -250,8 +255,10 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
                   <p className="font-semibold mt-0.5">
                     {nombreCliente(venta.clienteNombre || venta.nombreClienteTemporal)}
                   </p>
-                  {venta.rncTemporal && (
-                    <p className="text-xs text-muted-foreground">RNC/Cédula: {venta.rncTemporal}</p>
+                  {(venta.clienteRncCedula || venta.rncTemporal) && (
+                    <p className="text-xs text-muted-foreground">
+                      RNC/Cédula: {venta.clienteRncCedula || venta.rncTemporal}
+                    </p>
                   )}
                 </div>
               </div>
@@ -288,7 +295,7 @@ function DetalleVentaModal({ idVenta, onClose }: { idVenta: number; onClose: () 
                           <td className="px-3 py-2 text-right">{d.cantidad}</td>
                           <td className="px-3 py-2 text-right">{fmtMoneda(d.precioUnitario)}</td>
                           <td className="px-3 py-2 text-right">
-                            {fmtMoneda(d.descuentoLinea + d.descuentoOferta + d.descuentoProrrateado)}
+                            {fmtMoneda(descuentoMonetario(d))}
                           </td>
                           <td className="px-3 py-2 text-right">{fmtMoneda(d.baseImponible)}</td>
                           <td className="px-3 py-2 text-right">{fmtMoneda(d.itbisLinea)}</td>
