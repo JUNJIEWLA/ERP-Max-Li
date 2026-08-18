@@ -184,6 +184,7 @@ class VentaAlmacenTest extends PostgresIntegrationTest {
         VentaResponseDTO venta = ventaService.procesarVenta(construirRequest(3), username);
 
         assertThat(venta.getIdAlmacen()).isEqualTo(idAlmacenA);
+        assertThat(venta.getCajaNombre()).isNotNull();
 
         assertThat(existenciaRepository.findByProducto_IdProductoAndAlmacen_IdAlmacen(idProducto, idAlmacenA)
                 .orElseThrow().getCantidadActual())

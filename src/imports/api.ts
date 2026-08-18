@@ -1415,6 +1415,7 @@ export interface VentaResponse {
   numeroControl: string;
   ncf: string | null;
   tipoNcf: string | null;
+  fechaVencimientoNcf?: string | null;
   metodoPagoPrincipal: string;
   usaPrecioMayor: boolean;
   subtotal: number;
@@ -1722,4 +1723,169 @@ export const empresaApi = {
   actualizar: (body: Omit<ConfiguracionEmpresa, 'fechaModificacion'>) =>
     put<ConfiguracionEmpresa>('/empresa/configuracion', body),
 };
+
+// ── Consulta DGII ─────────────────────────────────────────────────────
+
+export interface DgiiConsultaResponse {
+  error: boolean;
+  codigoHttp: number;
+  mensaje: string;
+  cedulaRnc: string | null;
+  nombreRazonSocial: string | null;
+  nombreComercial: string | null;
+  categoria: string | null;
+  regimenDePagos: string | null;
+  estado: string | null;
+  actividadEconomica: string | null;
+  administracionLocal: string | null;
+  facturadorElectronico: string | null;
+  rncConsultado: string | null;
+}
+
+export const dgiiApi = {
+  /** Consulta ficha de contribuyente en la DGII por RNC o Cédula */
+  consultarRnc: (rnc: string) =>
+    get<DgiiConsultaResponse>(`/dgii/consultar/${encodeURIComponent(rnc)}`),
+};
+
+// ── Tipos: Dashboard ─────────────────────────────────────
+
+export interface VentaDiaria {
+  fecha: string;
+  total: number;
+  transacciones: number;
+}
+
+export interface MetodoPagoStats {
+  metodoPago: string;
+  total: number;
+  transacciones: number;
+}
+
+export interface TopProducto {
+  idProducto: number;
+  sku: string;
+  nombre: string;
+  cantidadVendida: number;
+  totalVendido: number;
+}
+
+export interface UltimaVenta {
+  idVenta: number;
+  numeroControl: string;
+  clienteNombre: string;
+  cajeroNombre: string;
+  metodoPago: string;
+  total: number;
+  fechaVenta: string;
+}
+
+export interface DashboardStats {
+  ventasHoy: number;
+  ventasAyer: number;
+  totalTransaccionesHoy: number;
+  totalTransaccionesAyer: number;
+  productosActivos: number;
+  productosBajoStock: number;
+  itbisHoy: number;
+  ventasUltimos7Dias: VentaDiaria[];
+  ventasPorMetodoPago: MetodoPagoStats[];
+  topProductos: TopProducto[];
+  ultimasVentas: UltimaVenta[];
+}
+
+export const dashboardApi = {
+  stats: () => get<DashboardStats>('/dashboard/stats'),
+};
+
+// ── Tipos: Reportes ──────────────────────────────────────
+
+export interface ReporteVentasResponse {
+  ventas: VentaResumen[];
+  totalVentas: number;
+  totalItbis: number;
+  totalDescuentos: number;
+  totalTransacciones: number;
+}
+
+export interface ReporteFiltros {
+  desde: string;
+  hasta: string;
+  cajero?: string;
+  metodoPago?: string;
+}
+
+export const reportesApi = {
+  ventas: (filtros: ReporteFiltros) => {
+    const params: Record<string, string | number> = {
+      desde: filtros.desde,
+      hasta: filtros.hasta,
+    };
+    if (filtros.cajero) params.cajero = filtros.cajero;
+    if (filtros.metodoPago) params.metodoPago = filtros.metodoPago;
+    return get<ReporteVentasResponse>('/reportes/ventas', params);
+  },
+};
+
+// ── NCF Helper ────────────────────────────────────────────────────────
+
+export const getNombreTipoNcf = (tipoNcf?: string | null, ncf?: string | null): string => {
+  const tipo = (tipoNcf || (ncf ? ncf.substring(0, 3) : 'B02')).toUpperCase();
+  switch (tipo) {
+    case 'B01':
+    case 'E31':
+      return 'FACTURA DE CRÉDITO FISCAL';
+    case 'B02':
+    case 'E32':
+      return 'FACTURA DE CONSUMO';
+    case 'B03':
+    case 'E33':
+      return 'NOTA DE DÉBITO';
+    case 'B04':
+    case 'E34':
+      return 'NOTA DE CRÉDITO';
+    case 'B11':
+    case 'E41':
+      return 'COMPROBANTE DE COMPRAS';
+    case 'B12':
+      return 'REGISTRO DE GASTOS MENORES';
+    case 'B13':
+      return 'COMPROBANTE PARA PAGOS AL EXTERIOR';
+    case 'B14':
+    case 'E44':
+      return 'REGIMEN ESPECIAL DE TRIBUTACIÓN';
+    case 'B15':
+    case 'E45':
+      return 'COMPROBANTE GUBERNAMENTAL';
+    case 'B16':
+      return 'COMPROBANTE PARA EXPORTACIONES';
+    default:
+      return 'COMPROBANTE FISCAL';
+  }
+};
+
+export const formatFechaVencimientoNcf = (fecha?: any): string => {
+  if (!fecha) return '31/12/2026';
+  if (Array.isArray(fecha)) {
+    const [y, m, d] = fecha;
+    return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+  }
+  if (typeof fecha === 'string') {
+    const clean = fecha.split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      const [y, m, d] = parts;
+      return `${d}/${m}/${y}`;
+    }
+  }
+  return '31/12/2026';
+};
+
+export const resolucionNcfApi = {
+  previsualizar: (tipoNcf: string) =>
+    get<{ ncfCompleto: string; fechaVencimiento?: string | number[] | null }>(`/ncf/preview/${tipoNcf}`),
+};
+
+
+
 

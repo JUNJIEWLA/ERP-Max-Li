@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, LayoutGrid, ShieldCheck, DollarSign, Save, RotateCcw,
   BadgeCheck
 } from 'lucide-react';
-import { proveedoresApi, Proveedor } from '../../imports/api';
+import { proveedoresApi, dgiiApi, Proveedor } from '../../imports/api';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(n ?? 0);
@@ -44,6 +44,40 @@ export default function Proveedores() {
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Proveedor | null>(null);
 
+  const [consultandoDgii, setConsultandoDgii] = useState(false);
+  const [mensajeDgii, setMensajeDgii] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
+
+  const handleConsultarDgii = async (rncOverride?: string) => {
+    const rncToQuery = (rncOverride ?? formData.rnc).replace(/[^0-9]/g, '');
+    if (!rncToQuery || (rncToQuery.length !== 9 && rncToQuery.length !== 11)) {
+      setMensajeDgii({ tipo: 'error', texto: 'Ingrese un RNC (9 dígitos) o Cédula (11 dígitos) válido.' });
+      return;
+    }
+    setConsultandoDgii(true);
+    setMensajeDgii(null);
+    try {
+      const res = await dgiiApi.consultarRnc(rncToQuery);
+      if (!res.error && res.nombreRazonSocial) {
+        const nombreEncontrado = res.nombreRazonSocial || res.nombreComercial || '';
+        setFormData(prev => ({
+          ...prev,
+          nombreEmpresa: nombreEncontrado,
+          rnc: res.cedulaRnc || prev.rnc,
+        }));
+        setMensajeDgii({
+          tipo: 'exito',
+          texto: `✓ DGII: ${nombreEncontrado}${res.estado ? ` (${res.estado})` : ''}`,
+        });
+      } else {
+        setMensajeDgii({ tipo: 'error', texto: res.mensaje || 'RNC/Cédula no registrado en la DGII.' });
+      }
+    } catch (e: any) {
+      setMensajeDgii({ tipo: 'error', texto: e.message || 'Error al consultar DGII.' });
+    } finally {
+      setConsultandoDgii(false);
+    }
+  };
+
   const fetchProveedores = useCallback(async () => {
     setLoading(true);
     try {
@@ -64,6 +98,7 @@ export default function Proveedores() {
     setEditTarget(null);
     setFormData({ ...EMPTY_FORM });
     setFormError('');
+    setMensajeDgii(null);
     setShowModal(true);
   };
 
@@ -79,6 +114,7 @@ export default function Proveedores() {
       estado: p.estado,
     });
     setFormError('');
+    setMensajeDgii(null);
     setShowModal(true);
   };
 
@@ -471,6 +507,63 @@ export default function Proveedores() {
 
             <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-3">
+                {/* RNC primero con botón DGII */}
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-semibold text-foreground">
+                      RNC / Cédula <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleConsultarDgii()}
+                      disabled={consultandoDgii || !formData.rnc.trim()}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors"
+                    >
+                      {consultandoDgii ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Consultando DGII…
+                        </>
+                      ) : (
+                        <>
+                          <Search size={12} />
+                          Consultar DGII
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <input
+                    id="input-proveedor-rnc"
+                    type="text"
+                    value={formData.rnc}
+                    onChange={e => {
+                      setFormData(f => ({ ...f, rnc: e.target.value }));
+                      setMensajeDgii(null);
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleConsultarDgii();
+                      }
+                    }}
+                    onBlur={e => {
+                      const clean = e.target.value.replace(/[^0-9]/g, '');
+                      if ((clean.length === 9 || clean.length === 11) && !formData.nombreEmpresa.trim()) {
+                        handleConsultarDgii(clean);
+                      }
+                    }}
+                    placeholder="Ej: 101000000 o 131-99603-5"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 font-mono"
+                    autoFocus={!editTarget}
+                  />
+                  {mensajeDgii && (
+                    <p className={`text-xs font-medium mt-1 ${mensajeDgii.tipo === 'exito' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {mensajeDgii.texto}
+                    </p>
+                  )}
+                </div>
+
+                {/* Empresa / Razón Social (SEGUNDO - Auto-completado) */}
                 <div className="col-span-2">
                   <label className="block text-sm font-semibold text-foreground mb-1">
                     Empresa / Razón Social <span className="text-rose-500">*</span>
@@ -480,21 +573,8 @@ export default function Proveedores() {
                     type="text"
                     value={formData.nombreEmpresa}
                     onChange={e => setFormData(f => ({ ...f, nombreEmpresa: e.target.value }))}
-                    placeholder="Ej: Distribuidora Nacional S.R.L."
+                    placeholder="Se auto-completa al consultar DGII o ingrese manualmente"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1">
-                    RNC <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="input-proveedor-rnc"
-                    type="text"
-                    value={formData.rnc}
-                    onChange={e => setFormData(f => ({ ...f, rnc: e.target.value }))}
-                    placeholder="101-00000-0"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 font-mono"
                   />
                 </div>
                 <div>

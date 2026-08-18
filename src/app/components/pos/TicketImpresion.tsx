@@ -1,5 +1,5 @@
-import React from 'react';
-import { ConfiguracionEmpresa, VentaResponse } from '../../../imports/api';
+import React, { useState, useEffect } from 'react';
+import { ConfiguracionEmpresa, VentaResponse, empresaApi, getNombreTipoNcf, formatFechaVencimientoNcf, resolucionNcfApi } from '../../../imports/api';
 import { CartItem } from './CartRow';
 
 interface TicketImpresionProps {
@@ -84,13 +84,27 @@ function generateCode128Svg(text: string): React.ReactNode {
 // ── Componente Principal del Ticket 80mm ─────────────────────────────
 
 export default function TicketImpresion({ venta, empresa, cart, montoRecibido, esCopia = false }: TicketImpresionProps) {
-  const nombreComercial = empresa?.nombreComercial || 'PLAZA MAX';
-  const razonSocial = empresa?.razonSocial || 'Comercial Plaza Max, S.R.L.';
-  const rncEmpresa = empresa?.rnc || '13338823';
-  const direccionEmpresa = empresa?.direccion
-    ? `${empresa.direccion}${empresa.ciudad ? `, ${empresa.ciudad}` : ''}${empresa.provincia ? `, ${empresa.provincia}` : ''}`
-    : 'AV. 27 DE FEBRERO #123, SANTO DOMINGO';
-  const telefonoEmpresa = empresa?.telefonoPrincipal || '809-555-0100';
+  const [empresaState, setEmpresaState] = useState<ConfiguracionEmpresa | null>(empresa || null);
+
+  useEffect(() => {
+    if (empresa) {
+      setEmpresaState(empresa);
+    } else {
+      empresaApi.obtener()
+        .then(data => setEmpresaState(data))
+        .catch(() => {});
+    }
+  }, [empresa]);
+
+  const activeEmpresa = empresaState || empresa;
+
+  const nombreComercial = activeEmpresa?.nombreComercial || activeEmpresa?.razonSocial || '';
+  const razonSocial = activeEmpresa?.razonSocial || '';
+  const rncEmpresa = activeEmpresa?.rnc || '';
+  const direccionEmpresa = activeEmpresa?.direccion
+    ? `${activeEmpresa.direccion}${activeEmpresa.ciudad ? `, ${activeEmpresa.ciudad}` : ''}${activeEmpresa.provincia ? `, ${activeEmpresa.provincia}` : ''}`
+    : '';
+  const telefonoEmpresa = activeEmpresa?.telefonoPrincipal || activeEmpresa?.telefonoSecundario || '';
 
   const fechaFormateada = venta.fechaVenta
     ? new Intl.DateTimeFormat('es-DO', {
@@ -113,9 +127,34 @@ export default function TicketImpresion({ venta, empresa, cart, montoRecibido, e
   const ncf = venta.ncf || 'B0200000001';
   const numeroControl = venta.numeroControl || `VNT-${venta.idVenta}`;
 
-  // Cliente
-  const clienteNombre = venta.nombreClienteTemporal || (venta.idCliente ? `Cliente #${venta.idCliente}` : 'Consumidor Final');
-  const clienteRnc = venta.rncTemporal || '';
+  // Cliente (Priorizar datos temporales ingresados/consultados en Cobro)
+  const clienteNombre = (venta.nombreClienteTemporal && venta.nombreClienteTemporal.trim())
+    ? venta.nombreClienteTemporal
+    : (venta.clienteNombre && venta.clienteNombre !== 'Consumidor Final'
+        ? venta.clienteNombre
+        : (venta.clienteNombre || 'Consumidor Final'));
+  const clienteRnc = venta.rncTemporal || venta.clienteRncCedula || '';
+
+  // Encabezado fiscal y Vencimiento
+  const tituloFactura = getNombreTipoNcf(venta.tipoNcf, venta.ncf);
+  const [vencimientoState, setVencimientoState] = useState<any>(venta.fechaVencimientoNcf || null);
+
+  useEffect(() => {
+    if (venta.fechaVencimientoNcf) {
+      setVencimientoState(venta.fechaVencimientoNcf);
+    } else if (venta.tipoNcf || venta.ncf) {
+      const tipo = venta.tipoNcf || (venta.ncf ? venta.ncf.substring(0, 3) : 'B02');
+      resolucionNcfApi.previsualizar(tipo)
+        .then(res => {
+          if (res.fechaVencimiento) {
+            setVencimientoState(res.fechaVencimiento);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [venta.fechaVencimientoNcf, venta.tipoNcf, venta.ncf]);
+
+  const fechaVencimientoTexto = formatFechaVencimientoNcf(vencimientoState);
 
   // Cantidad total de artículos
   const totalArticulos = venta.detalles
@@ -129,67 +168,64 @@ export default function TicketImpresion({ venta, empresa, cart, montoRecibido, e
   const politicaDevolucion = empresa?.politicaDevolucion || 'Cambios válidos dentro de los 30 días presentando este comprobante y el producto en su empaque original. No se realiza devolución de dinero en efectivo.';
 
   return (
-    <div id="printable-ticket" className="hidden print:block text-black font-mono text-[11px] leading-tight w-[80mm] mx-auto p-1 bg-white">
+    <div id="printable-ticket" className="hidden print:block text-black font-mono text-[13px] leading-tight w-[80mm] mx-auto p-1 bg-white">
       
       {/* ── 1. Encabezado y Datos Fiscales ───────────────────────────── */}
       {esCopia && (
         <div
           id="ticket-marca-copia"
-          className="text-center font-bold text-[12px] tracking-widest uppercase border border-black py-0.5 mb-1"
+          className="text-center font-extrabold text-[14px] tracking-widest uppercase border-2 border-black py-0.5 mb-1.5"
         >
           COPIA — Reimpresión
         </div>
       )}
-      <div className="text-center font-bold text-base tracking-wider uppercase mb-1">
+      <div className="text-center font-extrabold text-xl tracking-wider uppercase mb-1">
         {nombreComercial}
       </div>
-      <div className="text-center text-[11px] font-semibold mb-1">
-        Factura de Consumo Electrónica
+      <div className="text-center text-[13px] font-bold mb-1 uppercase">
+        {tituloFactura}
       </div>
-      <div className="text-center text-[10px] space-y-0.5 mb-2">
-        <div><span className="font-bold">e-NCF:</span> {ncf}</div>
-        <div><span className="font-bold">Fecha de vencimiento:</span> 31/12/2099</div>
+      <div className="text-center text-[12px] space-y-0.5 mb-2">
+        <div><span className="font-bold">NCF:</span> {ncf}</div>
+        <div><span className="font-bold">Fecha de vencimiento:</span> {fechaVencimientoTexto}</div>
       </div>
 
-      <div className="border-t border-dashed border-black my-1" />
+      <div className="border-t border-dashed border-black my-1.5" />
 
       {/* ── 2. Datos de Nuestra Empresa (Emisor) ────────────────────── */}
-      <div className="text-[10px] space-y-0.5 uppercase mb-2">
-        <div className="font-bold">{nombreComercial}</div>
-        <div>{razonSocial}</div>
-        <div><span className="font-bold">RNC:</span> {rncEmpresa}</div>
-        <div><span className="font-bold">Dirección:</span> {direccionEmpresa}</div>
-        <div><span className="font-bold">Tel:</span> {telefonoEmpresa}</div>
+      <div className="text-[12px] space-y-0.5 uppercase mb-2">
+        {nombreComercial && <div className="font-bold">{nombreComercial}</div>}
+        {razonSocial && razonSocial !== nombreComercial && <div>{razonSocial}</div>}
+        {rncEmpresa && <div><span className="font-bold">RNC:</span> {rncEmpresa}</div>}
+        {direccionEmpresa && <div><span className="font-bold">Dirección:</span> {direccionEmpresa}</div>}
+        {telefonoEmpresa && <div><span className="font-bold">Tel:</span> {telefonoEmpresa}</div>}
       </div>
 
-      {/* ── 3. Datos del Cliente (Si aplica) ────────────────────────── */}
-      {(clienteNombre !== 'Consumidor Final' || clienteRnc) && (
-        <>
-          <div className="border-t border-dashed border-black my-1" />
-          <div className="text-[10px] space-y-0.5 mb-2">
-            <div><span className="font-bold">Razón social / cliente:</span> {clienteNombre}</div>
-            {clienteRnc && <div><span className="font-bold">RNC / Cédula:</span> {clienteRnc}</div>}
-          </div>
-        </>
-      )}
+      {/* ── 3. Datos del Cliente ────────────────────────────────────── */}
+      <div className="border-t border-dashed border-black my-1.5" />
+      <div className="text-[12px] space-y-0.5 mb-2">
+        <div><span className="font-bold">Cliente:</span> {clienteNombre}</div>
+        {clienteRnc && <div><span className="font-bold">RNC / Cédula:</span> {clienteRnc}</div>}
+      </div>
 
-      <div className="border-t border-dashed border-black my-1" />
+      <div className="border-t border-dashed border-black my-1.5" />
 
       {/* ── 4. Cabecera de la Venta ──────────────────────────────────── */}
-      <div className="text-[10px] space-y-0.5 mb-2">
+      <div className="text-[12px] space-y-0.5 mb-2">
         <div><span className="font-bold">FECHA:</span> {fechaFormateada}</div>
         <div><span className="font-bold">Factura #:</span> {numeroControl}</div>
         {venta.cajeroNombre && <div><span className="font-bold">Cajero:</span> {venta.cajeroNombre}</div>}
         <div><span className="font-bold">Caja:</span> {venta.cajaNombre || 'Caja Principal'}</div>
       </div>
 
-      <div className="border-t border-black my-1" />
+      <div className="border-t-2 border-black my-1.5" />
 
       {/* ── 5. Detalle de Artículos ──────────────────────────────────── */}
-      <div className="text-[10px]">
-        <div className="flex justify-between font-bold border-b border-black pb-0.5 mb-1">
-          <span className="w-12 text-left">UD</span>
-          <span className="w-16 text-right">PRECIO</span>
+      <div className="text-[12px]">
+        <div className="flex justify-between font-bold border-b border-black pb-1 mb-1.5 text-[12px]">
+          <span className="w-8 text-left">UD</span>
+          <span className="w-14 text-right">PRECIO</span>
+          <span className="w-14 text-right">ITBIS</span>
           <span className="w-16 text-right">IMPORTE</span>
         </div>
 
@@ -197,78 +233,87 @@ export default function TicketImpresion({ venta, empresa, cart, montoRecibido, e
           venta.detalles.map((det, idx) => {
             const codigo = det.skuProducto || det.codigoProducto;
             const importeLinea = det.importe ?? (det.cantidad * det.precioUnitario - (det.descuentoMonto || 0));
+            const tasaItbis = det.tasaItbis ? (det.tasaItbis > 1 ? det.tasaItbis / 100 : det.tasaItbis) : 0.18;
+            const itbisLinea = det.itbisLinea ?? (importeLinea - (importeLinea / (1 + tasaItbis)));
             return (
-              <div key={idx} className="mb-1.5 space-y-0.5">
-                <div className="font-semibold break-words">
+              <div key={idx} className="mb-2 space-y-0.5">
+                <div className="font-bold text-[13px] break-words">
                   {codigo ? `[${codigo}] ` : ''}{det.nombreProducto}
                 </div>
-                <div className="flex justify-between text-[10px] font-mono">
-                  <span className="w-12 text-left">{det.cantidad}</span>
-                  <span className="w-16 text-right">{det.precioUnitario.toFixed(2)}</span>
-                  <span className="w-16 text-right font-semibold">{importeLinea.toFixed(2)}</span>
+                <div className="flex justify-between text-[12px] font-mono">
+                  <span className="w-8 text-left">{det.cantidad}</span>
+                  <span className="w-14 text-right">{det.precioUnitario.toFixed(2)}</span>
+                  <span className="w-14 text-right">{itbisLinea.toFixed(2)}</span>
+                  <span className="w-16 text-right font-bold">{importeLinea.toFixed(2)}</span>
                 </div>
               </div>
             );
           })
         ) : cart ? (
-          cart.map((item, idx) => (
-            <div key={idx} className="mb-1.5 space-y-0.5">
-              <div className="font-semibold break-words">
-                {item.codigo ? `[${item.codigo}] ` : ''}{item.descripcion}
+          cart.map((item, idx) => {
+            const importeCart = item.importe ?? (item.cantidad * item.precioUnitario);
+            const tasaItbisCart = item.tasaItbis ? (item.tasaItbis > 1 ? item.tasaItbis / 100 : item.tasaItbis) : 0.18;
+            const itbisCart = item.itbisLinea ?? (importeCart - (importeCart / (1 + tasaItbisCart)));
+            return (
+              <div key={idx} className="mb-2 space-y-0.5">
+                <div className="font-bold text-[13px] break-words">
+                  {item.codigo ? `[${item.codigo}] ` : ''}{item.descripcion}
+                </div>
+                <div className="flex justify-between text-[12px] font-mono">
+                  <span className="w-8 text-left">{item.cantidad}</span>
+                  <span className="w-14 text-right">{item.precioUnitario.toFixed(2)}</span>
+                  <span className="w-14 text-right">{itbisCart.toFixed(2)}</span>
+                  <span className="w-16 text-right font-bold">{importeCart.toFixed(2)}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-[10px] font-mono">
-                <span className="w-12 text-left">{item.cantidad}</span>
-                <span className="w-16 text-right">{item.precioUnitario.toFixed(2)}</span>
-                <span className="w-16 text-right font-semibold">{item.importe.toFixed(2)}</span>
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : null}
       </div>
 
-      <div className="border-t border-dashed border-black my-1.5" />
+      <div className="border-t border-dashed border-black my-2" />
 
       {/* ── 6. Totales ──────────────────────────────────────────────── */}
-      <div className="text-[11px] space-y-1">
+      <div className="text-[13px] space-y-1.5">
         <div className="flex justify-between">
           <span>Subtotal Gravado:</span>
-          <span className="font-mono">RD$ {venta.subtotal ? venta.subtotal.toFixed(2) : (venta.total - (venta.itbis || 0)).toFixed(2)}</span>
+          <span className="font-mono font-semibold">RD$ {venta.subtotal ? venta.subtotal.toFixed(2) : (venta.total - (venta.itbis || 0)).toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span>Total ITBIS:</span>
-          <span className="font-mono">RD$ {venta.itbis ? venta.itbis.toFixed(2) : '0.00'}</span>
+          <span className="font-mono font-semibold">RD$ {venta.itbis ? venta.itbis.toFixed(2) : '0.00'}</span>
         </div>
 
-        <div className="border-t border-black my-1" />
+        <div className="border-t-2 border-black my-1.5" />
 
-        <div className="flex justify-between font-bold text-[12px]">
+        <div className="flex justify-between font-extrabold text-base">
           <span>TOTAL ({totalArticulos} art.):</span>
           <span className="font-mono">RD$ {venta.total.toFixed(2)}</span>
         </div>
 
-        <div className="border-t border-dashed border-black my-1" />
+        <div className="border-t border-dashed border-black my-1.5" />
 
-        <div className="flex justify-between text-[11px] font-semibold">
+        <div className="flex justify-between text-[13px] font-bold">
           <span>{metodoPago}:</span>
           <span className="font-mono">RD$ {montoPagado.toFixed(2)}</span>
         </div>
 
         {venta.cambio > 0 && (
-          <div className="flex justify-between text-[10px] text-gray-800">
+          <div className="flex justify-between text-[12px] font-semibold text-gray-900">
             <span>Cambio / Vuelto:</span>
             <span className="font-mono">RD$ {venta.cambio.toFixed(2)}</span>
           </div>
         )}
       </div>
 
-      <div className="border-t border-black my-2" />
+      <div className="border-t-2 border-black my-2" />
 
       {/* ── 7. Pie de Página (Código de Barras) ───────────────────────── */}
       <div className="text-center space-y-1 mt-2">
         <div className="flex justify-center">
           {generateCode128Svg(numeroControl)}
         </div>
-        <div className="text-[10px] font-mono font-bold tracking-widest">
+        <div className="text-[12px] font-mono font-extrabold tracking-widest">
           {numeroControl}
         </div>
       </div>
@@ -277,7 +322,7 @@ export default function TicketImpresion({ venta, empresa, cart, montoRecibido, e
       {politicaDevolucion && (
         <>
           <div className="border-t border-dashed border-black my-2" />
-          <div className="text-center text-[9px] leading-tight text-gray-800 uppercase px-1 pb-1">
+          <div className="text-center text-[10px] leading-tight text-gray-900 uppercase px-1 pb-1">
             <div className="font-bold mb-0.5">POLÍTICA DE DEVOLUCIÓN</div>
             <div>{politicaDevolucion}</div>
           </div>

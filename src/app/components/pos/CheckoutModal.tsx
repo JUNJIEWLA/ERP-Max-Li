@@ -8,6 +8,7 @@ import {
   ventasApi,
   empresaApi,
   devolucionesApi,
+  dgiiApi,
   type ConfiguracionEmpresa,
   type RecalcularFacturaRequest,
   type RecalcularFacturaResponse,
@@ -82,6 +83,38 @@ export default function CheckoutModal({
   const [saldoNC, setSaldoNC] = useState<NotaCreditoSaldo | null>(null);
   const [verificandoNC, setVerificandoNC] = useState(false);
   const [errorNC, setErrorNC] = useState('');
+
+  // Consulta DGII
+  const [consultandoDgii, setConsultandoDgii] = useState(false);
+  const [mensajeDgii, setMensajeDgii] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
+
+  const handleConsultarDgii = async (rncOverride?: string) => {
+    const rncToQuery = (rncOverride ?? rnc).replace(/[^0-9]/g, '');
+    if (!rncToQuery || (rncToQuery.length !== 9 && rncToQuery.length !== 11)) {
+      setMensajeDgii({ tipo: 'error', texto: 'Ingrese un RNC (9 dígitos) o Cédula (11 dígitos) válido.' });
+      return;
+    }
+    setConsultandoDgii(true);
+    setMensajeDgii(null);
+    try {
+      const res = await dgiiApi.consultarRnc(rncToQuery);
+      if (!res.error && res.nombreRazonSocial) {
+        const nombreEncontrado = res.nombreRazonSocial || res.nombreComercial || '';
+        setNombreCliente(nombreEncontrado);
+        if (res.cedulaRnc) setRnc(res.cedulaRnc);
+        setMensajeDgii({
+          tipo: 'exito',
+          texto: `✓ DGII: ${nombreEncontrado}${res.estado ? ` (${res.estado})` : ''}`,
+        });
+      } else {
+        setMensajeDgii({ tipo: 'error', texto: res.mensaje || 'RNC/Cédula no registrado en la DGII.' });
+      }
+    } catch (e: any) {
+      setMensajeDgii({ tipo: 'error', texto: e.message || 'Error al consultar DGII.' });
+    } finally {
+      setConsultandoDgii(false);
+    }
+  };
 
   const consultarNC = async () => {
     if (!numeroNotaCredito.trim()) return;
@@ -370,23 +403,66 @@ export default function CheckoutModal({
               Datos del cliente (facturación)
             </h3>
             <div className="grid grid-cols-2 gap-3">
+              {/* RNC / Cédula (PRIMERO - Izquierda) */}
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">Nombre del cliente</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs text-muted-foreground font-medium">RNC / Cédula</label>
+                  <button
+                    type="button"
+                    onClick={() => handleConsultarDgii()}
+                    disabled={consultandoDgii || !rnc.trim()}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors"
+                  >
+                    {consultandoDgii ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        Consultando DGII…
+                      </>
+                    ) : (
+                      <>
+                        <Search size={12} />
+                        Consultar DGII
+                      </>
+                    )}
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={rnc}
+                  onChange={e => {
+                    setRnc(e.target.value);
+                    setMensajeDgii(null);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleConsultarDgii();
+                    }
+                  }}
+                  onBlur={e => {
+                    const clean = e.target.value.replace(/[^0-9]/g, '');
+                    if ((clean.length === 9 || clean.length === 11) && !nombreCliente.trim()) {
+                      handleConsultarDgii(clean);
+                    }
+                  }}
+                  placeholder="000-0000000-0"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+                />
+                {mensajeDgii && (
+                  <p className={`text-xs font-medium mt-1 ${mensajeDgii.tipo === 'exito' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {mensajeDgii.texto}
+                  </p>
+                )}
+              </div>
+
+              {/* Nombre / Razón Social (SEGUNDO - Derecha - Auto-completado) */}
+              <div>
+                <label className="text-xs text-muted-foreground font-medium block mb-1">Nombre / Razón Social</label>
                 <input
                   type="text"
                   value={nombreCliente}
                   onChange={e => setNombreCliente(e.target.value)}
-                  placeholder="Consumidor Final"
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">RNC / Cédula</label>
-                <input
-                  type="text"
-                  value={rnc}
-                  onChange={e => setRnc(e.target.value)}
-                  placeholder="000-00000-0"
+                  placeholder="Se auto-completa con el RNC o Consumidor Final"
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>

@@ -13,6 +13,7 @@ public class VentaResponseDTO {
 
     private Long idVenta;
     private Long idTurnoCaja;
+    private String cajaNombre;
     private String cajeroNombre;
     private Long idAlmacen;
     private String almacenNombre;
@@ -28,6 +29,7 @@ public class VentaResponseDTO {
     private String numeroControl;
     private String ncf;
     private String tipoNcf;
+    private java.time.LocalDate fechaVencimientoNcf;
 
     // Pago
     private String metodoPagoPrincipal;

@@ -82,6 +82,9 @@ public class Venta {
     @Column(name = "tipo_ncf", length = 10)
     private String tipoNcf;
 
+    @Column(name = "fecha_vencimiento_ncf")
+    private java.time.LocalDate fechaVencimientoNcf;
+
     // ── Método de pago ───────────────────────────────────────────────────
 
     @Enumerated(EnumType.STRING)

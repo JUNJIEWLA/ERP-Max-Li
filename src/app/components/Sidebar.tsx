@@ -82,6 +82,15 @@ export const PERMISSION_MAP: Record<string, string> = {
 
 const menuSections: MenuSection[] = [
   {
+    id: 'dashboard-reportes',
+    label: 'Dashboard & Reportes',
+    icon: BarChart3,
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: TrendingUp },
+      { id: 'reportes', label: 'Reportes', icon: FileText },
+    ]
+  },
+  {
     id: 'ventas',
     label: 'Ventas',
     icon: ShoppingCart,

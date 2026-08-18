@@ -27,9 +27,13 @@ import CambioPasswordObligatorio from './components/CambioPasswordObligatorio';
 import NcfDashboard from './components/NcfDashboard';
 import Cupones from './components/Cupones';
 import ConfiguracionEmpresa from './components/ConfiguracionEmpresa';
+import Dashboard from './components/Dashboard';
+import Reportes from './components/Reportes';
 import { AUTH_EXPIRED_EVENT, authApi } from '../imports/api';
 
 const viewTitles: Record<string, string> = {
+  dashboard: 'Dashboard',
+  reportes: 'Reportes',
   pos: 'Punto de Venta',
   'ventas-historial': 'Historial de Ventas',
   devoluciones: 'Devoluciones y Notas de Crédito',
@@ -198,6 +202,10 @@ export default function App() {
 
   const renderView = () => {
     switch (activeView) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'reportes':
+        return <Reportes />;
       case 'pos':
         return <SaleScreen username={username} canOpenTurno={userPermisos.includes('CAJA_OPERAR')} userRoles={userRoles} />;
       case 'ventas-historial':

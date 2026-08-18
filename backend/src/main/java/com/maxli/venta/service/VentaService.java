@@ -264,6 +264,8 @@ public class VentaService {
             Cliente cliente = clienteRepository.findById(request.getIdCliente())
                     .orElseThrow(() -> new ResourceNotFoundException("Cliente no encontrado con id: " + request.getIdCliente()));
             venta.setCliente(cliente);
+        } else {
+            clienteRepository.findById(1L).ifPresent(venta::setCliente);
         }
         venta.setNombreClienteTemporal(request.getNombreClienteTemporal());
         venta.setRncTemporal(request.getRncTemporal());
@@ -285,6 +287,7 @@ public class VentaService {
         if (request.getTipoNcf() != null && !request.getTipoNcf().isBlank()) {
             NcfGeneradoDTO ncfGenerado = ncfService.generarSiguienteNcf(request.getTipoNcf());
             venta.setNcf(ncfGenerado.getNcfCompleto());
+            venta.setFechaVencimientoNcf(ncfGenerado.getFechaVencimiento());
         }
 
         // ── 6. Procesar líneas de detalle ────────────────────────────────
@@ -422,8 +425,15 @@ public class VentaService {
         venta.setMontoRecibido(normalizar(totalPagado));
         venta.setCambio(cambio);
 
-        // ── 10. Persistir venta ──────────────────────────────────────────
+        // ── 10. Persistir venta y acumular total de compras al cliente ───
         Venta ventaGuardada = ventaRepository.save(venta);
+
+        if (ventaGuardada.getCliente() != null) {
+            Cliente cliente = ventaGuardada.getCliente();
+            BigDecimal totalActual = cliente.getTotalCompras() != null ? cliente.getTotalCompras() : BigDecimal.ZERO;
+            cliente.setTotalCompras(totalActual.add(totalVenta));
+            clienteRepository.save(cliente);
+        }
 
         List<CambioInventario> cambiosInventario = existenciasBloqueadas.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
@@ -990,8 +1000,13 @@ public class VentaService {
     private VentaResponseDTO mapToResponseDTO(Venta venta) {
         VentaResponseDTO dto = new VentaResponseDTO();
         dto.setIdVenta(venta.getIdVenta());
-        dto.setIdTurnoCaja(venta.getTurnoCaja().getIdTurnoCaja());
-        dto.setCajeroNombre(venta.getUsuario().getUsername());
+        if (venta.getTurnoCaja() != null) {
+            dto.setIdTurnoCaja(venta.getTurnoCaja().getIdTurnoCaja());
+            if (venta.getTurnoCaja().getCaja() != null) {
+                dto.setCajaNombre(venta.getTurnoCaja().getCaja().getNombre());
+            }
+        }
+        dto.setCajeroNombre(venta.getUsuario() != null ? venta.getUsuario().getUsername() : null);
         if (venta.getAlmacen() != null) {
             dto.setIdAlmacen(venta.getAlmacen().getIdAlmacen());
             dto.setAlmacenNombre(venta.getAlmacen().getNombre());
@@ -1004,6 +1019,7 @@ public class VentaService {
         dto.setNumeroControl(venta.getNumeroControl());
         dto.setNcf(venta.getNcf());
         dto.setTipoNcf(venta.getTipoNcf());
+        dto.setFechaVencimientoNcf(venta.getFechaVencimientoNcf());
         dto.setMetodoPagoPrincipal(venta.getMetodoPagoPrincipal().name());
         dto.setUsaPrecioMayor(venta.isUsaPrecioMayor());
         dto.setSubtotal(venta.getSubtotal());

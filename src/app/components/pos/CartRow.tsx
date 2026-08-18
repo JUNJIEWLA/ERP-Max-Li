@@ -9,6 +9,8 @@ export interface CartItem {
   descuentoLinea: number;
   unidad: string;
   importe: number;
+  tasaItbis?: number;
+  itbisLinea?: number;
   /** Campos opcionales de recálculo (se llenan desde el backend) */
   precioOriginal?: number | null;
   tipoPrecio?: string;

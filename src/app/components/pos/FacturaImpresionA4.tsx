@@ -1,5 +1,5 @@
-import React from 'react';
-import { ConfiguracionEmpresa, VentaResponse } from '../../../imports/api';
+import React, { useState, useEffect } from 'react';
+import { ConfiguracionEmpresa, VentaResponse, empresaApi, getNombreTipoNcf, formatFechaVencimientoNcf, resolucionNcfApi } from '../../../imports/api';
 
 interface FacturaImpresionA4Props {
   venta: VentaResponse;
@@ -86,21 +86,58 @@ const fmtFechaHora = (iso: string) =>
   });
 
 export default function FacturaImpresionA4({ venta, empresa, esCopia = false }: FacturaImpresionA4Props) {
-  const nombreComercial = empresa?.nombreComercial || 'PLAZA MAX';
-  const razonSocial = empresa?.razonSocial || 'Comercial Plaza Max, S.R.L.';
-  const rncEmpresa = empresa?.rnc || '13338823';
-  const direccionEmpresa = empresa?.direccion
-    ? `${empresa.direccion}${empresa.ciudad ? `, ${empresa.ciudad}` : ''}${empresa.provincia ? `, ${empresa.provincia}` : ''}`
-    : 'AV. 27 DE FEBRERO #123, SANTO DOMINGO';
-  const telefonoEmpresa = empresa?.telefonoPrincipal || '809-555-0100';
-  const emailEmpresa = empresa?.emailFacturacion || empresa?.emailComercial || 'facturacion@plasamax.com';
+  const [empresaState, setEmpresaState] = useState<ConfiguracionEmpresa | null>(empresa || null);
+
+  useEffect(() => {
+    if (empresa) {
+      setEmpresaState(empresa);
+    } else {
+      empresaApi.obtener()
+        .then(data => setEmpresaState(data))
+        .catch(() => {});
+    }
+  }, [empresa]);
+
+  const activeEmpresa = empresaState || empresa;
+
+  const nombreComercial = activeEmpresa?.nombreComercial || activeEmpresa?.razonSocial || '';
+  const razonSocial = activeEmpresa?.razonSocial || '';
+  const rncEmpresa = activeEmpresa?.rnc || '';
+  const direccionEmpresa = activeEmpresa?.direccion
+    ? `${activeEmpresa.direccion}${activeEmpresa.ciudad ? `, ${activeEmpresa.ciudad}` : ''}${activeEmpresa.provincia ? `, ${activeEmpresa.provincia}` : ''}`
+    : '';
+  const telefonoEmpresa = activeEmpresa?.telefonoPrincipal || activeEmpresa?.telefonoSecundario || '';
+  const emailEmpresa = activeEmpresa?.emailFacturacion || activeEmpresa?.emailComercial || '';
 
   const ncf = venta.ncf || 'B0200000001';
-  const tipoNcfNombre = venta.tipoNcf === 'B01' ? 'Crédito Fiscal' : 'Consumidor Final';
+  const tituloFactura = getNombreTipoNcf(venta.tipoNcf, venta.ncf);
   const numeroControl = venta.numeroControl || `VNT-${venta.idVenta}`;
 
-  const clienteNombre = venta.clienteNombre || venta.nombreClienteTemporal || 'Consumidor Final';
-  const clienteRnc = venta.clienteRncCedula || venta.rncTemporal || '—';
+  const clienteNombre = (venta.nombreClienteTemporal && venta.nombreClienteTemporal.trim())
+    ? venta.nombreClienteTemporal
+    : (venta.clienteNombre && venta.clienteNombre !== 'Consumidor Final'
+        ? venta.clienteNombre
+        : (venta.clienteNombre || 'Consumidor Final'));
+  const clienteRnc = venta.rncTemporal || venta.clienteRncCedula || '—';
+
+  const [vencimientoState, setVencimientoState] = useState<any>(venta.fechaVencimientoNcf || null);
+
+  useEffect(() => {
+    if (venta.fechaVencimientoNcf) {
+      setVencimientoState(venta.fechaVencimientoNcf);
+    } else if (venta.tipoNcf || venta.ncf) {
+      const tipo = venta.tipoNcf || (venta.ncf ? venta.ncf.substring(0, 3) : 'B02');
+      resolucionNcfApi.previsualizar(tipo)
+        .then(res => {
+          if (res.fechaVencimiento) {
+            setVencimientoState(res.fechaVencimiento);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [venta.fechaVencimientoNcf, venta.tipoNcf, venta.ncf]);
+
+  const fechaVencimientoTexto = formatFechaVencimientoNcf(vencimientoState);
 
   const politicaDevolucion = empresa?.politicaDevolucion || 'Cambios válidos dentro de los 30 días presentando este comprobante y el producto en su empaque original. No se realiza devolución de dinero en efectivo.';
 
@@ -130,15 +167,14 @@ export default function FacturaImpresionA4({ venta, empresa, esCopia = false }: 
           <p><span className="font-semibold">Tel:</span> {telefonoEmpresa} | <span className="font-semibold">Email:</span> {emailEmpresa}</p>
         </div>
 
-        {/* Lado Derecho: Documento Fiscal (e-NCF Box) */}
+        {/* Lado Derecho: Documento Fiscal (NCF Box) */}
         <div className="border-2 border-slate-900 rounded-lg p-4 text-right min-w-[240px] bg-slate-50 space-y-1">
-          <h2 className="text-sm font-bold uppercase text-slate-900">Factura de {tipoNcfNombre}</h2>
-          <p className="text-xs text-slate-600 uppercase">Factura de Consumo Electrónica</p>
+          <h2 className="text-sm font-bold uppercase text-slate-900">{tituloFactura}</h2>
           <div className="pt-2 border-t border-slate-300">
-            <p className="text-xs"><span className="font-bold text-slate-800">e-NCF:</span></p>
+            <p className="text-xs"><span className="font-bold text-slate-800">NCF:</span></p>
             <p className="font-mono text-sm font-bold text-blue-950">{ncf}</p>
           </div>
-          <p className="text-[11px] text-slate-600"><span className="font-semibold">Vencimiento:</span> 31/12/2099</p>
+          <p className="text-[11px] text-slate-600"><span className="font-semibold">Vencimiento:</span> {fechaVencimientoTexto}</p>
           <div className="pt-2 border-t border-slate-300 text-left text-[11px] space-y-0.5">
             <p><span className="font-bold">Factura N°:</span> <span className="font-mono">{numeroControl}</span></p>
             <p><span className="font-bold">Fecha / Hora:</span> {fmtFechaHora(venta.fechaVenta)}</p>
@@ -175,17 +211,21 @@ export default function FacturaImpresionA4({ venta, empresa, esCopia = false }: 
           </tr>
         </thead>
         <tbody>
-          {venta.detalles.map((d, i) => (
-            <tr key={d.idDetalleVenta || i} className="border-b border-slate-200 odd:bg-white even:bg-slate-50">
-              <td className="py-2 px-3 font-mono text-slate-600">{d.skuProducto || `PRD-${d.idProducto}`}</td>
-              <td className="py-2 px-3 font-medium text-slate-900">{d.nombreProducto}</td>
-              <td className="py-2 px-3 text-right font-semibold">{d.cantidad}</td>
-              <td className="py-2 px-3 text-right font-mono">{fmtMoneda(d.precioUnitario)}</td>
-              <td className="py-2 px-3 text-right font-mono text-slate-600">{fmtMoneda(d.descuentoProrrateado + (d.descuentoMonto || 0))}</td>
-              <td className="py-2 px-3 text-right font-mono text-slate-600">{fmtMoneda(d.itbisLinea)}</td>
-              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmtMoneda(d.importe)}</td>
-            </tr>
-          ))}
+          {venta.detalles.map((d, i) => {
+            const tasaItbis = d.tasaItbis ? (d.tasaItbis > 1 ? d.tasaItbis / 100 : d.tasaItbis) : 0.18;
+            const itbisMonto = d.itbisLinea ?? (d.importe - (d.importe / (1 + tasaItbis)));
+            return (
+              <tr key={d.idDetalleVenta || i} className="border-b border-slate-200 odd:bg-white even:bg-slate-50">
+                <td className="py-2 px-3 font-mono text-slate-600">{d.skuProducto || `PRD-${d.idProducto}`}</td>
+                <td className="py-2 px-3 font-medium text-slate-900">{d.nombreProducto}</td>
+                <td className="py-2 px-3 text-right font-semibold">{d.cantidad}</td>
+                <td className="py-2 px-3 text-right font-mono">{fmtMoneda(d.precioUnitario)}</td>
+                <td className="py-2 px-3 text-right font-mono text-slate-600">{fmtMoneda(d.descuentoProrrateado + (d.descuentoMonto || 0))}</td>
+                <td className="py-2 px-3 text-right font-mono text-slate-600">{fmtMoneda(itbisMonto)}</td>
+                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmtMoneda(d.importe)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

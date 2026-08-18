@@ -3,7 +3,7 @@ import {
   Users, Plus, Search, Edit2, UserX, UserCheck,
   Phone, Mail, MapPin, FileText, Percent, TrendingUp, X, Save, Loader2, CreditCard
 } from 'lucide-react';
-import { clientesApi, Cliente } from '../../imports/api';
+import { clientesApi, dgiiApi, Cliente } from '../../imports/api';
 
 const TIPOS_NCF = [
   { codigo: 'B01', nombre: 'Crédito Fiscal' },
@@ -78,8 +78,42 @@ function ClienteModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const [consultandoDgii, setConsultandoDgii] = useState(false);
+  const [mensajeDgii, setMensajeDgii] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
+
   const set = (field: keyof FormData, value: string | number) =>
     setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleConsultarDgii = async (rncOverride?: string) => {
+    const rncToQuery = (rncOverride ?? form.rncCedula).replace(/[^0-9]/g, '');
+    if (!rncToQuery || (rncToQuery.length !== 9 && rncToQuery.length !== 11)) {
+      setMensajeDgii({ tipo: 'error', texto: 'Ingrese un RNC (9 dígitos) o Cédula (11 dígitos) válido.' });
+      return;
+    }
+    setConsultandoDgii(true);
+    setMensajeDgii(null);
+    try {
+      const res = await dgiiApi.consultarRnc(rncToQuery);
+      if (!res.error && res.nombreRazonSocial) {
+        const nombreEncontrado = res.nombreRazonSocial || res.nombreComercial || '';
+        setForm(prev => ({
+          ...prev,
+          nombreCompleto: nombreEncontrado,
+          rncCedula: res.cedulaRnc || prev.rncCedula,
+        }));
+        setMensajeDgii({
+          tipo: 'exito',
+          texto: `✓ DGII: ${nombreEncontrado}${res.estado ? ` (${res.estado})` : ''}`,
+        });
+      } else {
+        setMensajeDgii({ tipo: 'error', texto: res.mensaje || 'RNC/Cédula no registrado en la DGII.' });
+      }
+    } catch (e: any) {
+      setMensajeDgii({ tipo: 'error', texto: e.message || 'Error al consultar DGII.' });
+    } finally {
+      setConsultandoDgii(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,33 +178,74 @@ function ClienteModal({
             </div>
           )}
 
-          {/* Nombre */}
+          {/* RNC / Cédula con consulta DGII (PRIMERO) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wide">
+                RNC / Cédula
+                {form.tipoNcfPreferido === 'B01' && (
+                  <span className="text-destructive ml-1">* (requerido para B01)</span>
+                )}
+              </label>
+              <button
+                type="button"
+                onClick={() => handleConsultarDgii()}
+                disabled={consultandoDgii || !form.rncCedula.trim()}
+                className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors"
+              >
+                {consultandoDgii ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    Consultando DGII…
+                  </>
+                ) : (
+                  <>
+                    <Search size={12} />
+                    Consultar DGII
+                  </>
+                )}
+              </button>
+            </div>
+            <input
+              value={form.rncCedula}
+              onChange={(e) => {
+                set('rncCedula', e.target.value);
+                setMensajeDgii(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleConsultarDgii();
+                }
+              }}
+              onBlur={(e) => {
+                const clean = e.target.value.replace(/[^0-9]/g, '');
+                if ((clean.length === 9 || clean.length === 11) && !form.nombreCompleto.trim()) {
+                  handleConsultarDgii(clean);
+                }
+              }}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              placeholder="Ej. 131996035 o 001-0000000-0"
+              autoFocus={!isEdit}
+            />
+            {mensajeDgii && (
+              <p className={`text-xs font-medium mt-1 ${mensajeDgii.tipo === 'exito' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {mensajeDgii.texto}
+              </p>
+            )}
+          </div>
+
+          {/* Nombre completo (SEGUNDO - Auto-completado por DGII) */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
-              Nombre completo <span className="text-destructive">*</span>
+              Nombre completo / Razón Social <span className="text-destructive">*</span>
             </label>
             <input
               required
               value={form.nombreCompleto}
               onChange={(e) => set('nombreCompleto', e.target.value)}
               className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
-              placeholder="Ej. María García Pérez"
-            />
-          </div>
-
-          {/* RNC / Cédula */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5">
-              RNC / Cédula
-              {form.tipoNcfPreferido === 'B01' && (
-                <span className="text-destructive ml-1">* (requerido para B01)</span>
-              )}
-            </label>
-            <input
-              value={form.rncCedula}
-              onChange={(e) => set('rncCedula', e.target.value)}
-              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary focus:outline-none"
-              placeholder="000-0000000-0 o 001-0000000-0"
+              placeholder="Se auto-completa al consultar DGII o ingrese manualmente"
             />
           </div>
 
