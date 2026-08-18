@@ -67,6 +67,7 @@ export default function App() {
   // Sin sesión todavía no se conocen los permisos, así que no hay vista activa;
   // se resuelve al iniciar sesión o al recuperar la sesión existente.
   const [activeView, setActiveView] = useState(SIN_MODULOS);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loginNotice, setLoginNotice] = useState('');
   // La sesión vive en una cookie HttpOnly: este código no puede inspeccionarla,
   // así que arranca sin sesión y se la pregunta al backend en el primer efecto.
@@ -271,9 +272,22 @@ export default function App() {
 
   return (
     <div className="size-full flex bg-background">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} username={username} userRoles={userRoles} userPermisos={userPermisos} onLogout={handleLogout} />
+      <Sidebar
+        activeView={activeView}
+        onViewChange={setActiveView}
+        username={username}
+        userRoles={userRoles}
+        userPermisos={userPermisos}
+        onLogout={handleLogout}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(c => !c)}
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title={viewTitles[activeView] || 'ERP Sistema'} />
+        <Header
+          title={viewTitles[activeView] || 'MAX ERP'}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed(false)}
+        />
         <main className="flex-1 overflow-y-auto">
           {renderView()}
         </main>

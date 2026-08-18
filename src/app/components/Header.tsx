@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, PanelLeft } from 'lucide-react';
 import { alertasCostoApi, alertasRetrasoOcApi, existenciasApi } from '../../imports/api';
 import Buzon from './Buzon';
 
 interface HeaderProps {
   title: string;
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
 }
 
-export default function Header({ title }: HeaderProps) {
+export default function Header({ title, sidebarCollapsed, onToggleSidebar }: HeaderProps) {
   const [alertCount, setAlertCount] = useState(0);
   const [showBuzon, setShowBuzon] = useState(false);
 
@@ -32,7 +34,18 @@ export default function Header({ title }: HeaderProps) {
 
   return (
     <header className="h-16 border-b border-border bg-background px-6 flex items-center justify-between relative z-40">
-      <h2 className="text-xl font-semibold text-foreground">{title}</h2>
+      <div className="flex items-center gap-3">
+        {sidebarCollapsed && onToggleSidebar && (
+          <button
+            onClick={onToggleSidebar}
+            className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-colors"
+            title="Expandir menú"
+          >
+            <PanelLeft size={20} />
+          </button>
+        )}
+        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
+      </div>
 
       <div className="flex items-center gap-4">
         <button

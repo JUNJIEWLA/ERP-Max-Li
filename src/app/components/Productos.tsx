@@ -13,6 +13,7 @@ interface ProductoForm {
   nombre: string;
   descripcion: string;
   precioVenta: string;
+  precioVentaMayor: string;
   costo: string;
   idCategoria: string;
   idMarca: string;
@@ -24,7 +25,7 @@ interface ProductoForm {
 
 const EMPTY_FORM: ProductoForm = {
   codigoBarras: '', nombre: '', descripcion: '',
-  precioVenta: '', costo: '',
+  precioVenta: '', precioVentaMayor: '', costo: '',
   idCategoria: '', idMarca: '', estado: 'ACTIVO',
   tasaItbis: '18.00', cantidadMinimaMayor: '1', stockMinimo: '5',
 };
@@ -110,6 +111,7 @@ export default function Productos() {
       nombre: p.nombre,
       descripcion: p.descripcion ?? '',
       precioVenta: String(p.precioVenta),
+      precioVentaMayor: p.precioVentaMayor ? String(p.precioVentaMayor) : '',
       costo: String(p.costo),
       idCategoria: String(p.idCategoria),
       idMarca: String(p.idMarca),
@@ -128,6 +130,8 @@ export default function Productos() {
     if (!form.nombre.trim()) return 'El nombre es obligatorio';
     if (!form.precioVenta || isNaN(Number(form.precioVenta)) || Number(form.precioVenta) < 0)
       return 'El precio de venta debe ser un número válido ≥ 0';
+    if (form.precioVentaMayor && (isNaN(Number(form.precioVentaMayor)) || Number(form.precioVentaMayor) < 0))
+      return 'El precio al por mayor debe ser un número válido ≥ 0';
     if (!form.costo || isNaN(Number(form.costo)) || Number(form.costo) < 0)
       return 'El costo debe ser un número válido ≥ 0';
     if (!form.idCategoria) return 'Selecciona una categoría';
@@ -144,6 +148,7 @@ export default function Productos() {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion,
       precioVenta: Number(form.precioVenta),
+      precioVentaMayor: form.precioVentaMayor ? Number(form.precioVentaMayor) : null,
       costo: Number(form.costo),
       idCategoria: Number(form.idCategoria),
       idMarca: Number(form.idMarca),
@@ -271,7 +276,8 @@ export default function Productos() {
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Categoría</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Marca</th>
-                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Precio Venta</th>
+                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Precio Detalle</th>
+                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Precio Mayor</th>
                   <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Costo</th>
                   <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Estado</th>
                   <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Acciones</th>
@@ -292,6 +298,9 @@ export default function Productos() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{p.marcaNombre}</td>
                     <td className="px-4 py-3 text-right font-semibold text-foreground">{fmt(p.precioVenta)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-violet-600">
+                      {p.precioVentaMayor ? fmt(p.precioVentaMayor) : <span className="text-muted-foreground italic opacity-40">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-right text-muted-foreground">{fmt(p.costo)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${p.estado === 'ACTIVO' ? 'bg-green-500/15 text-green-600' : 'bg-rose-500/15 text-rose-600'}`}>
@@ -416,7 +425,7 @@ export default function Productos() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Costo (RD$) <span className="text-rose-500">*</span></label>
                   <input id="input-prod-costo" type="number" min="0" step="0.01" value={form.costo}
@@ -425,52 +434,75 @@ export default function Productos() {
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Precio de Venta (RD$) <span className="text-rose-500">*</span></label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Precio Detalle (RD$) <span className="text-rose-500">*</span></label>
                   <input id="input-prod-precio" type="number" min="0" step="0.01" value={form.precioVenta}
                     onChange={e => setForm(f => ({ ...f, precioVenta: e.target.value }))}
                     placeholder="0.00"
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                  
-                  {(() => {
-                    if (form.idCategoria && form.costo && Number(form.costo) > 0) {
-                      const cat = categorias.find(c => c.idCategoria === Number(form.idCategoria));
-                      if (cat && (cat.porcentajeMargen > 0 || (cat.porcentajeMargenMayor ?? 0) > 0)) {
-                        const suggestedDetalle = cat.porcentajeMargen > 0
-                          ? Number(form.costo) * (1 + cat.porcentajeMargen / 100) : null;
-                        const suggestedMayor = (cat.porcentajeMargenMayor ?? 0) > 0
-                          ? Number(form.costo) * (1 + cat.porcentajeMargenMayor / 100) : null;
-                        return (
-                          <div className="mt-2 space-y-1.5">
-                            {suggestedDetalle !== null && (
-                              <div className="flex items-center justify-between bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
-                                <span className="text-xs text-primary font-medium flex items-center gap-1">
-                                  💡 Detalle: {fmt(suggestedDetalle)} (Costo + {cat.porcentajeMargen}%)
-                                </span>
-                                <button type="button" onClick={() => setForm(f => ({ ...f, precioVenta: suggestedDetalle.toFixed(2) }))}
-                                  className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors">
-                                  Aplicar
-                                </button>
-                              </div>
-                            )}
-                            {suggestedMayor !== null && (
-                              <div className="flex items-center justify-between bg-violet-500/5 px-3 py-2 rounded-lg border border-violet-500/20">
-                                <span className="text-xs text-violet-600 font-medium flex items-center gap-1">
-                                  💡 Mayor: {fmt(suggestedMayor)} (Costo + {cat.porcentajeMargenMayor}%)
-                                </span>
-                                <span className="text-[10px] text-violet-500 italic">Se calcula automáticamente</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      if (cat && cat.porcentajeMargen === 0 && (cat.porcentajeMargenMayor ?? 0) === 0) {
-                         return <p className="text-xs text-muted-foreground mt-1 italic">Esta categoría no tiene margen configurado</p>;
-                      }
-                    }
-                    return null;
-                  })()}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Precio Por Mayor (RD$)</label>
+                  <input id="input-prod-precio-mayor" type="number" min="0" step="0.01" value={form.precioVentaMayor}
+                    onChange={e => setForm(f => ({ ...f, precioVentaMayor: e.target.value }))}
+                    placeholder="0.00 (opcional)"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
                 </div>
               </div>
+
+              {/* Sugerencias dinámicas de precios basadas en la categoría */}
+              {(() => {
+                if (form.idCategoria && form.costo && Number(form.costo) > 0) {
+                  const cat = categorias.find(c => c.idCategoria === Number(form.idCategoria));
+                  if (cat && (cat.porcentajeMargen > 0 || (cat.porcentajeMargenMayor ?? 0) > 0)) {
+                    const suggestedDetalle = cat.porcentajeMargen > 0
+                      ? Number(form.costo) * (1 + cat.porcentajeMargen / 100) : null;
+                    const suggestedMayor = (cat.porcentajeMargenMayor ?? 0) > 0
+                      ? Number(form.costo) * (1 + cat.porcentajeMargenMayor / 100) : null;
+                    return (
+                      <div className="grid grid-cols-2 gap-3 bg-muted/40 p-3 rounded-xl border border-border">
+                        <div>
+                          {suggestedDetalle !== null ? (
+                            <div className="flex items-center justify-between bg-card px-3 py-2 rounded-lg border border-primary/20 shadow-xs">
+                              <div className="text-xs">
+                                <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Sugerencia Detalle</span>
+                                <span className="text-primary font-semibold">{fmt(suggestedDetalle)}</span>
+                                <span className="text-muted-foreground opacity-75 text-[10px]"> (+{cat.porcentajeMargen}%)</span>
+                              </div>
+                              <button type="button" onClick={() => setForm(f => ({ ...f, precioVenta: suggestedDetalle.toFixed(2) }))}
+                                className="text-xs bg-primary text-primary-foreground px-2.5 py-1 rounded-md hover:bg-primary/90 transition-colors font-medium">
+                                Aplicar
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Sin margen detalle en categoría</span>
+                          )}
+                        </div>
+                        <div>
+                          {suggestedMayor !== null ? (
+                            <div className="flex items-center justify-between bg-card px-3 py-2 rounded-lg border border-violet-500/20 shadow-xs">
+                              <div className="text-xs">
+                                <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Sugerencia Por Mayor</span>
+                                <span className="text-violet-600 font-semibold">{fmt(suggestedMayor)}</span>
+                                <span className="text-muted-foreground opacity-75 text-[10px]"> (+{cat.porcentajeMargenMayor}%)</span>
+                              </div>
+                              <button type="button" onClick={() => setForm(f => ({ ...f, precioVentaMayor: suggestedMayor.toFixed(2) }))}
+                                className="text-xs bg-violet-600 text-white px-2.5 py-1 rounded-md hover:bg-violet-700 transition-colors font-medium">
+                                Aplicar
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Sin margen mayorista en categoría</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (cat && cat.porcentajeMargen === 0 && (cat.porcentajeMargenMayor ?? 0) === 0) {
+                     return <p className="text-xs text-muted-foreground italic">Esta categoría no tiene márgenes configurados</p>;
+                  }
+                }
+                return null;
+              })()}
 
               {/* Campos POS: ITBIS, Cantidad Mínima Mayorista y Stock Mínimo */}
               <div className="grid grid-cols-3 gap-4">

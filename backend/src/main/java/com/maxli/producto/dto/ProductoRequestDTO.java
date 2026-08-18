@@ -30,6 +30,10 @@ public class ProductoRequestDTO {
     @Digits(integer = 10, fraction = 2, message = "El precio de venta debe tener maximo 10 enteros y 2 decimales")
     private BigDecimal precioVenta;
 
+    @DecimalMin(value = "0.00", message = "El precio de venta al por mayor no puede ser negativo")
+    @Digits(integer = 10, fraction = 2, message = "El precio de venta al por mayor debe tener maximo 10 enteros y 2 decimales")
+    private BigDecimal precioVentaMayor;
+
     @NotNull(message = "El costo es obligatorio")
     @DecimalMin(value = "0.00", message = "El costo no puede ser negativo")
     @Digits(integer = 10, fraction = 2, message = "El costo debe tener maximo 10 enteros y 2 decimales")

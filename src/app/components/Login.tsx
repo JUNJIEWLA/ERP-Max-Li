@@ -37,20 +37,26 @@ export default function Login({ onLogin, notice }: LoginProps) {
         {/* Logo / Brand */}
         <div className="login-brand">
           <div className="login-logo">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <rect width="40" height="40" rx="12" fill="url(#lg)" />
-              <path d="M10 28V14l10-6 10 6v14l-10 6-10-6z" fill="white" fillOpacity=".15" />
-              <path d="M20 8l10 6v12M20 8L10 14v12M10 26l10 6 10-6" stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
+            <svg width="44" height="44" viewBox="0 0 500 400" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="lg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#6366f1" />
-                  <stop offset="1" stopColor="#8b5cf6" />
+                <linearGradient id="login-gold-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FFEB68"/>
+                  <stop offset="60%" stopColor="#F5C832"/>
+                  <stop offset="100%" stopColor="#E2B11B"/>
+                </linearGradient>
+                <linearGradient id="login-gold-grad-2" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#FFF38B"/>
+                  <stop offset="100%" stopColor="#EDBC26"/>
                 </linearGradient>
               </defs>
+              <path d="M 90,310 L 205,105 L 245,285 L 210,285 L 188,200 L 125,310 Z" fill="url(#login-gold-grad-1)" />
+              <path d="M 160,250 L 205,150 L 230,260 L 210,260 L 195,200 L 175,250 Z" fill="url(#login-gold-grad-2)" />
+              <path d="M 298,35 L 410,310 L 350,310 L 298,165 L 255,310 L 215,310 L 285,115 Z" fill="url(#login-gold-grad-1)" />
+              <path d="M 285,115 L 325,210 L 275,310 L 255,310 L 295,200 L 275,150 Z" fill="url(#login-gold-grad-2)" />
             </svg>
           </div>
           <div>
-            <h1 className="login-title">ERP Max Li</h1>
+            <h1 className="login-title">MAX ERP</h1>
             <p className="login-subtitle">Sistema de Gestión Empresarial</p>
           </div>
         </div>

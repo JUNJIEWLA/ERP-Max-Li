@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="gold-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEB68"/>
+      <stop offset="60%" stop-color="#F5C832"/>
+      <stop offset="100%" stop-color="#E2B11B"/>
+    </linearGradient>
+    <linearGradient id="gold-grad-2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFF38B"/>
+      <stop offset="100%" stop-color="#EDBC26"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  
+  <g filter="url(#shadow)">
+    <!-- Left Mountain Peak -->
+    <path d="M 90,310 L 205,105 L 245,285 L 210,285 L 188,200 L 125,310 Z" fill="url(#gold-grad-1)" />
+    <!-- Inner Left Chevron Fold -->
+    <path d="M 160,250 L 205,150 L 230,260 L 210,260 L 195,200 L 175,250 Z" fill="url(#gold-grad-2)" />
+
+    <!-- Right Mountain Peak (Taller) -->
+    <path d="M 298,35 L 410,310 L 350,310 L 298,165 L 255,310 L 215,310 L 285,115 Z" fill="url(#gold-grad-1)" />
+    <!-- Inner Right Chevron Fold -->
+    <path d="M 285,115 L 325,210 L 275,310 L 255,310 L 295,200 L 275,150 Z" fill="url(#gold-grad-2)" />
+  </g>
+</svg>

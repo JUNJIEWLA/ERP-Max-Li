@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { LogOut, PanelLeftClose, PanelLeft, Search, X } from 'lucide-react';
 import {
   ShoppingCart,
   Package,
@@ -32,6 +32,8 @@ interface SidebarProps {
   userRoles?: string[];
   userPermisos?: string[];
   onLogout?: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 interface MenuItem {
@@ -181,13 +183,51 @@ export function primeraVistaPermitida(userPermisos: string[]): string | null {
   return null;
 }
 
-export default function Sidebar({ activeView, onViewChange, username, userRoles = [], userPermisos = [], onLogout }: SidebarProps) {
+/** MAX LI mountain logo as inline SVG */
+function MaxLiLogo({ size = 36 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 500 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="sidebar-gold-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FFEB68"/>
+          <stop offset="60%" stopColor="#F5C832"/>
+          <stop offset="100%" stopColor="#E2B11B"/>
+        </linearGradient>
+        <linearGradient id="sidebar-gold-grad-2" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#FFF38B"/>
+          <stop offset="100%" stopColor="#EDBC26"/>
+        </linearGradient>
+      </defs>
+      {/* Left Mountain Peak */}
+      <path d="M 90,310 L 205,105 L 245,285 L 210,285 L 188,200 L 125,310 Z" fill="url(#sidebar-gold-grad-1)" />
+      {/* Inner Left Chevron Fold */}
+      <path d="M 160,250 L 205,150 L 230,260 L 210,260 L 195,200 L 175,250 Z" fill="url(#sidebar-gold-grad-2)" />
+      {/* Right Mountain Peak (Taller) */}
+      <path d="M 298,35 L 410,310 L 350,310 L 298,165 L 255,310 L 215,310 L 285,115 Z" fill="url(#sidebar-gold-grad-1)" />
+      {/* Inner Right Chevron Fold */}
+      <path d="M 285,115 L 325,210 L 275,310 L 255,310 L 295,200 L 275,150 Z" fill="url(#sidebar-gold-grad-2)" />
+    </svg>
+  );
+}
+
+export default function Sidebar({ activeView, onViewChange, username, userRoles = [], userPermisos = [], onLogout, collapsed, onToggleCollapse }: SidebarProps) {
   // La vista inicial siempre pertenece a alguna sección: se abre esa para que el
   // usuario vea dónde está.
   const [expandedSections, setExpandedSections] = useState<string[]>(() => {
     const seccionInicial = menuSections.find(s => s.items.some(i => i.id === activeView));
     return [seccionInicial?.id ?? 'ventas'];
   });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus search input when search is shown
+  useEffect(() => {
+    if (showSearch && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showSearch]);
 
   // Filter sections and items based on user permissions
   const visibleSections = menuSections
@@ -203,6 +243,19 @@ export default function Sidebar({ activeView, onViewChange, username, userRoles 
     // Hide sections with no visible items
     .filter(section => section.items.length > 0);
 
+  // Apply search filter on top of permissions
+  const filteredSections = searchQuery.trim()
+    ? visibleSections
+        .map(section => ({
+          ...section,
+          items: section.items.filter(item =>
+            item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            section.label.toLowerCase().includes(searchQuery.toLowerCase())
+          ),
+        }))
+        .filter(section => section.items.length > 0)
+    : visibleSections;
+
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev =>
       prev.includes(sectionId)
@@ -211,90 +264,194 @@ export default function Sidebar({ activeView, onViewChange, username, userRoles 
     );
   };
 
+  // Tooltip para items cuando está colapsado
+  const [tooltipInfo, setTooltipInfo] = useState<{ label: string; top: number } | null>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  const handleMouseEnterItem = (label: string, e: React.MouseEvent) => {
+    if (!collapsed) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTooltipInfo({ label, top: rect.top + rect.height / 2 });
+  };
+
+  const handleMouseLeaveItem = () => {
+    setTooltipInfo(null);
+  };
+
   return (
-    <aside className="w-64 bg-sidebar border-r border-sidebar-border h-screen flex flex-col">
-      <div className="p-6 border-b border-sidebar-border">
-        <h1 className="text-sidebar-foreground">ERP Sistema</h1>
-        <p className="text-sm text-sidebar-foreground/60 mt-1">Tienda por Departamento</p>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto p-4">
-        <ul className="space-y-1">
-          {visibleSections.map((section) => {
-            const SectionIcon = section.icon;
-            const isExpanded = expandedSections.includes(section.id);
-            const hasActiveItem = section.items.some(item => item.id === activeView);
-
-            return (
-              <li key={section.id} className="space-y-1">
-                <button
-                  onClick={() => toggleSection(section.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${
-                    hasActiveItem && !isExpanded
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <SectionIcon size={20} />
-                    <span>{section.label}</span>
-                  </div>
-                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-
-                {isExpanded && (
-                  <ul className="ml-4 space-y-1">
-                    {section.items.map((item) => {
-                      const ItemIcon = item.icon;
-                      const isActive = activeView === item.id;
-
-                      return (
-                        <li key={item.id}>
-                          <button
-                            onClick={() => onViewChange(item.id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                              isActive
-                                ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                                : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                            }`}
-                          >
-                            <ItemIcon size={18} />
-                            <span>{item.label}</span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground text-sm font-semibold shrink-0">
-            {username
-              ? username.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-              : 'U'}
+    <>
+      <aside
+        ref={sidebarRef}
+        className={`sidebar-pro ${collapsed ? 'sidebar-pro--collapsed' : ''}`}
+      >
+        {/* ─── Brand Header ─── */}
+        <div className="sidebar-pro__brand">
+          <div className="sidebar-pro__brand-logo" onClick={onToggleCollapse} title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
+            <MaxLiLogo size={collapsed ? 30 : 36} />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">{username || 'Usuario'}</p>
-            <p className="text-xs text-sidebar-foreground/60">Sesión activa</p>
-          </div>
-          {onLogout && (
+          {!collapsed && (
+            <div className="sidebar-pro__brand-text">
+              <h1 className="sidebar-pro__brand-title">MAX ERP</h1>
+              <p className="sidebar-pro__brand-subtitle">Sistema de Gestión</p>
+            </div>
+          )}
+          {!collapsed && (
             <button
-              id="sidebar-logout-btn"
-              onClick={onLogout}
-              title="Cerrar sesión"
-              className="p-1.5 rounded-md text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+              onClick={onToggleCollapse}
+              className="sidebar-pro__collapse-btn"
+              title="Colapsar menú"
             >
-              <LogOut size={16} />
+              <PanelLeftClose size={18} />
             </button>
           )}
         </div>
-      </div>
-    </aside>
+
+        {/* ─── Search Bar ─── */}
+        {!collapsed && (
+          <div className="sidebar-pro__search-wrap">
+            {showSearch ? (
+              <div className="sidebar-pro__search-bar">
+                <Search size={14} className="sidebar-pro__search-icon" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Buscar módulo…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="sidebar-pro__search-input"
+                />
+                <button
+                  onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+                  className="sidebar-pro__search-close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setShowSearch(true)} className="sidebar-pro__search-trigger">
+                <Search size={14} />
+                <span>Buscar…</span>
+                <kbd className="sidebar-pro__search-kbd">Ctrl+K</kbd>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ─── Navigation ─── */}
+        <nav className="sidebar-pro__nav">
+          <ul className="sidebar-pro__sections">
+            {filteredSections.map((section) => {
+              const SectionIcon = section.icon;
+              const isExpanded = expandedSections.includes(section.id) || searchQuery.trim() !== '';
+              const hasActiveItem = section.items.some(item => item.id === activeView);
+
+              return (
+                <li key={section.id} className="sidebar-pro__section">
+                  <button
+                    onClick={() => {
+                      if (collapsed) {
+                        // En modo colapsado: si la sección tiene un solo item, navegar directamente
+                        if (section.items.length === 1) {
+                          onViewChange(section.items[0].id);
+                        } else {
+                          onToggleCollapse();
+                          setExpandedSections(prev =>
+                            prev.includes(section.id) ? prev : [...prev, section.id]
+                          );
+                        }
+                      } else {
+                        toggleSection(section.id);
+                      }
+                    }}
+                    onMouseEnter={(e) => handleMouseEnterItem(section.label, e)}
+                    onMouseLeave={handleMouseLeaveItem}
+                    className={`sidebar-pro__section-btn ${
+                      hasActiveItem
+                        ? 'sidebar-pro__section-btn--active'
+                        : ''
+                    }`}
+                    title={collapsed ? section.label : undefined}
+                  >
+                    <div className="sidebar-pro__section-left">
+                      <SectionIcon size={collapsed ? 20 : 18} />
+                      {!collapsed && <span>{section.label}</span>}
+                    </div>
+                    {!collapsed && (
+                      <ChevronDown
+                        size={14}
+                        className={`sidebar-pro__chevron ${isExpanded ? 'sidebar-pro__chevron--open' : ''}`}
+                      />
+                    )}
+                  </button>
+
+                  {/* Sub-items */}
+                  {!collapsed && isExpanded && (
+                    <ul className="sidebar-pro__items">
+                      {section.items.map((item) => {
+                        const ItemIcon = item.icon;
+                        const isActive = activeView === item.id;
+
+                        return (
+                          <li key={item.id}>
+                            <button
+                              onClick={() => onViewChange(item.id)}
+                              className={`sidebar-pro__item-btn ${
+                                isActive ? 'sidebar-pro__item-btn--active' : ''
+                              }`}
+                            >
+                              <ItemIcon size={16} />
+                              <span>{item.label}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {/* ─── User Footer ─── */}
+        <div className="sidebar-pro__footer">
+          <div className={`sidebar-pro__user ${collapsed ? 'sidebar-pro__user--collapsed' : ''}`}>
+            <div className="sidebar-pro__user-avatar">
+              {username
+                ? username.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+                : 'U'}
+            </div>
+            {!collapsed && (
+              <div className="sidebar-pro__user-info">
+                <p className="sidebar-pro__user-name">{username || 'Usuario'}</p>
+                <p className="sidebar-pro__user-status">Sesión activa</p>
+              </div>
+            )}
+            {onLogout && (
+              <button
+                id="sidebar-logout-btn"
+                onClick={onLogout}
+                onMouseEnter={(e) => handleMouseEnterItem('Cerrar sesión', e)}
+                onMouseLeave={handleMouseLeaveItem}
+                title="Cerrar sesión"
+                className="sidebar-pro__logout-btn"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* Tooltip flotante para modo colapsado */}
+      {collapsed && tooltipInfo && (
+        <div
+          className="sidebar-pro__tooltip"
+          style={{ top: tooltipInfo.top }}
+        >
+          {tooltipInfo.label}
+        </div>
+      )}
+    </>
   );
 }

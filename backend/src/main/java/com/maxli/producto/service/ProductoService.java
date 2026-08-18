@@ -129,6 +129,9 @@ public class ProductoService {
         producto.setNombre(dto.getNombre());
         producto.setDescripcion(dto.getDescripcion());
         producto.setPrecioVenta(dto.getPrecioVenta());
+        if (dto.getPrecioVentaMayor() != null) {
+            producto.setPrecioVentaMayor(dto.getPrecioVentaMayor());
+        }
         producto.setCosto(dto.getCosto());
         producto.setCategoria(categoria);
         producto.setMarca(marca);
@@ -150,7 +153,7 @@ public class ProductoService {
             }
         }
 
-        // Recalcular precios desde costo + margen de categoría
+        // Recalcular precios desde costo + margen de categoría SOLO si no fueron especificados por el usuario
         calcularPreciosDesdeMargen(producto, categoria);
 
         return productoMapper.toDto(productoRepository.save(producto));
@@ -182,10 +185,8 @@ public class ProductoService {
     }
 
     /**
-     * Calcula automáticamente precioVenta y precioVentaMayor
-     * desde el costo del producto y los márgenes de la categoría.
-     * <p>
-     * Fórmula: precioVenta = costo × (1 + porcentajeMargen / 100)
+     * Calcula automáticamente precioVenta y precioVentaMayor desde el costo del producto
+     * y los márgenes de la categoría ÚNICAMENTE si no fueron especificados manualmente.
      */
     private void calcularPreciosDesdeMargen(Producto producto, Categoria categoria) {
         BigDecimal costo = producto.getCosto();
@@ -193,14 +194,16 @@ public class ProductoService {
             return;
         }
 
-        // Precio al detalle
-        if (categoria.getPorcentajeMargen() != null && categoria.getPorcentajeMargen().compareTo(BigDecimal.ZERO) > 0) {
+        // Precio al detalle: solo calcular sugerencia si el usuario no envió un precio de venta válido
+        if ((producto.getPrecioVenta() == null || producto.getPrecioVenta().compareTo(BigDecimal.ZERO) <= 0)
+                && categoria.getPorcentajeMargen() != null && categoria.getPorcentajeMargen().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal factorDetalle = BigDecimal.ONE.add(categoria.getPorcentajeMargen().divide(CIEN, 4, RoundingMode.HALF_UP));
             producto.setPrecioVenta(costo.multiply(factorDetalle).setScale(2, RoundingMode.HALF_UP));
         }
 
-        // Precio al por mayor
-        if (categoria.getPorcentajeMargenMayor() != null && categoria.getPorcentajeMargenMayor().compareTo(BigDecimal.ZERO) > 0) {
+        // Precio al por mayor: solo calcular sugerencia si el usuario no envió un precio mayorista válido
+        if ((producto.getPrecioVentaMayor() == null || producto.getPrecioVentaMayor().compareTo(BigDecimal.ZERO) <= 0)
+                && categoria.getPorcentajeMargenMayor() != null && categoria.getPorcentajeMargenMayor().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal factorMayor = BigDecimal.ONE.add(categoria.getPorcentajeMargenMayor().divide(CIEN, 4, RoundingMode.HALF_UP));
             producto.setPrecioVentaMayor(costo.multiply(factorMayor).setScale(2, RoundingMode.HALF_UP));
         }

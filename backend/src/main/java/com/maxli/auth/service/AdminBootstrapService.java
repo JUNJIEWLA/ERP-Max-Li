@@ -63,35 +63,37 @@ public class AdminBootstrapService {
         }
 
         Usuario admin = encontrado.get();
-        if (!CENTINELA_BLOQUEADO.equals(admin.getPasswordHash())) {
-            // Ya tiene una contraseña propia. No se toca: este es el mecanismo
-            // que hace que el bootstrap ocurra exactamente una vez.
+        boolean centinelaPresente = CENTINELA_BLOQUEADO.equals(admin.getPasswordHash());
+
+        if (!centinelaPresente && esProduccion()) {
+            // En producción: ya tiene una contraseña propia. No se toca.
             return;
         }
 
         Optional<String> problema = validar(config.getAdminPassword());
         if (problema.isPresent()) {
-            if (esProduccion()) {
-                throw new ConfiguracionInseguraException(
-                        "La cuenta administrativa '" + username + "' está bloqueada y no se puede "
-                        + "establecer su credencial inicial: " + problema.get()
-                        + " Defina BOOTSTRAP_ADMIN_PASSWORD (mínimo " + LONGITUD_MINIMA
-                        + " caracteres) y vuelva a arrancar. El servicio no se levanta sin una "
-                        + "credencial administrativa segura.");
+            if (centinelaPresente) {
+                if (esProduccion()) {
+                    throw new ConfiguracionInseguraException(
+                            "La cuenta administrativa '" + username + "' está bloqueada y no se puede "
+                            + "establecer su credencial inicial: " + problema.get()
+                            + " Defina BOOTSTRAP_ADMIN_PASSWORD (mínimo " + LONGITUD_MINIMA
+                            + " caracteres) y vuelva a arrancar. El servicio no se levanta sin una "
+                            + "credencial administrativa segura.");
+                }
+                log.warn("La cuenta administrativa '{}' sigue bloqueada: {} "
+                         + "Defina BOOTSTRAP_ADMIN_PASSWORD para poder iniciar sesión.",
+                        username, problema.get());
             }
-            log.warn("La cuenta administrativa '{}' sigue bloqueada: {} "
-                     + "Defina BOOTSTRAP_ADMIN_PASSWORD para poder iniciar sesión.",
-                    username, problema.get());
             return;
         }
 
         admin.setPasswordHash(passwordEncoder.encode(config.getAdminPassword()));
-        admin.setRequiereCambioPassword(true);      // debe cambiarla al primer ingreso
+        admin.setRequiereCambioPassword(false);
         admin.setTokenVersion(admin.getTokenVersion() + 1);
         usuarioRepository.save(admin);
 
-        log.info("Credencial administrativa inicial establecida para '{}'. "
-                 + "Se exigirá cambiarla en el primer inicio de sesión.", username);
+        log.info("Credencial administrativa establecida exitosamente para '{}'.", username);
     }
 
     /** Devuelve el motivo por el que la contraseña no sirve, o vacío si sirve. */

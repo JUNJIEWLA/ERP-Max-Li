@@ -17,6 +17,9 @@ public class ProductoMapper {
         producto.setNombre(dto.getNombre());
         producto.setDescripcion(dto.getDescripcion());
         producto.setPrecioVenta(dto.getPrecioVenta());
+        if (dto.getPrecioVentaMayor() != null) {
+            producto.setPrecioVentaMayor(dto.getPrecioVentaMayor());
+        }
         producto.setCosto(dto.getCosto());
         producto.setCantidadMinimaMayor(dto.getCantidadMinimaMayor() != null ? dto.getCantidadMinimaMayor() : 1);
         producto.setStockMinimo(dto.getStockMinimo() != null ? dto.getStockMinimo() : 5);
