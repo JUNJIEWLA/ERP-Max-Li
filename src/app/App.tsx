@@ -98,12 +98,18 @@ export default function App() {
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
   }, [clearSessionState]);
 
+  const [isSlowLoading, setIsSlowLoading] = useState(false);
+
   // ── Recuperación de sesión al cargar o recargar la página ──
   useEffect(() => {
     let cancelado = false;
+    const slowTimer = setTimeout(() => {
+      if (!cancelado) setIsSlowLoading(true);
+    }, 3000);
 
     authApi.recuperarSesion().then(sesion => {
       if (cancelado) return;
+      clearTimeout(slowTimer);
       if (sesion) {
         const permisos = sesion.permisos ?? [];
         setUsername(sesion.username);
@@ -116,7 +122,10 @@ export default function App() {
       setSessionChecked(true);
     });
 
-    return () => { cancelado = true; };
+    return () => {
+      cancelado = true;
+      clearTimeout(slowTimer);
+    };
   }, []);
 
   const handleLogin = (user: string, roles: string[], permisos: string[], requiresPwdChange: boolean) => {
@@ -185,8 +194,14 @@ export default function App() {
   // ── Comprobación inicial de sesión en curso ─────────────
   if (!sessionChecked) {
     return (
-      <div className="size-full flex items-center justify-center bg-background">
+      <div className="size-full flex flex-col items-center justify-center bg-background gap-4 p-4 text-center">
         <span className="login-spinner" />
+        <p className="text-sm font-medium text-foreground">Cargando sistema MAX ERP...</p>
+        {isSlowLoading && (
+          <p className="text-xs text-muted-foreground max-w-sm animate-fade-in">
+            El servidor (Render) se está iniciando tras estar inactivo. Esto puede demorar entre 30 y 60 segundos la primera vez...
+          </p>
+        )}
       </div>
     );
   }

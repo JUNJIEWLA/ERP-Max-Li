@@ -3,6 +3,11 @@
     {
       "source": "/api/:path*",
       "destination": "https://erp-max-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
+
