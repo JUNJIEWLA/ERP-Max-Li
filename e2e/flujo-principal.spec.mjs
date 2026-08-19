@@ -77,7 +77,7 @@ async function enviarLogin(page, password) {
 test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado', async ({ page }) => {
   await test.step('abrir la aplicación', async () => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'ERP Max Li' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'MAX ERP' })).toBeVisible();
   });
 
   await test.step('iniciar sesión y resolver el cambio obligatorio', async () => {
@@ -108,6 +108,7 @@ test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado
   });
 
   await test.step('entrar al POS', async () => {
+    await abrirVista(page, 'Ventas', 'Punto de Venta');
     // `exact` distingue el título de la vista (h2 «Punto de Venta») del
     // encabezado del propio POS (h3 «Punto de venta»).
     await expect(page.getByRole('heading', { name: 'Punto de Venta', exact: true })).toBeVisible();

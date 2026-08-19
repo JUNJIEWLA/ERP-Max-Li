@@ -19,7 +19,7 @@ operación del piloto —healthchecks, backup/restore y rollback— está en el
 | `JWT_SECRET` | prod | **Sí** | Secreto HMAC de firma. Mínimo 32 bytes (256 bits). Genérelo con `openssl rand -base64 48`. El arranque falla si falta, es corto, tiene poca entropía o conserva un valor de ejemplo del repositorio. |
 | `JWT_EXPIRATION` | todos | No | Vigencia del token. Por defecto `8h`, un turno de caja. Admite notación (`8h`, `30m`) o milisegundos. |
 | `CORS_ALLOWED_ORIGINS` | prod | **Sí** | Lista separada por comas de los orígenes del frontend, por ejemplo `https://erp.plazamax.do`. Sin comodines y solo `https://`: la sesión viaja en cookie y la API responde con `allowCredentials=true`. |
-| `BOOTSTRAP_ADMIN_PASSWORD` | prod | Solo en la 1.ª instalación | Contraseña inicial de la cuenta `admin`. Mínimo 12 caracteres. Se consume una sola vez y nunca se escribe en logs. |
+| `BOOTSTRAP_ADMIN_PASSWORD` | prod | Solo en la 1.ª instalación | Contraseña inicial de la cuenta `admin`. Mínimo 12 caracteres. Nunca se escribe en logs. En `prod` se consume una sola vez; fuera de `prod` se reaplica en cada arranque, así que retírela del entorno una vez pueda entrar. |
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | todos | **Sí** | Conexión a PostgreSQL. |
 | `SPRING_PROFILES_ACTIVE` | todos | **Sí** | `dev`, `prod` o `test`. **No hay valor por defecto**: sin perfil declarado el arranque falla. Debe declararse exactamente uno. |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | todos | No | Freno de fuerza bruta. Por defecto 5 intentos por usuario+IP en 10 min y 15 min de bloqueo. |
@@ -47,14 +47,23 @@ mvn spring-boot:run
 > El repositorio no incluye el wrapper `./mvnw`; use el `mvn` del sistema
 > (Maven 3.9+).
 
-- El bootstrap solo actúa mientras la cuenta siga bloqueada; en arranques
-  posteriores no vuelve a tocar la contraseña, aunque la variable siga definida.
-- El administrador queda obligado a cambiarla en su primer inicio de sesión.
+- **En `prod`** el bootstrap solo actúa mientras la cuenta siga bloqueada; en
+  arranques posteriores no vuelve a tocar la contraseña, aunque la variable siga
+  definida.
+- **Fuera de `prod`** cada arranque realinea la contraseña de `admin` con el
+  valor de la variable, para que un entorno de desarrollo o de demo sea siempre
+  reproducible sin tocar la base a mano.
+- La contraseña queda utilizable de inmediato: no se exige cambiarla al primer
+  ingreso, porque la eligió quien definió la variable.
 - En el perfil `prod`, si la cuenta está bloqueada y no hay una contraseña
   segura, **la aplicación no arranca** y explica qué falta.
-- Fuera de `prod` solo se registra una advertencia y la cuenta sigue bloqueada.
+- Fuera de `prod`, si la cuenta está bloqueada y no hay contraseña, solo se
+  registra una advertencia y la cuenta sigue bloqueada.
 
-Retire la variable del entorno una vez completado el primer inicio de sesión.
+> ⚠️ **Retire `BOOTSTRAP_ADMIN_PASSWORD` del entorno una vez que pueda entrar.**
+> En `prod` porque ya no hace falta; **fuera de `prod` porque, mientras siga
+> definida, cualquier contraseña que el administrador elija desde la UI se
+> pierde en el siguiente reinicio del backend.**
 
 ### Contrato HTTPS / reverse proxy
 
@@ -184,8 +193,9 @@ npx vite --host 127.0.0.1 --port 5173
 npm run test:e2e
 ```
 
-La contraseña inicial de `admin` se cambia en el primer inicio de sesión; el
-E2E la cambia a `E2eFlujoPrincipal#2026` y reutiliza esa credencial en las
-ejecuciones siguientes sobre la misma base. Ambas contraseñas son exclusivas de
-la base efímera de pruebas y se pueden fijar con `BOOTSTRAP_ADMIN_PASSWORD` y
-`E2E_ADMIN_NEW_PASSWORD`.
+El E2E entra con la contraseña de bootstrap y, si la pantalla de cambio
+obligatorio aparece, la resuelve fijando `E2eFlujoPrincipal#2026`; reutiliza esa
+credencial en las ejecuciones siguientes sobre la misma base. El paso es
+condicional a propósito, porque el bootstrap ya no exige el cambio. Ambas
+contraseñas son exclusivas de la base efímera de pruebas y se pueden fijar con
+`BOOTSTRAP_ADMIN_PASSWORD` y `E2E_ADMIN_NEW_PASSWORD`.

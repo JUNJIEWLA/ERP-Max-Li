@@ -28,10 +28,11 @@ const NotasRecepcion = read('src/app/components/NotasRecepcion.tsx');
  * Vistas retiradas de la navegación que siguen en el repo como código
  * inaccesible, a la espera de implementarse de verdad. Nada las importa ni las
  * renderiza, así que sus controles internos no son superficie del piloto.
+ *
+ * Hoy está vacía: no queda ninguna vista muerta en el repo. Se mantiene el
+ * mecanismo porque la próxima maqueta que se aparque debe listarse aquí.
  */
-const VISTAS_INACCESIBLES = [
-  'src/app/components/Dashboard.tsx',
-];
+const VISTAS_INACCESIBLES = [];
 
 /**
  * Todos los .ts/.tsx bajo src/, excluyendo los primitivos de shadcn/ui.
@@ -57,6 +58,17 @@ function sourceFiles({ soloAlcanzables = false } = {}) {
 }
 
 /**
+ * Código fuente sin comentarios. El guard busca texto que el usuario podría
+ * llegar a ver en pantalla; la prosa de un comentario no es superficie del
+ * piloto y no debe disparar el fallo.
+ */
+function sinComentarios(content) {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+/**
  * IDs de los items navegables declarados en el Sidebar. Los items se declaran
  * en una sola línea (`{ id, label, icon, requiredPermission }`), a diferencia
  * de las secciones contenedoras, que no son navegables.
@@ -70,28 +82,11 @@ function appViewCases() {
   return [...App.matchAll(/case\s+'([^']+)':/g)].map((m) => m[1]);
 }
 
-// ─── 1. Dashboard ficticio ────────────────────────────────────────────────
-test('el Sidebar no ofrece Dashboard', () => {
-  assert.ok(!/Dashboard/.test(Sidebar), 'Sidebar.tsx todavía menciona Dashboard');
-  assert.ok(!/'dashboard'/.test(Sidebar), "Sidebar.tsx todavía navega a 'dashboard'");
-});
-
-test('App no importa ni renderiza Dashboard', () => {
-  assert.ok(
-    !/import\s+Dashboard\s+from/.test(App),
-    'App.tsx todavía importa Dashboard'
-  );
-  assert.ok(!/<Dashboard\s*\/>/.test(App), 'App.tsx todavía renderiza <Dashboard />');
-});
-
-test('no existe redirección ni fallback hacia dashboard', () => {
-  for (const [path, content] of sourceFiles({ soloAlcanzables: true })) {
-    assert.ok(
-      !/'dashboard'/.test(content),
-      `${path} todavía referencia la vista 'dashboard'`
-    );
-  }
-});
+// ─── 1. Dashboard ────────────────────────────────────────────────────────
+//  Sin guards: el Dashboard dejó de ser una maqueta y ahora consume
+//  /api/dashboard/stats. Los tres guards que exigían que no existiera se
+//  retiraron al hacerse realidad lo contrario. La numeración se conserva
+//  para que las secciones sigan casando con la lista de hallazgos.
 
 // ─── 2. Devoluciones y Notas de Crédito (vista real) ──────────────────────
 //  La pantalla dejó de ser una maqueta: se exige lo contrario que antes, que
@@ -292,7 +287,7 @@ test('cada opción navegable del menú tiene una vista real', () => {
 test('no existe el fallback genérico "en desarrollo"', () => {
   for (const [path, content] of sourceFiles({ soloAlcanzables: true })) {
     assert.ok(
-      !/en desarrollo/i.test(content),
+      !/en desarrollo/i.test(sinComentarios(content)),
       `${path} todavía muestra un placeholder "en desarrollo"`
     );
   }

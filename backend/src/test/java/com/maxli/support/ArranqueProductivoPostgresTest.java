@@ -86,7 +86,9 @@ class ArranqueProductivoPostgresTest {
             assertThat(encoder.matches("Admin@2026", admin.passwordHash()))
                     .as("la credencial publicada no puede seguir sirviendo")
                     .isFalse();
-            assertThat(admin.requiereCambioPassword()).isTrue();
+            assertThat(admin.requiereCambioPassword())
+                    .as("la credencial vino del entorno, no se fuerza un cambio al primer ingreso")
+                    .isFalse();
         }
     }
 
