@@ -17,6 +17,19 @@ interface BuzonProps {
 
 type Tab = 'costos' | 'retrasos' | 'stock';
 
+/* ─── Indicador rojo por pestaña ────────────────────────────────────── */
+function BadgeConteo({ valor }: { valor: number }) {
+  if (valor <= 0) return null;
+  return (
+    <span
+      aria-label={`${valor} alertas pendientes`}
+      className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-none"
+    >
+      {valor > 99 ? '99+' : valor}
+    </span>
+  );
+}
+
 /* ─── Tab: Alertas de Costo ─────────────────────────────────────────── */
 function TabCostos({ onUpdateCount }: { onUpdateCount?: () => void }) {
   const [alertas, setAlertas] = useState<AlertaCosto[]>([]);
@@ -328,6 +341,35 @@ function TabStockBajo({ onUpdateCount }: { onUpdateCount?: () => void }) {
 export default function Buzon({ onClose, onUpdateCount }: BuzonProps) {
   const [tab, setTab] = useState<Tab>('costos');
 
+  // Conteo por pestaña: sin esto solo se sabría lo que trae la pestaña abierta,
+  // y el usuario tendría que entrar en las tres para descubrir dónde hay algo.
+  const [conteos, setConteos] = useState<Record<Tab, number>>({ costos: 0, retrasos: 0, stock: 0 });
+
+  const cargarConteos = useCallback(async () => {
+    try {
+      const [costosRes, retrasoRes, stockRes] = await Promise.all([
+        alertasCostoApi.contarPendientes(),
+        alertasRetrasoOcApi.contarPendientes(),
+        existenciasApi.bajoStock(0, 1),
+      ]);
+      setConteos({
+        costos: costosRes.count ?? 0,
+        retrasos: retrasoRes.count ?? 0,
+        stock: stockRes.totalElements ?? 0,
+      });
+    } catch (e) {
+      console.error('Error al contar alertas por pestaña', e);
+    }
+  }, []);
+
+  useEffect(() => { cargarConteos(); }, [cargarConteos]);
+
+  // Las pestañas avisan al resolver alertas: se refrescan los badges y la campana.
+  const handleUpdateCount = useCallback(() => {
+    cargarConteos();
+    if (onUpdateCount) onUpdateCount();
+  }, [cargarConteos, onUpdateCount]);
+
   return (
     <div className="flex flex-col h-full bg-card rounded-2xl shadow-xl border border-border overflow-hidden">
       {/* Header */}
@@ -360,6 +402,7 @@ export default function Buzon({ onClose, onUpdateCount }: BuzonProps) {
         >
           <TrendingUp size={15} />
           Alertas de Costo
+          <BadgeConteo valor={conteos.costos} />
         </button>
         <button
           onClick={() => setTab('retrasos')}
@@ -371,6 +414,7 @@ export default function Buzon({ onClose, onUpdateCount }: BuzonProps) {
         >
           <Clock size={15} />
           Retrasos de OC
+          <BadgeConteo valor={conteos.retrasos} />
         </button>
         <button
           onClick={() => setTab('stock')}
@@ -382,15 +426,16 @@ export default function Buzon({ onClose, onUpdateCount }: BuzonProps) {
         >
           <AlertTriangle size={15} />
           Stock Bajo
+          <BadgeConteo valor={conteos.stock} />
         </button>
       </div>
 
       {/* Contenido de la pestaña activa */}
       {tab === 'costos'
-        ? <TabCostos onUpdateCount={onUpdateCount} />
+        ? <TabCostos onUpdateCount={handleUpdateCount} />
         : tab === 'retrasos'
-        ? <TabRetrasos onUpdateCount={onUpdateCount} />
-        : <TabStockBajo onUpdateCount={onUpdateCount} />
+        ? <TabRetrasos onUpdateCount={handleUpdateCount} />
+        : <TabStockBajo onUpdateCount={handleUpdateCount} />
       }
     </div>
   );
