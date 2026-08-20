@@ -152,8 +152,22 @@ export default function Reportes() {
         </thead>
         <tbody>
           ${filas}
+          <tr>
+            <td colspan="7" class="text-right">Ventas brutas facturadas</td>
+            <td class="text-right money">${(reporte.totalVentasBrutas ?? 0).toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="7" class="text-right">
+              (−) Notas de crédito B04${reporte.totalDevoluciones ? ` (${reporte.totalDevoluciones})` : ''}
+            </td>
+            <td class="text-right money">${(reporte.totalNotasCredito ?? 0).toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="7" class="text-right">ITBIS neto</td>
+            <td class="text-right money">${(reporte.totalItbis ?? 0).toFixed(2)}</td>
+          </tr>
           <tr class="total-row">
-            <td colspan="7" class="text-right"><strong>TOTAL GENERAL</strong></td>
+            <td colspan="7" class="text-right"><strong>VENTAS NETAS</strong></td>
             <td class="text-right money"><strong>${(reporte.totalVentas ?? 0).toFixed(2)}</strong></td>
           </tr>
         </tbody>
@@ -367,7 +381,10 @@ export default function Reportes() {
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-bold text-foreground">{fmtMoneda(reporte.totalVentas)}</p>
-                  <p className="text-xs text-muted-foreground">{reporte.totalTransacciones} transacciones</p>
+                  <p className="text-xs text-muted-foreground">
+                    {reporte.totalTransacciones} transacciones
+                    {reporte.totalDevoluciones > 0 && ' · neto de devoluciones'}
+                  </p>
                 </div>
               </div>
 
@@ -417,9 +434,35 @@ export default function Reportes() {
                       </tr>
                     ))}
                   </tbody>
+                  {/*
+                    Las tres líneas encadenadas dejan el neto verificable contra
+                    la tabla: la columna Total suma el bruto, la nota de crédito
+                    lo corrige y el resultado es lo que la tienda se quedó.
+                  */}
                   <tfoot>
+                    <tr className="border-t border-border">
+                      <td colSpan={7} className="py-2 px-3 text-right text-sm text-muted-foreground">
+                        Ventas brutas facturadas
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-sm">{fmtMoneda(reporte.totalVentasBrutas)}</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={7} className="py-2 px-3 text-right text-sm text-muted-foreground">
+                        (−) Notas de crédito B04
+                        {reporte.totalDevoluciones > 0 && ` (${reporte.totalDevoluciones})`}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-sm text-red-600 dark:text-red-400">
+                        {fmtMoneda(reporte.totalNotasCredito)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colSpan={7} className="py-2 px-3 text-right text-sm text-muted-foreground">
+                        ITBIS neto {reporte.totalDescuentos > 0 && `· Descuentos ${fmtMoneda(reporte.totalDescuentos)}`}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-sm">{fmtMoneda(reporte.totalItbis)}</td>
+                    </tr>
                     <tr className="bg-slate-100 dark:bg-slate-800 font-bold">
-                      <td colSpan={7} className="py-3 px-3 text-right text-sm uppercase tracking-wider">Total General</td>
+                      <td colSpan={7} className="py-3 px-3 text-right text-sm uppercase tracking-wider">Ventas Netas</td>
                       <td className="py-3 px-3 text-right font-mono text-base">{fmtMoneda(reporte.totalVentas)}</td>
                     </tr>
                   </tfoot>

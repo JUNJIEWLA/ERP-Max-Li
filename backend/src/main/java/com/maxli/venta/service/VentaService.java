@@ -9,7 +9,6 @@ import com.maxli.cupon.service.CuponService;
 import com.maxli.cupon.dto.CuponAplicadoDTO;
 import com.maxli.cupon.dto.LineaParaCuponDTO;
 import com.maxli.exception.BusinessException;
-import com.maxli.exception.ParametroInvalidoException;
 import com.maxli.exception.ResourceNotFoundException;
 import com.maxli.existencia.entity.Existencia;
 import com.maxli.existencia.repository.ExistenciaRepository;
@@ -52,7 +51,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -476,46 +474,18 @@ public class VentaService {
      */
     @Transactional(readOnly = true)
     public Page<VentaResumenDTO> listar(VentaFiltroDTO filtro, Pageable pageable) {
-        LocalDateTime desde = filtro.fechaDesde() != null ? filtro.fechaDesde().atStartOfDay() : null;
-        // El día de `fechaHasta` cuenta entero: una venta de las 23:45 sigue
-        // perteneciendo a esa fecha.
-        LocalDateTime hasta = filtro.fechaHasta() != null ? filtro.fechaHasta().atTime(LocalTime.MAX) : null;
-
-        if (desde != null && hasta != null && desde.isAfter(hasta)) {
-            throw new ParametroInvalidoException(
-                    "El rango de fechas es inválido: fechaDesde no puede ser posterior a fechaHasta.");
-        }
-
-        String q = limpiar(filtro.q());
-        String cajero = limpiar(filtro.cajero());
+        FiltroVentaNormalizado criterios = FiltroVentaNormalizado.de(filtro);
 
         Pageable orden = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                 Sort.by(Sort.Direction.DESC, "idVenta"));
 
         return ventaRepository.buscarResumen(
-                q != null ? "%" + q.toLowerCase() + "%" : null,
-                desde,
-                hasta,
-                cajero != null ? cajero.toLowerCase() : null,
-                parsearMetodoPago(filtro.metodoPago()),
+                criterios.q(),
+                criterios.desde(),
+                criterios.hasta(),
+                criterios.cajero(),
+                criterios.metodoPago(),
                 orden);
-    }
-
-    /** Un filtro en blanco es un filtro ausente. */
-    private String limpiar(String valor) {
-        if (valor == null) return null;
-        String texto = valor.trim();
-        return texto.isEmpty() ? null : texto;
-    }
-
-    private MetodoPago parsearMetodoPago(String valor) {
-        String texto = limpiar(valor);
-        if (texto == null) return null;
-        try {
-            return MetodoPago.valueOf(texto.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new ParametroInvalidoException("Método de pago desconocido: " + texto);
-        }
     }
 
     @Transactional(readOnly = true)

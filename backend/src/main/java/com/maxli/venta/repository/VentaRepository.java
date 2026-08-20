@@ -1,5 +1,6 @@
 package com.maxli.venta.repository;
 
+import com.maxli.venta.dto.TotalesVentasDTO;
 import com.maxli.venta.dto.VentaResumenDTO;
 import com.maxli.venta.entity.MetodoPago;
 import com.maxli.venta.entity.Venta;
@@ -67,6 +68,40 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
                                         @Param("cajero") String cajero,
                                         @Param("metodoPago") MetodoPago metodoPago,
                                         Pageable pageable);
+
+    /**
+     * Totales brutos del mismo conjunto que devuelve {@link #buscarResumen}.
+     * <p>
+     * El {@code WHERE} es idéntico al del listado a propósito: si los dos
+     * dejaran de coincidir, el reporte mostraría unas filas y sumaría otras.
+     * Los descuentos van en dos sumas separadas porque {@code descuentoCupon}
+     * admite nulos, y {@code SUM(a) + SUM(b)} con un lado nulo anula el total
+     * entero.
+     */
+    @Query("""
+            SELECT new com.maxli.venta.dto.TotalesVentasDTO(
+                       COALESCE(SUM(v.total), 0),
+                       COALESCE(SUM(v.itbis), 0),
+                       COALESCE(SUM(v.descuentoTotal), 0) + COALESCE(SUM(v.descuentoCupon), 0),
+                       COUNT(v))
+            FROM Venta v
+            JOIN v.usuario u
+            LEFT JOIN v.cliente c
+            WHERE (:q IS NULL
+                   OR LOWER(v.numeroControl) LIKE :q
+                   OR LOWER(v.ncf) LIKE :q
+                   OR LOWER(c.nombreCompleto) LIKE :q
+                   OR LOWER(v.nombreClienteTemporal) LIKE :q)
+              AND (CAST(:desde AS timestamp) IS NULL OR v.fechaVenta >= :desde)
+              AND (CAST(:hasta AS timestamp) IS NULL OR v.fechaVenta <= :hasta)
+              AND (:cajero IS NULL OR LOWER(u.username) = :cajero)
+              AND (:metodoPago IS NULL OR v.metodoPagoPrincipal = :metodoPago)
+            """)
+    TotalesVentasDTO sumarTotales(@Param("q") String q,
+                                  @Param("desde") LocalDateTime desde,
+                                  @Param("hasta") LocalDateTime hasta,
+                                  @Param("cajero") String cajero,
+                                  @Param("metodoPago") MetodoPago metodoPago);
 
     /**
      * Carga la venta tomando bloqueo pesimista de fila.

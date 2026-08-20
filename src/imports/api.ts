@@ -1800,12 +1800,23 @@ export const dashboardApi = {
 
 // ── Tipos: Reportes ──────────────────────────────────────
 
+/**
+ * Totales del reporte, encadenados para que cuadren a la vista:
+ * `totalVentasBrutas − totalNotasCredito = totalVentas` (neto), y lo mismo
+ * con el ITBIS. La venta devuelta sigue en `ventas` —su NCF se emitió— pero
+ * ya no cuenta como ingreso.
+ */
 export interface ReporteVentasResponse {
   ventas: VentaResumen[];
-  totalVentas: number;
-  totalItbis: number;
+  totalVentas: number;          // neto de devoluciones
+  totalItbis: number;           // neto de devoluciones
   totalDescuentos: number;
   totalTransacciones: number;
+  totalVentasBrutas: number;
+  totalItbisBrutos: number;
+  totalNotasCredito: number;
+  totalItbisNotasCredito: number;
+  totalDevoluciones: number;
 }
 
 export interface ReporteFiltros {
