@@ -77,7 +77,7 @@ async function enviarLogin(page, password) {
 test('login, apertura de turno, venta con NCF, devolución B04 y cierre cuadrado', async ({ page }) => {
   await test.step('abrir la aplicación', async () => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'MAX ERP' })).toBeVisible();
+    await expect(page.locator('.login-brand-badge')).toContainText('MAX ERP');
   });
 
   await test.step('iniciar sesión y resolver el cambio obligatorio', async () => {
