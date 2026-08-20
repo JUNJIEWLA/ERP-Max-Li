@@ -77,7 +77,7 @@ export default function Login({ onLogin, notice }: LoginProps) {
               <path d="M 298,35 L 410,310 L 350,310 L 298,165 L 255,310 L 215,310 L 285,115 Z" fill="url(#hero-gold-1)" />
               <path d="M 285,115 L 325,210 L 275,310 L 255,310 L 295,200 L 275,150 Z" fill="url(#hero-gold-2)" />
             </svg>
-            <span>MAX ERP</span>
+            <span role="heading" aria-level={1}>MAX ERP</span>
           </div>
 
           <h1 className="login-hero-title">
