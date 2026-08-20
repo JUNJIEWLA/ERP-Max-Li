@@ -1,5 +1,6 @@
 package com.maxli.devolucion.repository;
 
+import com.maxli.devolucion.dto.TotalesNotasCreditoDTO;
 import com.maxli.devolucion.entity.Devolucion;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -26,6 +27,47 @@ public interface DevolucionRepository extends JpaRepository<Devolucion, Long> {
             ORDER BY d.idDevolucion DESC
             """)
     Page<Devolucion> buscar(@Param("idVenta") Long idVenta, Pageable pageable);
+
+    /**
+     * Notas de Crédito que revierten las ventas de un reporte.
+     * <p>
+     * El filtro es el de las ventas, no el de las devoluciones: se acumula lo
+     * acreditado sobre <b>las ventas que el reporte lista</b>. Así cada peso
+     * restado se puede rastrear hasta una fila visible en la tabla, y un
+     * reporte filtrado por cajero o método de pago no resta el crédito de
+     * ventas que ni siquiera muestra.
+     * <p>
+     * Como contrapartida, la nota de crédito se imputa al período de su venta
+     * y no al de su propia emisión: devolver en septiembre una venta de agosto
+     * corrige el reporte de agosto, que es donde está la venta que dejó de
+     * serlo.
+     */
+    @Query("""
+            SELECT new com.maxli.devolucion.dto.TotalesNotasCreditoDTO(
+                       COALESCE(SUM(d.total), 0),
+                       COALESCE(SUM(d.itbis), 0),
+                       COUNT(d))
+            FROM Devolucion d
+            JOIN d.venta v
+            JOIN v.usuario u
+            LEFT JOIN v.cliente c
+            WHERE d.estado = 'CONFIRMADA'
+              AND (:q IS NULL
+                   OR LOWER(v.numeroControl) LIKE :q
+                   OR LOWER(v.ncf) LIKE :q
+                   OR LOWER(c.nombreCompleto) LIKE :q
+                   OR LOWER(v.nombreClienteTemporal) LIKE :q)
+              AND (CAST(:desde AS timestamp) IS NULL OR v.fechaVenta >= :desde)
+              AND (CAST(:hasta AS timestamp) IS NULL OR v.fechaVenta <= :hasta)
+              AND (:cajero IS NULL OR LOWER(u.username) = :cajero)
+              AND (:metodoPago IS NULL OR v.metodoPagoPrincipal = :metodoPago)
+            """)
+    TotalesNotasCreditoDTO sumarNotasCreditoDeVentas(
+            @Param("q") String q,
+            @Param("desde") java.time.LocalDateTime desde,
+            @Param("hasta") java.time.LocalDateTime hasta,
+            @Param("cajero") String cajero,
+            @Param("metodoPago") com.maxli.venta.entity.MetodoPago metodoPago);
 
     /**
      * Efectivo reembolsado durante el turno. Solo cuenta lo devuelto en

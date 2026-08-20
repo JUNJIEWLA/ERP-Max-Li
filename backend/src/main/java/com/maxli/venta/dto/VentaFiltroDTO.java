@@ -14,8 +14,10 @@ import java.time.LocalDate;
  * @param cajero      username exacto del usuario que cobró
  * @param metodoPago  nombre de {@link com.maxli.venta.entity.MetodoPago}
  */
-// No hay filtro por estado: el sistema solo escribe COMPLETADA, así que sería
-// un control que nunca recorta nada. Cuando exista la anulación, aquí entra.
+// No hay filtro por estado a propósito. Desde que existen las devoluciones una
+// venta puede quedar DEVUELTA o PARCIALMENTE_DEVUELTA, pero esconderlas del
+// listado dejaría huecos en la secuencia de NCF emitidos. El reporte no las
+// recorta: las lista y resta su Nota de Crédito del total.
 public record VentaFiltroDTO(
         String q,
         LocalDate fechaDesde,
