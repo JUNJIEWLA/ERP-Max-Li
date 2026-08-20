@@ -60,6 +60,28 @@ class GastoServiceTest {
     }
 
     @Test
+    void crear_usa_el_total_recepcionado_cuando_la_orden_cerro_con_faltantes() {
+        OrdenCompra orden = new OrdenCompra();
+        orden.setIdOrdenCompra(10L);
+        orden.setEstado("COMPLETADA");
+        orden.setTotal(new BigDecimal("10000.00"));          // lo pactado
+        orden.setTotalRecepcionado(new BigDecimal("8000.00")); // lo que realmente llegó
+        GastoRequestDTO request = new GastoRequestDTO();
+        request.setIdOrdenCompra(10L);
+
+        when(ordenCompraRepository.findById(10L)).thenReturn(Optional.of(orden));
+        when(gastoRepository.existsByOrdenCompra_IdOrdenCompra(10L)).thenReturn(false);
+        when(gastoRepository.save(any(Gasto.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(gastoMapper.toDto(any(Gasto.class))).thenReturn(new GastoResponseDTO());
+
+        gastoService.crear(request);
+
+        ArgumentCaptor<Gasto> captor = ArgumentCaptor.forClass(Gasto.class);
+        verify(gastoRepository).save(captor.capture());
+        assertThat(captor.getValue().getMonto()).isEqualByComparingTo("8000.00");
+    }
+
+    @Test
     void crear_rechaza_una_orden_sin_recepcion_completa() {
         OrdenCompra orden = new OrdenCompra();
         orden.setIdOrdenCompra(10L);

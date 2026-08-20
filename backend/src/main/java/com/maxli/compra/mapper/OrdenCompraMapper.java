@@ -22,6 +22,7 @@ public class OrdenCompraMapper {
         dto.setIdProveedor(orden.getProveedor().getIdProveedor());
         dto.setNombreProveedor(orden.getProveedor().getNombreEmpresa());
         dto.setTotal(orden.getTotal());
+        dto.setTotalRecepcionado(orden.getTotalRecepcionado());
         dto.setEstado(orden.getEstado());
         dto.setFechaOrden(orden.getFechaOrden());
         dto.setFechaModificacion(orden.getFechaModificacion());

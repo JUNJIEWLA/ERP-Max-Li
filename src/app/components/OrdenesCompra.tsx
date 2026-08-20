@@ -471,7 +471,16 @@ export default function OrdenesCompra() {
                           <span className="font-semibold text-foreground">{o.nombreProveedor}</span>
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-bold text-foreground">
-                          {fmt(o.total)}
+                          {o.totalRecepcionado != null && o.totalRecepcionado !== o.total ? (
+                            <span title="Cerrada con faltantes: se factura lo recibido">
+                              <span className="block text-xs font-normal text-muted-foreground line-through">
+                                {fmt(o.total)}
+                              </span>
+                              <span className="text-amber-600">{fmt(o.totalRecepcionado)}</span>
+                            </span>
+                          ) : (
+                            fmt(o.total)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${ESTADO_BADGE[o.estado] ?? 'bg-muted text-muted-foreground'}`}>
@@ -699,7 +708,7 @@ export default function OrdenesCompra() {
             <p className="text-sm text-muted-foreground">
               {confirmAction.accion === 'anular'
                 ? 'La orden pasará a estado ANULADA. Esta acción no se puede deshacer.'
-                : 'La orden se cerrará como COMPLETADA aunque haya mercancía pendiente de recibir.'}
+                : 'La orden se cerrará como COMPLETADA aunque haya mercancía pendiente de recibir. El monto a pagar se recalculará con lo que realmente se recibió, para que el gasto coincida con la factura corregida del proveedor.'}
             </p>
             <div className="flex gap-3 justify-end pt-1">
               <button onClick={() => setConfirmAction(null)}

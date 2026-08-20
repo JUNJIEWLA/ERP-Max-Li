@@ -43,7 +43,7 @@ public class GastoService {
                 .map(orden -> new OrdenCompraDisponibleDTO(
                         orden.getIdOrdenCompra(),
                         orden.getProveedor().getNombreEmpresa(),
-                        orden.getTotal()))
+                        orden.getTotalAPagar()))
                 .toList();
     }
 
@@ -62,7 +62,8 @@ public class GastoService {
 
         Gasto gasto = new Gasto();
         gasto.setOrdenCompra(orden);
-        gasto.setMonto(orden.getTotal());
+        // Lo recibido, no lo pactado: una orden cerrada con faltantes factura menos.
+        gasto.setMonto(orden.getTotalAPagar());
         gasto.setEstado(PENDIENTE);
         return gastoMapper.toDto(gastoRepository.save(gasto));
     }

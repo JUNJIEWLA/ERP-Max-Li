@@ -837,6 +837,8 @@ export interface OrdenCompra {
   idProveedor: number;
   nombreProveedor: string;
   total: number;
+  /** Monto realmente recibido si la orden se cerró con faltantes; null si llegó completa. */
+  totalRecepcionado: number | null;
   estado: string;
   detalles: DetalleOrdenCompra[];
   /** Fecha acordada con el proveedor (ISO date string o null si no se configuró). */

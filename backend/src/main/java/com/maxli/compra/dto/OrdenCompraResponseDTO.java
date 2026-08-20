@@ -16,6 +16,9 @@ public class OrdenCompraResponseDTO {
     private Long idProveedor;
     private String nombreProveedor;
     private BigDecimal total;
+
+    /** Monto realmente recibido cuando la orden se cerró con faltantes; null si llegó completa. */
+    private BigDecimal totalRecepcionado;
     private String estado;
 
     private List<DetalleOrdenCompraResponseDTO> detalles;

@@ -46,6 +46,19 @@ public class OrdenCompra {
     private BigDecimal total;
 
     /**
+     * Monto de lo efectivamente recibido, fijado al forzar el cierre con faltantes.
+     * NULL cuando la orden se completó entera: ahí rige {@link #total}, que se
+     * conserva siempre como el monto pactado para poder auditar la diferencia.
+     */
+    @Column(name = "total_recepcionado", precision = 12, scale = 2)
+    private BigDecimal totalRecepcionado;
+
+    /** Monto que el proveedor debe facturar: lo recibido si hubo ajuste, si no lo pactado. */
+    public BigDecimal getTotalAPagar() {
+        return totalRecepcionado != null ? totalRecepcionado : total;
+    }
+
+    /**
      * Estados válidos:
      * BORRADOR → ENVIADA → RECEPCION_PARCIAL → COMPLETADA
      *                    ↘ ANULADA

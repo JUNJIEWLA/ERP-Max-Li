@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Set;
 
@@ -108,13 +109,27 @@ public class OrdenCompraService {
     /**
      * Fuerza el cierre de la orden como COMPLETADA sin requerir la mercancía faltante.
      * Útil cuando el proveedor confirma que el remanente no será entregado.
+     *
+     * <p>Además fija el monto realmente recepcionado. Sin esto el gasto se
+     * registraría por lo pactado aunque al almacén hubiera entrado menos, es
+     * decir, autorizando el pago de mercancía que nunca llegó. El total pactado
+     * no se toca: es lo que permite auditar después la diferencia.
      */
     @Transactional
     public OrdenCompraResponseDTO forzarCierre(Long id) {
         OrdenCompra orden = obtenerPorId(id);
         validarEstado(orden, Set.of(ENVIADA, RECEPCION_PARCIAL), "forzar cierre");
         orden.setEstado(COMPLETADA);
+        orden.setTotalRecepcionado(calcularTotalRecepcionado(orden));
         return ordenCompraMapper.toDto(ordenCompraRepository.save(orden));
+    }
+
+    /** Suma lo recibido en cada línea al precio pactado. */
+    private BigDecimal calcularTotalRecepcionado(OrdenCompra orden) {
+        return orden.getDetalles().stream()
+                .map(d -> d.getPrecioUnitario().multiply(BigDecimal.valueOf(d.getCantidadRecibida())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     // ── Métodos internos / para otros servicios ─────────────────────────
