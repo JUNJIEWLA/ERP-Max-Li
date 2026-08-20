@@ -66,6 +66,8 @@ export default function CheckoutModal({
   const [rnc, setRnc] = useState(initialRnc || '');
   const [montoRecibido, setMontoRecibido] = useState('');
   const [codigoCupon, setCodigoCupon] = useState('');
+  /** Con qué se cobra lo que la Nota de Crédito no alcanza a cubrir. */
+  const [metodoDiferenciaNC, setMetodoDiferenciaNC] = useState('EFECTIVO');
   const [referenciaPago, setReferenciaPago] = useState('');
 
   // Recálculo
@@ -146,8 +148,10 @@ export default function CheckoutModal({
   const montoACobrar = montoAplicadoNC > 0 ? diferenciaAPagar : total;
 
   // Con tarjeta no entra efectivo a la caja: el datáfono cobra el importe exacto,
-  // así que el monto recibido se fija solo y nunca hay vuelto que entregar.
-  const esTarjeta = metodoPago === 'TARJETA';
+  // así que el monto recibido se fija solo y nunca hay vuelto que entregar. Aplica
+  // igual cuando la tarjeta solo cubre la diferencia que la Nota de Crédito no paga.
+  const esTarjeta = metodoPago === 'TARJETA'
+      || (metodoPago === 'NOTA_CREDITO' && montoAplicadoNC > 0 && metodoDiferenciaNC === 'TARJETA');
   const cambio = esTarjeta ? 0 : parseFloat(montoRecibido || '0') - montoACobrar;
 
   useEffect(() => {
@@ -263,7 +267,7 @@ export default function CheckoutModal({
     const montoEfectivoUOtro = parseFloat(montoRecibido || '0');
 
     if (montoAplicadoNC > 0) {
-      if (diferenciaAPagar > 0 && montoEfectivoUOtro < diferenciaAPagar) {
+      if (!esTarjeta && diferenciaAPagar > 0 && montoEfectivoUOtro < diferenciaAPagar) {
         setError(`El saldo de la Nota de Crédito (RD$ ${montoAplicadoNC.toFixed(2)}) no cubre el total. Debe cobrar la diferencia de RD$ ${diferenciaAPagar.toFixed(2)}.`);
         return;
       }
@@ -289,7 +293,7 @@ export default function CheckoutModal({
       }
 
       if (diferenciaAPagar > 0 || ingresos.length === 0) {
-        const metodoDiferencia = metodoPago === 'NOTA_CREDITO' ? 'EFECTIVO' : metodoPago;
+        const metodoDiferencia = metodoPago === 'NOTA_CREDITO' ? metodoDiferenciaNC : metodoPago;
         // Con tarjeta se registra el importe exacto: no hay excedente ni vuelto.
         const montoIngreso = esTarjeta
             ? (ingresos.length > 0 ? diferenciaAPagar : total)
@@ -589,10 +593,32 @@ export default function CheckoutModal({
                         <span className="font-mono">- RD$ {montoAplicadoNC.toFixed(2)}</span>
                       </div>
                       {diferenciaAPagar > 0 ? (
-                        <div className="flex justify-between items-center font-bold text-foreground text-sm pt-1 border-t border-dashed border-border">
-                          <span>Diferencia Restante a Pagar:</span>
-                          <span className="font-mono text-primary">RD$ {diferenciaAPagar.toFixed(2)}</span>
-                        </div>
+                        <>
+                          <div className="flex justify-between items-center font-bold text-foreground text-sm pt-1 border-t border-dashed border-border">
+                            <span>Diferencia Restante a Pagar:</span>
+                            <span className="font-mono text-primary">RD$ {diferenciaAPagar.toFixed(2)}</span>
+                          </div>
+                          <div className="pt-2 space-y-1">
+                            <label
+                              htmlFor="select-metodo-diferencia-nc"
+                              className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block"
+                            >
+                              Cobrar la diferencia con
+                            </label>
+                            <select
+                              id="select-metodo-diferencia-nc"
+                              value={metodoDiferenciaNC}
+                              onChange={e => setMetodoDiferenciaNC(e.target.value)}
+                              className="w-full px-2.5 py-2 border border-border rounded-lg text-xs font-semibold bg-background focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                            >
+                              {METODOS_PAGO
+                                .filter(m => m.id !== 'NOTA_CREDITO')
+                                .map(m => (
+                                  <option key={m.id} value={m.id}>{m.label}</option>
+                                ))}
+                            </select>
+                          </div>
+                        </>
                       ) : (
                         <div className="text-emerald-600 font-bold text-xs pt-1">
                           ✓ La Nota de Crédito cubre la totalidad de la venta.
@@ -757,7 +783,7 @@ export default function CheckoutModal({
               disabled={
                 procesando || recalculando || cart.length === 0 ||
                 (metodoPago === 'NOTA_CREDITO'
-                  ? (!saldoNC || montoAplicadoNC <= 0 || (diferenciaAPagar > 0 && parseFloat(montoRecibido || '0') < diferenciaAPagar))
+                  ? (!saldoNC || montoAplicadoNC <= 0 || (!esTarjeta && diferenciaAPagar > 0 && parseFloat(montoRecibido || '0') < diferenciaAPagar))
                   : (!esTarjeta && parseFloat(montoRecibido || '0') < total))
               }
               className="flex-[2] px-4 py-3 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
