@@ -143,7 +143,18 @@ export default function CheckoutModal({
 
   const montoAplicadoNC = (metodoPago === 'NOTA_CREDITO' && saldoNC) ? Math.min(total, saldoNC.montoDisponible) : 0;
   const diferenciaAPagar = Math.max(0, total - montoAplicadoNC);
-  const cambio = parseFloat(montoRecibido || '0') - (montoAplicadoNC > 0 ? diferenciaAPagar : total);
+  const montoACobrar = montoAplicadoNC > 0 ? diferenciaAPagar : total;
+
+  // Con tarjeta no entra efectivo a la caja: el datáfono cobra el importe exacto,
+  // así que el monto recibido se fija solo y nunca hay vuelto que entregar.
+  const esTarjeta = metodoPago === 'TARJETA';
+  const cambio = esTarjeta ? 0 : parseFloat(montoRecibido || '0') - montoACobrar;
+
+  useEffect(() => {
+    if (esTarjeta) {
+      setMontoRecibido(montoACobrar.toFixed(2));
+    }
+  }, [esTarjeta, montoACobrar]);
 
 
   const montoInputRef = useRef<HTMLInputElement>(null);
@@ -256,7 +267,7 @@ export default function CheckoutModal({
         setError(`El saldo de la Nota de Crédito (RD$ ${montoAplicadoNC.toFixed(2)}) no cubre el total. Debe cobrar la diferencia de RD$ ${diferenciaAPagar.toFixed(2)}.`);
         return;
       }
-    } else {
+    } else if (!esTarjeta) {
       if (montoEfectivoUOtro < total) {
         setError(`El monto recibido (RD$ ${montoEfectivoUOtro.toFixed(2)}) es menor al total (RD$ ${total.toFixed(2)})`);
         return;
@@ -279,7 +290,10 @@ export default function CheckoutModal({
 
       if (diferenciaAPagar > 0 || ingresos.length === 0) {
         const metodoDiferencia = metodoPago === 'NOTA_CREDITO' ? 'EFECTIVO' : metodoPago;
-        const montoIngreso = ingresos.length > 0 ? Math.max(diferenciaAPagar, montoEfectivoUOtro) : Math.max(total, montoEfectivoUOtro);
+        // Con tarjeta se registra el importe exacto: no hay excedente ni vuelto.
+        const montoIngreso = esTarjeta
+            ? (ingresos.length > 0 ? diferenciaAPagar : total)
+            : (ingresos.length > 0 ? Math.max(diferenciaAPagar, montoEfectivoUOtro) : Math.max(total, montoEfectivoUOtro));
         ingresos.push({
           metodoPago: metodoDiferencia,
           monto: montoIngreso,
@@ -668,24 +682,32 @@ export default function CheckoutModal({
                       }
                     }}
                     placeholder="0.00"
-                    readOnly={metodoPago === 'TARJETA'}
+                    readOnly={esTarjeta}
+                    tabIndex={esTarjeta ? -1 : undefined}
                     className={`w-full pl-10 pr-3 py-3 border rounded-lg text-xl font-bold text-right bg-background focus:ring-2 focus:ring-primary focus:outline-none ${
-                      metodoPago === 'TARJETA' ? 'bg-muted/50 text-muted-foreground border-border' : 'border-border'
+                      esTarjeta ? 'bg-muted/50 text-muted-foreground border-border' : 'border-border'
                     }`}
                   />
 
                 </div>
+                {esTarjeta && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Importe exacto cobrado por el datáfono.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
                   Cambio / Vuelto
                 </label>
                 <div id="checkout-cambio" className={`w-full px-3 py-3 rounded-lg text-xl font-bold text-right ${
-                  cambio >= 0
-                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                    : 'bg-red-50 text-red-600 border border-red-200'
+                  esTarjeta
+                    ? 'bg-muted/50 text-muted-foreground border border-border'
+                    : cambio >= 0
+                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                      : 'bg-red-50 text-red-600 border border-red-200'
                 }`}>
-                  RD${Math.max(0, cambio).toFixed(2)}
+                  {esTarjeta ? 'No aplica' : `RD$${Math.max(0, cambio).toFixed(2)}`}
                 </div>
               </div>
             </div>
@@ -736,7 +758,7 @@ export default function CheckoutModal({
                 procesando || recalculando || cart.length === 0 ||
                 (metodoPago === 'NOTA_CREDITO'
                   ? (!saldoNC || montoAplicadoNC <= 0 || (diferenciaAPagar > 0 && parseFloat(montoRecibido || '0') < diferenciaAPagar))
-                  : (parseFloat(montoRecibido || '0') < total))
+                  : (!esTarjeta && parseFloat(montoRecibido || '0') < total))
               }
               className="flex-[2] px-4 py-3 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
